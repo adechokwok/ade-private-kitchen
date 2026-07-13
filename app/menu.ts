@@ -10,6 +10,9 @@ export type Dish = {
   emoji: string;
   tone: string;
   tag?: string;
+  imageUrl?: string;
+  active?: boolean;
+  isCustom?: boolean;
   ingredients: Ingredient[];
 };
 

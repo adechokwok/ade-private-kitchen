@@ -1,7 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { dishes as menu } from "../../menu";
-import { ensureOrdersSchema, getDb } from "../../../db";
-import { orders } from "../../../db/schema";
+import { ensureCustomDishesSchema, ensureOrdersSchema, getDb } from "../../../db";
+import { customDishes, orders } from "../../../db/schema";
 
 type Item = { dishId?: string; quantity?: number };
 const validStatuses = ["new", "confirmed", "done"] as const;
@@ -30,7 +30,9 @@ export async function POST(request: Request) {
     const guestCount = Number(payload.guestCount);
     const note = typeof payload.note === "string" ? payload.note.trim().slice(0, 200) : "";
     const items = Array.isArray(payload.dishes) ? payload.dishes : [];
-    const validIds = new Set(menu.map((dish) => dish.id));
+    await ensureCustomDishesSchema();
+    const customRows = await getDb().select({ id: customDishes.id }).from(customDishes).where(eq(customDishes.active, 1));
+    const validIds = new Set([...menu.map((dish) => dish.id), ...customRows.map((dish) => dish.id)]);
     const normalized = items
       .filter((item) => item.dishId && validIds.has(item.dishId) && Number.isInteger(item.quantity) && Number(item.quantity) > 0 && Number(item.quantity) <= 10)
       .map((item) => ({ dishId: item.dishId as string, quantity: Number(item.quantity) }));

@@ -11,6 +11,11 @@ export function getDb() {
   return drizzle(getD1(), { schema });
 }
 
+export function getUploads() {
+  if (!env.UPLOADS) throw new Error("菜品图片空间暂不可用");
+  return env.UPLOADS;
+}
+
 export async function ensureOrdersSchema() {
   await getD1().prepare(`CREATE TABLE IF NOT EXISTS orders (
     id TEXT PRIMARY KEY NOT NULL,
@@ -20,6 +25,21 @@ export async function ensureOrdersSchema() {
     note TEXT NOT NULL DEFAULT '',
     dishes TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'new',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`).run();
+}
+
+export async function ensureCustomDishesSchema() {
+  await getD1().prepare(`CREATE TABLE IF NOT EXISTS custom_dishes (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    flavor TEXT NOT NULL DEFAULT '家常风味',
+    minutes INTEGER NOT NULL DEFAULT 30,
+    image_url TEXT NOT NULL DEFAULT '',
+    ingredients TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`).run();
 }
