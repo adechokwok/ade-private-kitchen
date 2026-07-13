@@ -15,6 +15,13 @@
       "when": 1783931684225,
       "tag": "0001_opposite_ulik",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783935655241,
+      "tag": "0002_charming_madripoor",
+      "breakpoints": true
     }
   ]
 }

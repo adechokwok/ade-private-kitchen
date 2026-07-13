@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { categories, dishes, type Dish, type Ingredient } from "./menu";
 
 type Cart = Record<string, number>;
@@ -17,6 +17,18 @@ type Order = {
 };
 type ManagedDish = Dish & { active: boolean; isCustom: true; createdAt?: string };
 type IngredientRow = Ingredient & { rowId: string };
+type RecipeDraft = {
+  name: string;
+  category: string;
+  description: string;
+  flavor: string;
+  minutes: number;
+  source: string;
+  ingredients: Ingredient[];
+  steps: string[];
+  confidenceNotes: string[];
+};
+type RecipeScreenshot = { file: File; preview: string };
 
 const statusLabel = { new: "待确认", confirmed: "已确认", done: "已完成" };
 
@@ -38,6 +50,7 @@ const newIngredientRow = (): IngredientRow => ({
 });
 
 export default function Home() {
+  const dishFormRef = useRef<HTMLFormElement>(null);
   const [mode, setMode] = useState<"menu" | "chef">("menu");
   const [chefView, setChefView] = useState<"overview" | "menuManager">("overview");
   const [activeCategory, setActiveCategory] = useState("全部");
@@ -51,6 +64,10 @@ export default function Home() {
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [dishSubmitting, setDishSubmitting] = useState(false);
+  const [recipeImporting, setRecipeImporting] = useState(false);
+  const [recipeImportText, setRecipeImportText] = useState("");
+  const [recipeScreenshots, setRecipeScreenshots] = useState<RecipeScreenshot[]>([]);
+  const [recipeDraft, setRecipeDraft] = useState<RecipeDraft | null>(null);
   const [notice, setNotice] = useState("");
 
   const allDishes = useMemo(() => [...dishes, ...customDishes.filter((dish) => dish.active)], [customDishes]);
@@ -115,6 +132,10 @@ export default function Home() {
     const timer = window.setTimeout(() => setNotice(""), 3200);
     return () => window.clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => () => {
+    recipeScreenshots.forEach((screenshot) => URL.revokeObjectURL(screenshot.preview));
+  }, [recipeScreenshots]);
 
   const shoppingList = useMemo(() => {
     const totals = new Map<string, { name: string; amount: number; unit: string; type: string }>();
@@ -190,6 +211,56 @@ export default function Home() {
     setImagePreview(file ? URL.createObjectURL(file) : "");
   };
 
+  const selectRecipeScreenshots = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []).slice(0, 4);
+    setRecipeScreenshots(files.map((file) => ({ file, preview: URL.createObjectURL(file) })));
+    setRecipeDraft(null);
+  };
+
+  const fillDishForm = (draft: RecipeDraft) => {
+    const form = dishFormRef.current;
+    if (!form) return;
+    const setValue = (name: string, value: string) => {
+      const field = form.elements.namedItem(name);
+      if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) field.value = value;
+    };
+    setValue("name", draft.name);
+    setValue("category", draft.category);
+    setValue("flavor", draft.flavor);
+    setValue("minutes", String(draft.minutes));
+    setValue("description", draft.description);
+    setValue("source", draft.source);
+    setValue("steps", draft.steps.map((step, index) => `${index + 1}. ${step}`).join("\n"));
+    setIngredientRows(draft.ingredients.length
+      ? draft.ingredients.map((ingredient) => ({ ...ingredient, rowId: crypto.randomUUID() }))
+      : [newIngredientRow()]);
+    window.setTimeout(() => form.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+  };
+
+  const analyzeRecipe = async () => {
+    if (!recipeScreenshots.length && !recipeImportText.trim()) {
+      setNotice("请先上传菜谱截图，或粘贴菜谱文字");
+      return;
+    }
+    setRecipeImporting(true);
+    try {
+      const form = new FormData();
+      recipeScreenshots.forEach(({ file }) => form.append("images", file));
+      form.set("text", recipeImportText);
+      const response = await fetch("/api/recipe-import", { method: "POST", body: form });
+      const data = await response.json() as { draft?: RecipeDraft; mode?: string; error?: string };
+      if (!response.ok || !data.draft) throw new Error(data.error || "菜谱识别失败");
+      setRecipeDraft(data.draft);
+      fillDishForm(data.draft);
+      const summary = `${data.draft.ingredients.length} 种食材、${data.draft.steps.length} 个步骤`;
+      setNotice(data.mode === "text-fallback" ? `已用文字模式拆解 ${summary}，请校对` : `识别完成：${summary}`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "菜谱识别失败，请稍后重试");
+    } finally {
+      setRecipeImporting(false);
+    }
+  };
+
   const submitDish = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setDishSubmitting(true);
@@ -204,6 +275,9 @@ export default function Home() {
       if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
       setImagePreview("");
       setIngredientRows([newIngredientRow()]);
+      setRecipeDraft(null);
+      setRecipeImportText("");
+      setRecipeScreenshots([]);
       setNotice(`“${data.dish.name}”已加入菜单`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "菜品保存失败");
@@ -386,8 +460,35 @@ export default function Home() {
               </div>
             </>
           ) : (
-            <div className="manager-grid">
-              <form className="dish-form panel" onSubmit={submitDish}>
+            <>
+              <section className="smart-import panel" aria-labelledby="smart-import-title">
+                <div className="smart-import-heading">
+                  <div className="smart-import-icon" aria-hidden="true">识</div>
+                  <div><span>SMART RECIPE IMPORT</span><h2 id="smart-import-title">智能菜谱录入</h2><p>上传菜谱截图，自动拆出菜名、食材、用量和烹饪步骤，再由你确认。</p></div>
+                  <em>先识别 · 后上架</em>
+                </div>
+                <div className="smart-import-body">
+                  <div className="smart-import-grid">
+                    <div className="screenshot-import">
+                      <label className="recipe-upload">
+                        <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" onChange={selectRecipeScreenshots} />
+                        <span>＋</span><strong>{recipeScreenshots.length ? "重新选择截图" : "上传菜谱截图"}</strong><small>最多 4 张，可同时上传食材页和步骤页</small>
+                      </label>
+                      {recipeScreenshots.length > 0 && <div className="screenshot-previews">{recipeScreenshots.map((screenshot, index) => <figure key={`${screenshot.file.name}-${index}`}><img src={screenshot.preview} alt={`菜谱截图 ${index + 1}`} /><figcaption>{index + 1}</figcaption></figure>)}</div>}
+                    </div>
+                    <div className="import-or"><span>或</span></div>
+                    <label className="recipe-text-import"><span>粘贴菜谱文字</span><textarea value={recipeImportText} onChange={(event) => { setRecipeImportText(event.target.value); setRecipeDraft(null); }} placeholder={'例如：\n大虾烧白菜\n食材：大虾 250g、白菜 500g……\n步骤：1. 处理大虾……'} /><small>没有截图时也能自动拆解；有截图时可补充模糊内容</small></label>
+                  </div>
+                  <div className="smart-import-actions">
+                    <p>识别结果只会填入下方草稿，不会自动发布。</p>
+                    <button type="button" onClick={analyzeRecipe} disabled={recipeImporting}>{recipeImporting ? "正在读菜谱…" : "开始识别并填入"}<span>→</span></button>
+                  </div>
+                  {recipeDraft && <div className="import-result" role="status"><div><strong>✓ 已生成“{recipeDraft.name}”草稿</strong><span>{recipeDraft.ingredients.length} 种食材 · {recipeDraft.steps.length} 个步骤 · 来源：{recipeDraft.source || "待确认"}</span></div>{recipeDraft.confidenceNotes.length > 0 && <p>请核对：{recipeDraft.confidenceNotes.join("；")}</p>}</div>}
+                </div>
+              </section>
+
+              <div className="manager-grid">
+              <form ref={dishFormRef} className="dish-form panel" onSubmit={submitDish}>
                 <div className="panel-title"><div><span>NEW DISH</span><h2>添加一道新菜</h2></div><small>保存后立即上架</small></div>
                 <div className="dish-form-body">
                   <div className="field-grid">
@@ -395,8 +496,10 @@ export default function Home() {
                     <label><span>菜系分类 *</span><input name="category" required maxLength={30} list="dish-categories" placeholder="例如：江浙风味" /><datalist id="dish-categories">{menuCategories.map((category) => <option value={category} key={category} />)}</datalist></label>
                     <label><span>口味标签</span><input name="flavor" maxLength={30} placeholder="例如：酸甜 · 不辣" /></label>
                     <label><span>预计烹饪时间</span><div className="input-suffix"><input name="minutes" type="number" min="5" max="360" defaultValue="30" required /><b>分钟</b></div></label>
+                    <label><span>菜谱来源</span><input name="source" maxLength={80} placeholder="例如：食遇日记 · 村驴" /></label>
                   </div>
                   <label className="wide-field"><span>菜品介绍</span><textarea name="description" maxLength={180} placeholder="简单介绍这道菜的味道和特色…" /></label>
+                  <label className="wide-field"><span>烹饪步骤</span><textarea className="steps-textarea" name="steps" maxLength={12000} placeholder={'每行填写一个步骤，例如：\n1. 大虾剪去虾须，开背去虾线\n2. 白菜切块，小火煸炒至变软'} /></label>
 
                   <fieldset className="photo-fieldset">
                     <legend>菜品照片</legend>
@@ -436,14 +539,15 @@ export default function Home() {
                     {customDishes.map((dish) => (
                       <article className={!dish.active ? "managed-dish inactive" : "managed-dish"} key={dish.id}>
                         <div className="managed-thumb">{dish.imageUrl ? <img src={dish.imageUrl} alt="" /> : <span>🍽️</span>}</div>
-                        <div className="managed-copy"><div><strong>{dish.name}</strong><em>{dish.active ? "已上架" : "已下架"}</em></div><p>{dish.category} · {dish.flavor}</p><small>{dish.ingredients.length} 种食材 · 约 {dish.minutes} 分钟</small></div>
+                        <div className="managed-copy"><div><strong>{dish.name}</strong><em>{dish.active ? "已上架" : "已下架"}</em></div><p>{dish.category} · {dish.flavor}</p><small>{dish.ingredients.length} 种食材 · {dish.steps?.length || 0} 个步骤 · 约 {dish.minutes} 分钟</small></div>
                         <div className="managed-actions"><button onClick={() => toggleDish(dish)}>{dish.active ? "下架" : "上架"}</button><button className="danger" onClick={() => deleteDish(dish)}>删除</button></div>
                       </article>
                     ))}
                   </div>
                 )}
               </aside>
-            </div>
+              </div>
+            </>
           )}
         </section>
       )}

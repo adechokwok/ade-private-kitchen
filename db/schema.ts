@@ -21,6 +21,8 @@ export const customDishes = sqliteTable("custom_dishes", {
   minutes: integer("minutes").notNull().default(30),
   imageUrl: text("image_url").notNull().default(""),
   ingredients: text("ingredients").notNull(),
+  steps: text("steps").notNull().default("[]"),
+  source: text("source").notNull().default(""),
   active: integer("active").notNull().default(1),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

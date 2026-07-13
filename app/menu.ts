@@ -11,6 +11,8 @@ export type Dish = {
   tone: string;
   tag?: string;
   imageUrl?: string;
+  source?: string;
+  steps?: string[];
   active?: boolean;
   isCustom?: boolean;
   ingredients: Ingredient[];

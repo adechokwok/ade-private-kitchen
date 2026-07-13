@@ -46,6 +46,9 @@ function safeNetworkImageUrl(value: string) {
 }
 
 function presentDish(row: typeof customDishes.$inferSelect) {
+  const parseList = (value: string) => {
+    try { return JSON.parse(value); } catch { return []; }
+  };
   return {
     id: row.id,
     name: row.name,
@@ -54,7 +57,9 @@ function presentDish(row: typeof customDishes.$inferSelect) {
     flavor: row.flavor,
     minutes: row.minutes,
     imageUrl: row.imageUrl,
-    ingredients: JSON.parse(row.ingredients),
+    ingredients: parseList(row.ingredients),
+    steps: parseList(row.steps),
+    source: row.source,
     active: Boolean(row.active),
     isCustom: true,
     emoji: "🍽️",
@@ -82,6 +87,8 @@ export async function POST(request: Request) {
     const flavor = String(form.get("flavor") || "家常风味").trim().slice(0, 30);
     const minutes = Number(form.get("minutes"));
     const ingredients = normalizeIngredients(String(form.get("ingredients") || "[]"));
+    const steps = String(form.get("steps") || "").split("\n").map((step) => step.replace(/^\s*\d+[.、）)]\s*/, "").trim().slice(0, 500)).filter(Boolean).slice(0, 30);
+    const source = String(form.get("source") || "").trim().slice(0, 80);
     const imageFile = form.get("image");
     let imageUrl = safeNetworkImageUrl(String(form.get("imageUrl") || ""));
 
@@ -103,7 +110,7 @@ export async function POST(request: Request) {
     await ensureCustomDishesSchema();
     const [dish] = await getDb().insert(customDishes).values({
       id, name, category, description, flavor, minutes, imageUrl,
-      ingredients: JSON.stringify(ingredients), active: 1,
+      ingredients: JSON.stringify(ingredients), steps: JSON.stringify(steps), source, active: 1,
     }).returning();
     return Response.json({ dish: presentDish(dish) }, { status: 201 });
   } catch (error) {

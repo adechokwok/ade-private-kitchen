@@ -39,7 +39,13 @@ export async function ensureCustomDishesSchema() {
     minutes INTEGER NOT NULL DEFAULT 30,
     image_url TEXT NOT NULL DEFAULT '',
     ingredients TEXT NOT NULL,
+    steps TEXT NOT NULL DEFAULT '[]',
+    source TEXT NOT NULL DEFAULT '',
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`).run();
+  const columns = await getD1().prepare("PRAGMA table_info(custom_dishes)").all<{ name: string }>();
+  const names = new Set(columns.results.map((column) => column.name));
+  if (!names.has("steps")) await getD1().prepare("ALTER TABLE custom_dishes ADD COLUMN steps TEXT NOT NULL DEFAULT '[]'").run();
+  if (!names.has("source")) await getD1().prepare("ALTER TABLE custom_dishes ADD COLUMN source TEXT NOT NULL DEFAULT ''").run();
 }
