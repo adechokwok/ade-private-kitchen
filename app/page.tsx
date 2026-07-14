@@ -50,6 +50,19 @@ const banquetTemplates: Array<{ id: BanquetTemplate; name: string; occasion: str
 ];
 
 const statusLabel = { new: "待确认", confirmed: "已确认", done: "已完成" };
+const categoryEmoji: Record<string, string> = {
+  全部: "✦", 家常热炒: "🍳", 江浙风味: "🌿", 川湘小馆: "🌶", 汤羹主食: "🥣", 海鲜: "🦐", 家常菜: "🥢",
+};
+const dishQuips: Record<string, string> = {
+  "cola-wings": "大人小孩都很难拒绝",
+  "tomato-beef": "汤汁请务必留给米饭",
+  "shrimp-eggs": "软乎乎的一口鲜",
+  "dongpo-pork": "值得为它多添半碗饭",
+  "mapo-tofu": "今晚来点热乎带劲的",
+  "pepper-chicken": "麻香上头，快乐加倍",
+  "lotus-soup": "先喝口汤，慢慢吃饭",
+  "scallion-noodles": "简单，但会让人想念",
+};
 
 function parseItems(order: Order): OrderItem[] {
   try {
@@ -423,11 +436,11 @@ export default function Home() {
       <header className="topbar">
         <button className="brand" onClick={() => setMode("menu")} aria-label="回到菜单">
           <span className="brand-mark">好</span>
-          <span><strong>好好吃饭</strong><small>私房菜单 · 用心下厨</small></span>
+          <span><strong>好好吃饭</strong><small>只招待我喜欢的人</small></span>
         </button>
         <nav className="mode-switch" aria-label="页面切换">
           <button className={mode === "menu" ? "active" : ""} onClick={() => setMode("menu")}>朋友点菜</button>
-          <button className={mode === "chef" ? "active" : ""} onClick={() => setMode("chef")}>主厨工作台</button>
+          <button className={mode === "chef" ? "active" : ""} onClick={() => setMode("chef")}>主厨入口</button>
         </nav>
       </header>
 
@@ -435,43 +448,47 @@ export default function Home() {
         <>
           <section className="hero">
             <div className="hero-copy">
-              <span className="eyebrow">THIS WEEK&apos;S HOME MENU</span>
-              <h1>今晚，来我家<br />好好吃顿饭吧。</h1>
-              <p>没有预制菜，也没有外卖盒。选几道你想吃的，我来认真准备。</p>
-              <div className="hero-note"><span>本周菜单</span><strong>每道菜约 3–4 人份</strong><span>提前 1 天点单</span></div>
+              <div className="hero-greeting"><span><i></i> 厨房今日营业</span><small>嗨，今天也要被好好招待 👋</small></div>
+              <h1>想吃什么，<br /><em>我给你做。</em></h1>
+              <p>没有复杂规则，也不用跟我客气。挑几道你惦记的家常菜，剩下的交给主厨。</p>
+              <div className="hero-actions"><a href="#weekly-menu">开始点菜 <span>↓</span></a><p><strong>3–4 人份</strong><small>每道菜的快乐容量</small></p><p><strong>提前 1 天</strong><small>让我从容去买菜</small></p></div>
             </div>
-            <div className="hero-plate" aria-hidden="true">
-              <div className="plate-rim"><span className="plate-food">🍲</span></div>
-              <span className="leaf leaf-one">☘</span><span className="leaf leaf-two">🌿</span>
+            <div className="hero-visual" aria-hidden="true">
+              <div className="hero-sticker">今日份<br /><strong>好好吃饭</strong></div>
+              <div className="hero-plate"><div className="plate-rim"><span className="plate-food">🍲</span></div><span className="leaf leaf-one">☘</span><span className="leaf leaf-two">🌿</span></div>
+              <div className="hero-love-note"><span>主厨碎碎念</span><p>“点你真心想吃的，<br />不用替我省事。”</p></div>
+              <span className="hero-spark spark-one">✦</span><span className="hero-spark spark-two">✦</span>
             </div>
           </section>
 
-          <section className="menu-section">
+          <section className="menu-section" id="weekly-menu">
             <div className="section-heading">
-              <div><span className="eyebrow">CHOOSE YOUR FAVORITES</span><h2>想吃什么？</h2></div>
-              <p>慢慢选，不着急。好吃的值得期待。</p>
+              <div><span className="eyebrow">THIS WEEK&apos;S LITTLE MENU</span><h2>挑几道喜欢的</h2><p>点菜不用客气，洗碗也不用你。</p></div>
+              <div className="menu-count-pill"><strong>{allDishes.length}</strong><span>道家常味<br />等你翻牌</span></div>
             </div>
             <div className="category-tabs" role="tablist" aria-label="菜系分类">
               {["全部", ...menuCategories].map((category) => (
-                <button key={category} className={activeCategory === category ? "active" : ""} onClick={() => setActiveCategory(category)}>{category}</button>
+                <button key={category} className={activeCategory === category ? "active" : ""} onClick={() => setActiveCategory(category)}><span>{categoryEmoji[category] || "•"}</span>{category}</button>
               ))}
             </div>
             <div className="dish-grid">
-              {filteredDishes.map((dish) => {
+              {filteredDishes.map((dish, index) => {
                 const quantity = cart[dish.id] || 0;
                 return (
-                  <article className="dish-card" key={dish.id}>
+                  <article className={quantity ? "dish-card selected" : "dish-card"} key={dish.id}>
                     <div className={`dish-art tone-${dish.tone}`}>
                       {dish.imageUrl ? <img className="dish-photo" src={dish.imageUrl} alt={dish.name} /> : <span>{dish.emoji}</span>}
                       <small>{dish.category}</small>
+                      {dish.tag && <b className="dish-art-tag">{dish.tag}</b>}
                     </div>
                     <div className="dish-body">
-                      <div className="dish-title"><h3>{dish.name}</h3>{dish.tag && <span>{dish.tag}</span>}</div>
+                      <div className="dish-title"><h3>{dish.name}</h3><span>{dish.flavor.split("·")[0].trim()}</span></div>
+                      <div className="dish-quip">{dishQuips[dish.id] || ["这道很适合一起分享", "今天吃点认真做的", "一口下去，很有家的感觉"][index % 3]}</div>
                       <p>{dish.description}</p>
-                      <div className="dish-meta"><span>{dish.flavor}</span><span>约 {dish.minutes} 分钟</span></div>
+                      <div className="dish-meta"><span>⏱ {dish.minutes} 分钟</span><span>🥢 约 3–4 人份</span></div>
                       <div className="quantity-control">
                         {quantity > 0 && <><button onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong></>}
-                        <button className={quantity ? "add filled" : "add"} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{quantity ? "+" : "加入菜单 +"}</button>
+                        <button className={quantity ? "add filled" : "add"} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{quantity ? "+" : <><span>想吃这道</span><b>＋</b></>}</button>
                       </div>
                     </div>
                   </article>
@@ -481,14 +498,15 @@ export default function Home() {
           </section>
 
           <section className="promise-strip">
-            <div><span>01</span><strong>新鲜采购</strong><p>收到点单后再买菜</p></div>
-            <div><span>02</span><strong>认真备菜</strong><p>每一道都现做</p></div>
-            <div><span>03</span><strong>一起吃饭</strong><p>最重要的是开心</p></div>
+            <div className="promise-heading"><span>主厨保证书</span><h2>放心点，<br />我认真做。</h2><p>一顿好饭不一定隆重，<br />但一定要有诚意。</p></div>
+            <div className="promise-card"><span>01</span><div>🧺</div><strong>收到点单再买菜</strong><p>新鲜这件事，不打折。</p></div>
+            <div className="promise-card playful"><span>02</span><div>🍳</div><strong>每一道都现做</strong><p>锅气，是厨房的签名。</p></div>
+            <div className="promise-card"><span>03</span><div>☺</div><strong>最重要的是开心</strong><p>吃饱以后，再慢慢聊天。</p></div>
           </section>
 
           {cartCount > 0 && (
             <button className="floating-cart" onClick={() => setCartOpen(true)}>
-              <span className="cart-icon">篮</span><span><small>已选菜单</small><strong>{cartCount} 道菜</strong></span><b>查看点单 →</b>
+              <span className="cart-icon">{cartCount}</span><span><small>这顿有着落了</small><strong>已选 {cartCount} 道菜</strong></span><b>去确认菜单 <i>→</i></b>
             </button>
           )}
         </>
@@ -709,10 +727,10 @@ export default function Home() {
         <div className="overlay" onMouseDown={(event) => event.target === event.currentTarget && setCartOpen(false)}>
           <aside className="cart-drawer" role="dialog" aria-modal="true" aria-label="已选菜单">
             <button className="close" onClick={() => setCartOpen(false)} aria-label="关闭">×</button>
-            <span className="eyebrow">YOUR HOME MENU</span><h2>这顿想吃这些</h2>
+            <span className="eyebrow">YOUR HAPPY LITTLE MENU</span><h2>这顿想吃这些</h2>
             <div className="cart-lines">{cartItems.map((item) => <div key={item.id}><span className="mini-emoji">{item.imageUrl ? <img src={item.imageUrl} alt="" /> : item.emoji}</span><span><strong>{item.name}</strong><small>{item.flavor}</small></span><div><button onClick={() => updateQuantity(item.id, -1)}>−</button><b>{item.quantity}</b><button onClick={() => updateQuantity(item.id, 1)}>+</button></div></div>)}</div>
-            <p className="cart-hint">每道菜约 3–4 人份，提交后我会和你确认具体时间。</p>
-            <button className="primary-button" onClick={() => setCheckoutOpen(true)}>填写用餐信息 <span>→</span></button>
+            <p className="cart-hint">眼光不错呀。每道菜约 3–4 人份，提交后我会和你确认时间，再认真去买菜。</p>
+            <button className="primary-button" onClick={() => setCheckoutOpen(true)}>把这顿饭约起来 <span>→</span></button>
           </aside>
         </div>
       )}
@@ -721,7 +739,7 @@ export default function Home() {
         <div className="overlay checkout-overlay">
           <form className="checkout-card" onSubmit={submitOrder}>
             <button type="button" className="close" onClick={() => setCheckoutOpen(false)} aria-label="关闭">×</button>
-            <span className="eyebrow">ALMOST THERE</span><h2>最后，告诉我是谁来吃饭</h2><p>提交后，我会尽快和你确认。</p>
+            <span className="eyebrow">ALMOST DINNER TIME</span><h2>最后，把饭局约起来</h2><p>告诉我谁来、哪天来。你负责期待，我负责好吃。</p>
             <label><span>你的称呼</span><input name="customerName" required maxLength={30} placeholder="例如：小林" /></label>
             <div className="form-row"><label><span>想哪天吃</span><input name="mealDate" type="date" min={today} defaultValue={today} required /></label><label><span>几个人</span><input name="guestCount" type="number" min="1" max="20" defaultValue="2" required /></label></div>
             <label><span>口味或忌口</span><textarea name="note" maxLength={200} placeholder="例如：少辣、不吃香菜，或者任何想说的话…" /></label>
@@ -731,7 +749,7 @@ export default function Home() {
       )}
 
       {notice && <div className="toast" role="status">{notice}</div>}
-      <footer><span>好好吃饭 · 私房菜单</span><p>Made with care, served with love.</p></footer>
+      <footer><span>好好吃饭 · 私房菜单</span><p>愿每顿饭都有热气，也有惦记。</p></footer>
     </main>
   );
 }
