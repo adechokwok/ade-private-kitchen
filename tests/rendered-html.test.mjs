@@ -22,6 +22,14 @@ test("ships the menu and persistent order workflow", async () => {
   assert.match(page, /从本地上传照片/);
   assert.match(page, /智能菜谱录入/);
   assert.match(page, /开始识别并填入/);
+  assert.match(page, /宴席菜单编排器/);
+  assert.match(page, /温馨家宴/);
+  assert.match(page, /二人世界/);
+  assert.match(page, /Fine Dining/);
+  assert.match(page, /新春团圆/);
+  assert.match(page, /中秋雅宴/);
+  assert.match(page, /生日庆典/);
+  assert.match(page, /window\.print/);
   assert.match(route, /export async function POST/);
   assert.match(route, /export async function PATCH/);
   assert.match(dishRoute, /getUploads\(\)\.put/);
