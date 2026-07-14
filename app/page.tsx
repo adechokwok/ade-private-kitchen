@@ -435,8 +435,8 @@ export default function Home() {
     <main>
       <header className="topbar">
         <button className="brand" onClick={() => setMode("menu")} aria-label="回到菜单">
-          <span className="brand-mark">好</span>
-          <span><strong>好好吃饭</strong><small>只招待我喜欢的人</small></span>
+          <span className="brand-mark">德</span>
+          <span><strong>阿德小厨房</strong><small>只招待我喜欢的人</small></span>
         </button>
         <nav className="mode-switch" aria-label="页面切换">
           <button className={mode === "menu" ? "active" : ""} onClick={() => setMode("menu")}>朋友点菜</button>
@@ -451,7 +451,7 @@ export default function Home() {
               <div className="hero-greeting"><span><i></i> 厨房今日营业</span><small>嗨，今天也要被好好招待 👋</small></div>
               <h1>想吃什么，<br /><em>我给你做。</em></h1>
               <p>没有复杂规则，也不用跟我客气。挑几道你惦记的家常菜，剩下的交给主厨。</p>
-              <div className="hero-actions"><a href="#weekly-menu">开始点菜 <span>↓</span></a><p><strong>3–4 人份</strong><small>每道菜的快乐容量</small></p><p><strong>提前 1 天</strong><small>让我从容去买菜</small></p></div>
+              <div className="hero-actions"><a href="#weekly-menu">开始点菜 <span>↓</span></a><p><strong>放心点</strong><small>不用替主厨省事</small></p><p><strong>提前 1 天</strong><small>让我从容去买菜</small></p></div>
             </div>
             <div className="hero-visual" aria-hidden="true">
               <div className="hero-sticker">今日份<br /><strong>好好吃饭</strong></div>
@@ -464,7 +464,7 @@ export default function Home() {
           <section className="menu-section" id="weekly-menu">
             <div className="section-heading">
               <div><span className="eyebrow">THIS WEEK&apos;S LITTLE MENU</span><h2>挑几道喜欢的</h2><p>点菜不用客气，洗碗也不用你。</p></div>
-              <div className="menu-count-pill"><strong>{allDishes.length}</strong><span>道家常味<br />等你翻牌</span></div>
+              <div className="menu-count-pill"><strong>{allDishes.length}</strong><span>道拿手菜<br />等你翻牌</span></div>
             </div>
             <div className="category-tabs" role="tablist" aria-label="菜系分类">
               {["全部", ...menuCategories].map((category) => (
@@ -482,10 +482,9 @@ export default function Home() {
                       {dish.tag && <b className="dish-art-tag">{dish.tag}</b>}
                     </div>
                     <div className="dish-body">
-                      <div className="dish-title"><h3>{dish.name}</h3><span>{dish.flavor.split("·")[0].trim()}</span></div>
+                      <div className="dish-title"><h3>{dish.name}</h3></div>
                       <div className="dish-quip">{dishQuips[dish.id] || ["这道很适合一起分享", "今天吃点认真做的", "一口下去，很有家的感觉"][index % 3]}</div>
                       <p>{dish.description}</p>
-                      <div className="dish-meta"><span>⏱ {dish.minutes} 分钟</span><span>🥢 约 3–4 人份</span></div>
                       <div className="quantity-control">
                         {quantity > 0 && <><button onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong></>}
                         <button className={quantity ? "add filled" : "add"} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{quantity ? "+" : <><span>想吃这道</span><b>＋</b></>}</button>
@@ -603,7 +602,7 @@ export default function Home() {
                 <div className="dish-form-body">
                   <div className="field-grid">
                     <label><span>菜名 *</span><input name="name" required maxLength={40} placeholder="例如：糖醋小排" /></label>
-                    <label><span>菜系分类 *</span><input name="category" required maxLength={30} list="dish-categories" placeholder="例如：江浙风味" /><datalist id="dish-categories">{menuCategories.map((category) => <option value={category} key={category} />)}</datalist></label>
+                    <label className="category-edit-field"><span>菜品类型（可自定义）*</span><input name="category" required maxLength={30} placeholder="例如：凉菜、甜品、烧烤或粤菜" /><small>可直接输入任何新类型，保存后会自动出现在朋友端分类中。</small></label>
                     <label><span>口味标签</span><input name="flavor" maxLength={30} placeholder="例如：酸甜 · 不辣" /></label>
                     <label><span>预计烹饪时间</span><div className="input-suffix"><input name="minutes" type="number" min="5" max="360" defaultValue="30" required /><b>分钟</b></div></label>
                     <label><span>菜谱来源</span><input name="source" maxLength={80} placeholder="例如：食遇日记 · 村驴" /></label>
@@ -700,7 +699,7 @@ export default function Home() {
                 <div className={`banquet-preview template-${banquetTemplate}`}>
                   <div className="menu-card-ornament" aria-hidden="true"><span>{activeBanquetTemplate.mark}</span></div>
                   <div className="menu-card-header">
-                    <small>好好吃饭 · PRIVATE KITCHEN</small>
+                    <small>阿德小厨房 · PRIVATE KITCHEN</small>
                     <h2>{banquetTitle || "今晚家宴"}</h2>
                     <p>{activeBanquetTemplate.subtitle}</p>
                     <div><span>{banquetDate || "择日相聚"}</span>{selectedBanquetOrder && <span>{selectedBanquetOrder.guestCount} 位宾客</span>}</div>
@@ -728,8 +727,8 @@ export default function Home() {
           <aside className="cart-drawer" role="dialog" aria-modal="true" aria-label="已选菜单">
             <button className="close" onClick={() => setCartOpen(false)} aria-label="关闭">×</button>
             <span className="eyebrow">YOUR HAPPY LITTLE MENU</span><h2>这顿想吃这些</h2>
-            <div className="cart-lines">{cartItems.map((item) => <div key={item.id}><span className="mini-emoji">{item.imageUrl ? <img src={item.imageUrl} alt="" /> : item.emoji}</span><span><strong>{item.name}</strong><small>{item.flavor}</small></span><div><button onClick={() => updateQuantity(item.id, -1)}>−</button><b>{item.quantity}</b><button onClick={() => updateQuantity(item.id, 1)}>+</button></div></div>)}</div>
-            <p className="cart-hint">眼光不错呀。每道菜约 3–4 人份，提交后我会和你确认时间，再认真去买菜。</p>
+            <div className="cart-lines">{cartItems.map((item) => <div key={item.id}><span className="mini-emoji">{item.imageUrl ? <img src={item.imageUrl} alt="" /> : item.emoji}</span><span><strong>{item.name}</strong></span><div><button onClick={() => updateQuantity(item.id, -1)}>−</button><b>{item.quantity}</b><button onClick={() => updateQuantity(item.id, 1)}>+</button></div></div>)}</div>
+            <p className="cart-hint">眼光不错呀。提交后我会和你确认时间，再认真去买菜。</p>
             <button className="primary-button" onClick={() => setCheckoutOpen(true)}>把这顿饭约起来 <span>→</span></button>
           </aside>
         </div>
@@ -749,7 +748,7 @@ export default function Home() {
       )}
 
       {notice && <div className="toast" role="status">{notice}</div>}
-      <footer><span>好好吃饭 · 私房菜单</span><p>愿每顿饭都有热气，也有惦记。</p></footer>
+      <footer><span>阿德小厨房 · 私房菜单</span><p>愿每顿饭都有热气，也有惦记。</p></footer>
     </main>
   );
 }

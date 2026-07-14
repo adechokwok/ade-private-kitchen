@@ -16,6 +16,7 @@ test("ships the menu and persistent order workflow", async () => {
   ]);
 
   assert.match(page, /朋友点菜/);
+  assert.match(page, /阿德小厨房/);
   assert.match(page, /想吃什么/);
   assert.match(page, /今天也要被好好招待/);
   assert.match(page, /点菜不用客气/);
@@ -23,6 +24,7 @@ test("ships the menu and persistent order workflow", async () => {
   assert.match(page, /主厨工作台/);
   assert.match(page, /采购清单/);
   assert.match(page, /菜单管理/);
+  assert.match(page, /菜品类型（可自定义）/);
   assert.match(page, /从本地上传照片/);
   assert.match(page, /智能菜谱录入/);
   assert.match(page, /开始识别并填入/);
