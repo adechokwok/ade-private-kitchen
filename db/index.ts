@@ -24,9 +24,13 @@ export async function ensureOrdersSchema() {
     guest_count INTEGER NOT NULL,
     note TEXT NOT NULL DEFAULT '',
     dishes TEXT NOT NULL,
+    dish_snapshot TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'new',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`).run();
+  const columns = await getD1().prepare("PRAGMA table_info(orders)").all<{ name: string }>();
+  const names = new Set(columns.results.map((column) => column.name));
+  if (!names.has("dish_snapshot")) await getD1().prepare("ALTER TABLE orders ADD COLUMN dish_snapshot TEXT NOT NULL DEFAULT '[]'").run();
 }
 
 export async function ensureCustomDishesSchema() {
@@ -37,6 +41,7 @@ export async function ensureCustomDishesSchema() {
     description TEXT NOT NULL DEFAULT '',
     flavor TEXT NOT NULL DEFAULT '家常风味',
     minutes INTEGER NOT NULL DEFAULT 30,
+    base_servings INTEGER NOT NULL DEFAULT 4,
     image_url TEXT NOT NULL DEFAULT '',
     ingredients TEXT NOT NULL,
     steps TEXT NOT NULL DEFAULT '[]',
@@ -48,4 +53,13 @@ export async function ensureCustomDishesSchema() {
   const names = new Set(columns.results.map((column) => column.name));
   if (!names.has("steps")) await getD1().prepare("ALTER TABLE custom_dishes ADD COLUMN steps TEXT NOT NULL DEFAULT '[]'").run();
   if (!names.has("source")) await getD1().prepare("ALTER TABLE custom_dishes ADD COLUMN source TEXT NOT NULL DEFAULT ''").run();
+  if (!names.has("base_servings")) await getD1().prepare("ALTER TABLE custom_dishes ADD COLUMN base_servings INTEGER NOT NULL DEFAULT 4").run();
+}
+
+export async function ensureShoppingChecksSchema() {
+  await getD1().prepare(`CREATE TABLE IF NOT EXISTS shopping_checks (
+    item_key TEXT PRIMARY KEY NOT NULL,
+    checked INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`).run();
 }

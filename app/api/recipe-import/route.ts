@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { chefApiGuard } from "../../chef-auth";
 
 type IngredientType = "生鲜" | "蔬菜" | "调料" | "其他";
 
@@ -138,6 +139,8 @@ function recipeSchema() {
 }
 
 export async function POST(request: Request) {
+  const denied = chefApiGuard(request);
+  if (denied) return denied;
   try {
     const form = await request.formData();
     const text = String(form.get("text") || "").trim().slice(0, 16000);

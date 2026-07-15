@@ -22,6 +22,13 @@
       "when": 1783935655241,
       "tag": "0002_charming_madripoor",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1784104818910,
+      "tag": "0003_furry_gideon",
+      "breakpoints": true
     }
   ]
 }

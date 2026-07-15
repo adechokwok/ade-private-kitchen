@@ -2,6 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { dishes as menu } from "../../menu";
 import { ensureCustomDishesSchema, ensureOrdersSchema, getDb } from "../../../db";
 import { customDishes, orders } from "../../../db/schema";
+import { chefApiGuard } from "../../chef-auth";
 
 type Item = { dishId?: string; quantity?: number };
 const validStatuses = ["new", "confirmed", "done"] as const;
@@ -10,7 +11,9 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "服务暂时开小差了";
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = chefApiGuard(request);
+  if (denied) return denied;
   try {
     await ensureOrdersSchema();
     const rows = await getDb().select().from(orders).orderBy(desc(orders.createdAt)).limit(100);
@@ -31,7 +34,7 @@ export async function POST(request: Request) {
     const note = typeof payload.note === "string" ? payload.note.trim().slice(0, 200) : "";
     const items = Array.isArray(payload.dishes) ? payload.dishes : [];
     await ensureCustomDishesSchema();
-    const customRows = await getDb().select({ id: customDishes.id }).from(customDishes).where(eq(customDishes.active, 1));
+    const customRows = await getDb().select().from(customDishes).where(eq(customDishes.active, 1));
     const validIds = new Set([...menu.map((dish) => dish.id), ...customRows.map((dish) => dish.id)]);
     const normalized = items
       .filter((item) => item.dishId && validIds.has(item.dishId) && Number.isInteger(item.quantity) && Number(item.quantity) > 0 && Number(item.quantity) <= 10)
@@ -42,9 +45,21 @@ export async function POST(request: Request) {
     if (!Number.isInteger(guestCount) || guestCount < 1 || guestCount > 20) return Response.json({ error: "用餐人数需为 1–20 人" }, { status: 400 });
     if (normalized.length === 0) return Response.json({ error: "请至少选择一道菜" }, { status: 400 });
 
+    const customCatalog = customRows.map((dish) => ({
+      id: dish.id,
+      name: dish.name,
+      baseServings: dish.baseServings || 4,
+      ingredients: (() => { try { return JSON.parse(dish.ingredients); } catch { return []; } })(),
+    }));
+    const catalog = [...menu.map((dish) => ({ id: dish.id, name: dish.name, baseServings: dish.baseServings || 4, ingredients: dish.ingredients })), ...customCatalog];
+    const dishSnapshot = normalized.map((item) => {
+      const dish = catalog.find((candidate) => candidate.id === item.dishId);
+      return dish ? { dishId: dish.id, name: dish.name, baseServings: dish.baseServings, ingredients: dish.ingredients } : null;
+    }).filter(Boolean);
+
     await ensureOrdersSchema();
     const id = crypto.randomUUID();
-    const [order] = await getDb().insert(orders).values({ id, customerName, mealDate, guestCount, note, dishes: JSON.stringify(normalized) }).returning();
+    const [order] = await getDb().insert(orders).values({ id, customerName, mealDate, guestCount, note, dishes: JSON.stringify(normalized), dishSnapshot: JSON.stringify(dishSnapshot) }).returning();
     return Response.json({ order }, { status: 201 });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
@@ -52,6 +67,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const denied = chefApiGuard(request);
+  if (denied) return denied;
   try {
     const payload = await request.json() as { id?: string; status?: typeof validStatuses[number] };
     if (!payload.id || !payload.status || !validStatuses.includes(payload.status)) return Response.json({ error: "无效的订单状态" }, { status: 400 });

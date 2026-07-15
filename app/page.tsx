@@ -5,6 +5,7 @@ import { categories, dishes, type Dish, type Ingredient } from "./menu";
 
 type Cart = Record<string, number>;
 type OrderItem = { dishId: string; quantity: number };
+type DishSnapshot = { dishId: string; name: string; baseServings: number; ingredients: Ingredient[] };
 type Order = {
   id: string;
   customerName: string;
@@ -12,6 +13,7 @@ type Order = {
   guestCount: number;
   note: string;
   dishes: string;
+  dishSnapshot: string;
   status: "new" | "confirmed" | "done";
   createdAt: string;
 };
@@ -23,6 +25,7 @@ type RecipeDraft = {
   description: string;
   flavor: string;
   minutes: number;
+  baseServings?: number;
   source: string;
   ingredients: Ingredient[];
   steps: string[];
@@ -72,6 +75,10 @@ function parseItems(order: Order): OrderItem[] {
   }
 }
 
+function parseDishSnapshot(order: Order): DishSnapshot[] {
+  try { return JSON.parse(order.dishSnapshot || "[]") as DishSnapshot[]; } catch { return []; }
+}
+
 function formatAmount(value: number, unit: string) {
   const rounded = Number.isInteger(value) ? value : Number(value.toFixed(1));
   return `${rounded}${unit}`;
@@ -81,9 +88,9 @@ const newIngredientRow = (): IngredientRow => ({
   rowId: crypto.randomUUID(), name: "", amount: 100, unit: "g", type: "生鲜",
 });
 
-export default function Home() {
+export default function Home({ initialMode = "menu", chefUser = "" }: { initialMode?: "menu" | "chef"; chefUser?: string }) {
   const dishFormRef = useRef<HTMLFormElement>(null);
-  const [mode, setMode] = useState<"menu" | "chef">("menu");
+  const mode = initialMode;
   const [chefView, setChefView] = useState<"overview" | "menuManager" | "banquet">("overview");
   const [activeCategory, setActiveCategory] = useState("全部");
   const [cart, setCart] = useState<Cart>({});
@@ -91,6 +98,8 @@ export default function Home() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customDishes, setCustomDishes] = useState<ManagedDish[]>([]);
+  const [editingDish, setEditingDish] = useState<ManagedDish | null>(null);
+  const [shoppingChecks, setShoppingChecks] = useState<Record<string, boolean>>({});
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([newIngredientRow()]);
   const [imagePreview, setImagePreview] = useState("");
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -195,8 +204,8 @@ export default function Home() {
     window.setTimeout(cleanup, 3000);
   };
 
-  const loadOrders = async () => {
-    setLoadingOrders(true);
+  const loadOrders = async (silent = false) => {
+    if (!silent) setLoadingOrders(true);
     try {
       const response = await fetch("/api/orders", { cache: "no-store" });
       const data = await response.json() as { orders?: Order[]; error?: string };
@@ -205,8 +214,16 @@ export default function Home() {
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "订单加载失败");
     } finally {
-      setLoadingOrders(false);
+      if (!silent) setLoadingOrders(false);
     }
+  };
+
+  const loadShoppingChecks = async () => {
+    try {
+      const response = await fetch("/api/shopping", { cache: "no-store" });
+      const data = await response.json() as { checks?: Record<string, boolean> };
+      if (response.ok) setShoppingChecks(data.checks || {});
+    } catch { /* 主清单仍然可以正常使用 */ }
   };
 
   const loadDishes = async () => {
@@ -224,6 +241,9 @@ export default function Home() {
     if (mode === "chef") {
       loadOrders();
       loadDishes();
+      loadShoppingChecks();
+      const timer = window.setInterval(() => loadOrders(true), 30000);
+      return () => window.clearInterval(timer);
     }
   }, [mode]);
 
@@ -242,22 +262,48 @@ export default function Home() {
   }, [recipeScreenshots]);
 
   const shoppingList = useMemo(() => {
-    const totals = new Map<string, { name: string; amount: number; unit: string; type: string }>();
+    const totals = new Map<string, { itemKey: string; name: string; amount: number; unit: string; type: string }>();
     orders.filter((order) => order.status !== "done").forEach((order) => {
+      const snapshots = parseDishSnapshot(order);
       parseItems(order).forEach((item) => {
+        const snapshot = snapshots.find((candidate) => candidate.dishId === item.dishId);
         const dish = dishCatalog.find((candidate) => candidate.id === item.dishId);
-        dish?.ingredients.forEach((ingredient) => {
+        const ingredients = snapshot?.ingredients || dish?.ingredients || [];
+        const scale = (order.guestCount / (snapshot?.baseServings || dish?.baseServings || 4)) * item.quantity;
+        ingredients.forEach((ingredient) => {
           const key = `${ingredient.name}-${ingredient.unit}`;
           const current = totals.get(key);
           totals.set(key, {
+            itemKey: key,
             ...ingredient,
-            amount: (current?.amount || 0) + ingredient.amount * item.quantity,
+            amount: (current?.amount || 0) + ingredient.amount * scale,
           });
         });
       });
     });
     return Array.from(totals.values()).sort((a, b) => a.type.localeCompare(b.type, "zh-CN"));
   }, [orders, dishCatalog]);
+
+  const setShoppingChecked = async (itemKey: string, checked: boolean) => {
+    setShoppingChecks((current) => ({ ...current, [itemKey]: checked }));
+    try {
+      const response = await fetch("/api/shopping", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ itemKey, checked }) });
+      if (!response.ok) throw new Error();
+    } catch {
+      setShoppingChecks((current) => ({ ...current, [itemKey]: !checked }));
+      setNotice("采购状态保存失败，请稍后重试");
+    }
+  };
+
+  const resetShoppingChecks = async () => {
+    const response = await fetch("/api/shopping", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ reset: true }) });
+    if (response.ok) {
+      setShoppingChecks({});
+      setNotice("采购清单已重新开始");
+    } else {
+      setNotice("采购清单重置失败");
+    }
+  };
 
   const submitOrder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -332,6 +378,7 @@ export default function Home() {
     setValue("category", draft.category);
     setValue("flavor", draft.flavor);
     setValue("minutes", String(draft.minutes));
+    setValue("baseServings", String(draft.baseServings || 4));
     setValue("description", draft.description);
     setValue("source", draft.source);
     setValue("steps", draft.steps.map((step, index) => `${index + 1}. ${step}`).join("\n"));
@@ -339,6 +386,24 @@ export default function Home() {
       ? draft.ingredients.map((ingredient) => ({ ...ingredient, rowId: crypto.randomUUID() }))
       : [newIngredientRow()]);
     window.setTimeout(() => form.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+  };
+
+  const startEditingDish = (dish: ManagedDish) => {
+    setEditingDish(dish);
+    setImagePreview(dish.imageUrl || "");
+    fillDishForm({
+      name: dish.name, category: dish.category, description: dish.description, flavor: dish.flavor,
+      minutes: dish.minutes, baseServings: dish.baseServings || 4, source: dish.source || "",
+      ingredients: dish.ingredients, steps: dish.steps || [], confidenceNotes: [],
+    });
+    setNotice(`正在编辑“${dish.name}”`);
+  };
+
+  const cancelEditingDish = () => {
+    setEditingDish(null);
+    dishFormRef.current?.reset();
+    setIngredientRows([newIngredientRow()]);
+    setImagePreview("");
   };
 
   const analyzeRecipe = async () => {
@@ -370,11 +435,14 @@ export default function Home() {
     setDishSubmitting(true);
     const form = new FormData(event.currentTarget);
     form.set("ingredients", JSON.stringify(ingredientRows.map(({ rowId: _rowId, ...ingredient }) => ingredient)));
+    if (editingDish) form.set("id", editingDish.id);
     try {
-      const response = await fetch("/api/dishes", { method: "POST", body: form });
+      const response = await fetch("/api/dishes", { method: editingDish ? "PUT" : "POST", body: form });
       const data = await response.json() as { dish?: ManagedDish; error?: string };
       if (!response.ok || !data.dish) throw new Error(data.error || "菜品保存失败");
-      setCustomDishes((current) => [data.dish!, ...current]);
+      setCustomDishes((current) => editingDish
+        ? current.map((dish) => dish.id === data.dish!.id ? data.dish! : dish)
+        : [data.dish!, ...current]);
       event.currentTarget.reset();
       if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
       setImagePreview("");
@@ -382,7 +450,8 @@ export default function Home() {
       setRecipeDraft(null);
       setRecipeImportText("");
       setRecipeScreenshots([]);
-      setNotice(`“${data.dish.name}”已加入菜单`);
+      setNotice(editingDish ? `“${data.dish.name}”已保存更新` : `“${data.dish.name}”已加入菜单`);
+      setEditingDish(null);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "菜品保存失败");
     } finally {
@@ -434,13 +503,14 @@ export default function Home() {
   return (
     <main>
       <header className="topbar">
-        <button className="brand" onClick={() => setMode("menu")} aria-label="回到菜单">
+        <a className="brand" href="/" aria-label="回到菜单">
           <span className="brand-mark">德</span>
           <span><strong>阿德小厨房</strong><small>只招待我喜欢的人</small></span>
-        </button>
+        </a>
         <nav className="mode-switch" aria-label="页面切换">
-          <button className={mode === "menu" ? "active" : ""} onClick={() => setMode("menu")}>朋友点菜</button>
-          <button className={mode === "chef" ? "active" : ""} onClick={() => setMode("chef")}>主厨入口</button>
+          <a className={mode === "menu" ? "active" : ""} href="/">朋友点菜</a>
+          <a className={mode === "chef" ? "active" : ""} href="/chef">主厨入口</a>
+          {mode === "chef" && chefUser && <span className="chef-user">{chefUser}</span>}
         </nav>
       </header>
 
@@ -539,7 +609,7 @@ export default function Home() {
                           <div className="order-top"><div><strong>{order.customerName}</strong><span>#{order.id.slice(-6).toUpperCase()}</span></div><em className={`status ${order.status}`}>{statusLabel[order.status]}</em></div>
                           <div className="order-facts"><span>📅 {order.mealDate}</span><span>👥 {order.guestCount} 人</span></div>
                           <div className="ordered-dishes">
-                            {parseItems(order).map((item) => <div key={item.dishId}><span>{dishCatalog.find((dish) => dish.id === item.dishId)?.name || "已下架菜品"}</span><strong>× {item.quantity}</strong></div>)}
+                            {parseItems(order).map((item) => <div key={item.dishId}><span>{parseDishSnapshot(order).find((dish) => dish.dishId === item.dishId)?.name || dishCatalog.find((dish) => dish.id === item.dishId)?.name || "历史菜品"}</span><strong>× {item.quantity}</strong></div>)}
                           </div>
                           {order.note && <p className="order-note">“{order.note}”</p>}
                           <div className="status-actions">
@@ -554,17 +624,17 @@ export default function Home() {
                 </div>
 
                 <aside className="shopping-panel panel">
-                  <div className="panel-title"><div><span>自动汇总</span><h2>采购清单</h2></div><small>不含已完成订单</small></div>
+                  <div className="panel-title"><div><span>自动汇总</span><h2>采购清单</h2></div><button className="shopping-reset" onClick={resetShoppingChecks}>重新开始</button></div>
                   {shoppingList.length === 0 ? <div className="empty compact"><span>🧺</span><p>有新订单后，会自动拆解并合并食材用量。</p></div> : (
                     <div className="shopping-list">
                       {["生鲜", "蔬菜", "调料", "其他"].map((type) => {
                         const items = shoppingList.filter((item) => item.type === type);
                         if (!items.length) return null;
-                        return <div className="shopping-group" key={type}><h3>{type}</h3>{items.map((item) => <label key={`${item.name}-${item.unit}`}><input type="checkbox" /><span>{item.name}</span><strong>{formatAmount(item.amount, item.unit)}</strong></label>)}</div>;
+                        return <div className="shopping-group" key={type}><h3>{type}</h3>{items.map((item) => <label key={item.itemKey}><input type="checkbox" checked={Boolean(shoppingChecks[item.itemKey])} onChange={(event) => setShoppingChecked(item.itemKey, event.target.checked)} /><span>{item.name}</span><strong>{formatAmount(item.amount, item.unit)}</strong></label>)}</div>;
                       })}
                     </div>
                   )}
-                  <div className="shopping-tip">数量按每道菜约 3–4 人份估算，采购时可按食量微调。</div>
+                  <div className="shopping-tip">已按每份菜谱的基础人数和订单人数自动换算，采购时可按实际食量微调。</div>
                 </aside>
               </div>
             </>
@@ -598,13 +668,14 @@ export default function Home() {
 
               <div className="manager-grid">
               <form ref={dishFormRef} className="dish-form panel" onSubmit={submitDish}>
-                <div className="panel-title"><div><span>NEW DISH</span><h2>添加一道新菜</h2></div><small>保存后立即上架</small></div>
+                <div className="panel-title"><div><span>{editingDish ? "EDIT DISH" : "NEW DISH"}</span><h2>{editingDish ? `编辑：${editingDish.name}` : "添加一道新菜"}</h2></div>{editingDish ? <button type="button" className="cancel-edit" onClick={cancelEditingDish}>取消编辑</button> : <small>保存后立即上架</small>}</div>
                 <div className="dish-form-body">
                   <div className="field-grid">
                     <label><span>菜名 *</span><input name="name" required maxLength={40} placeholder="例如：糖醋小排" /></label>
                     <label className="category-edit-field"><span>菜品类型（可自定义）*</span><input name="category" required maxLength={30} placeholder="例如：凉菜、甜品、烧烤或粤菜" /><small>可直接输入任何新类型，保存后会自动出现在朋友端分类中。</small></label>
                     <label><span>口味标签</span><input name="flavor" maxLength={30} placeholder="例如：酸甜 · 不辣" /></label>
                     <label><span>预计烹饪时间</span><div className="input-suffix"><input name="minutes" type="number" min="5" max="360" defaultValue="30" required /><b>分钟</b></div></label>
+                    <label><span>这份菜谱适合几人</span><div className="input-suffix"><input name="baseServings" type="number" min="1" max="20" defaultValue="4" required /><b>人</b></div><small>只用于后台换算采购量，朋友端不会显示。</small></label>
                     <label><span>菜谱来源</span><input name="source" maxLength={80} placeholder="例如：食遇日记 · 村驴" /></label>
                   </div>
                   <label className="wide-field"><span>菜品介绍</span><textarea name="description" maxLength={180} placeholder="简单介绍这道菜的味道和特色…" /></label>
@@ -636,7 +707,7 @@ export default function Home() {
                       </div>
                     ))}
                   </fieldset>
-                  <button className="primary-button save-dish" disabled={dishSubmitting}>{dishSubmitting ? "正在保存菜品…" : "保存并上架"}<span>→</span></button>
+                  <button className="primary-button save-dish" disabled={dishSubmitting}>{dishSubmitting ? "正在保存菜品…" : editingDish ? "保存修改" : "保存并上架"}<span>→</span></button>
                 </div>
               </form>
 
@@ -648,8 +719,8 @@ export default function Home() {
                     {customDishes.map((dish) => (
                       <article className={!dish.active ? "managed-dish inactive" : "managed-dish"} key={dish.id}>
                         <div className="managed-thumb">{dish.imageUrl ? <img src={dish.imageUrl} alt="" /> : <span>🍽️</span>}</div>
-                        <div className="managed-copy"><div><strong>{dish.name}</strong><em>{dish.active ? "已上架" : "已下架"}</em></div><p>{dish.category} · {dish.flavor}</p><small>{dish.ingredients.length} 种食材 · {dish.steps?.length || 0} 个步骤 · 约 {dish.minutes} 分钟</small></div>
-                        <div className="managed-actions"><button onClick={() => toggleDish(dish)}>{dish.active ? "下架" : "上架"}</button><button className="danger" onClick={() => deleteDish(dish)}>删除</button></div>
+                        <div className="managed-copy"><div><strong>{dish.name}</strong><em>{dish.active ? "已上架" : "已下架"}</em></div><p>{dish.category} · {dish.flavor}</p><small>{dish.ingredients.length} 种食材 · {dish.steps?.length || 0} 个步骤 · {dish.baseServings || 4} 人基础份</small></div>
+                        <div className="managed-actions"><button onClick={() => startEditingDish(dish)}>编辑</button><button onClick={() => toggleDish(dish)}>{dish.active ? "下架" : "上架"}</button><button className="danger" onClick={() => deleteDish(dish)}>删除</button></div>
                       </article>
                     ))}
                   </div>

@@ -7,6 +7,7 @@ export type Dish = {
   description: string;
   flavor: string;
   minutes: number;
+  baseServings?: number;
   emoji: string;
   tone: string;
   tag?: string;
