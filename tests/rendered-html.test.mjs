@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the menu and persistent order workflow", async () => {
-  const [page, chefPage, route, dishRoute, imageRoute, importRoute, shoppingRoute, migration, dishMigration, recipeMigration, upgradeMigration, hosting] = await Promise.all([
+  const [page, chefPage, route, dishRoute, imageRoute, importRoute, shoppingRoute, categoryRoute, pantryRoute, migration, dishMigration, recipeMigration, upgradeMigration, operationsMigration, hosting] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/chef/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/orders/route.ts", import.meta.url), "utf8"),
@@ -11,10 +11,13 @@ test("ships the menu and persistent order workflow", async () => {
     readFile(new URL("../app/api/dish-images/[id]/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-import/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/shopping/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/categories/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/pantry/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0000_absurd_bucky.sql", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0001_opposite_ulik.sql", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0002_charming_madripoor.sql", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0003_furry_gideon.sql", import.meta.url), "utf8"),
+    readFile(new URL("../drizzle/0004_smiling_celestials.sql", import.meta.url), "utf8"),
     readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
   ]);
 
@@ -30,6 +33,10 @@ test("ships the menu and persistent order workflow", async () => {
   assert.match(page, /菜品类型（可自定义）/);
   assert.match(page, /保存修改/);
   assert.match(page, /基础人数和订单人数自动换算/);
+  assert.match(page, /菜品类型管理/);
+  assert.match(page, /家中库存/);
+  assert.match(page, /复制 \/ 分享/);
+  assert.match(page, /主厨推荐/);
   assert.match(page, /setInterval/);
   assert.match(page, /从本地上传照片/);
   assert.match(page, /智能菜谱录入/);
@@ -53,6 +60,8 @@ test("ships the menu and persistent order workflow", async () => {
   assert.match(importRoute, /json_schema/);
   assert.match(importRoute, /OPENAI_API_KEY/);
   assert.match(shoppingRoute, /shoppingChecks/);
+  assert.match(categoryRoute, /mergeInto/);
+  assert.match(pantryRoute, /pantryItems/);
   assert.match(chefPage, /requireChatGPTUser/);
   assert.match(migration, /CREATE TABLE `orders`/);
   assert.match(dishMigration, /CREATE TABLE `custom_dishes`/);
@@ -60,6 +69,8 @@ test("ships the menu and persistent order workflow", async () => {
   assert.match(recipeMigration, /ADD `source`/);
   assert.match(upgradeMigration, /CREATE TABLE `shopping_checks`/);
   assert.match(upgradeMigration, /ADD `dish_snapshot`/);
+  assert.match(operationsMigration, /CREATE TABLE `pantry_items`/);
+  assert.match(operationsMigration, /ADD `featured`/);
   assert.match(hosting, /"d1": "DB"/);
   assert.match(hosting, /"r2": "UPLOADS"/);
   assert.doesNotMatch(page, /codex-preview|SkeletonPreview/);

@@ -1,6 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import { dishes as menu } from "../../menu";
-import { ensureCustomDishesSchema, ensureOrdersSchema, getDb } from "../../../db";
+import { ensureMenuLibrary, ensureOrdersSchema, getDb } from "../../../db";
 import { customDishes, orders } from "../../../db/schema";
 import { chefApiGuard } from "../../chef-auth";
 
@@ -33,9 +32,9 @@ export async function POST(request: Request) {
     const guestCount = Number(payload.guestCount);
     const note = typeof payload.note === "string" ? payload.note.trim().slice(0, 200) : "";
     const items = Array.isArray(payload.dishes) ? payload.dishes : [];
-    await ensureCustomDishesSchema();
+    await ensureMenuLibrary();
     const customRows = await getDb().select().from(customDishes).where(eq(customDishes.active, 1));
-    const validIds = new Set([...menu.map((dish) => dish.id), ...customRows.map((dish) => dish.id)]);
+    const validIds = new Set(customRows.filter((dish) => dish.available && !dish.soldOut).map((dish) => dish.id));
     const normalized = items
       .filter((item) => item.dishId && validIds.has(item.dishId) && Number.isInteger(item.quantity) && Number(item.quantity) > 0 && Number(item.quantity) <= 10)
       .map((item) => ({ dishId: item.dishId as string, quantity: Number(item.quantity) }));
@@ -51,7 +50,7 @@ export async function POST(request: Request) {
       baseServings: dish.baseServings || 4,
       ingredients: (() => { try { return JSON.parse(dish.ingredients); } catch { return []; } })(),
     }));
-    const catalog = [...menu.map((dish) => ({ id: dish.id, name: dish.name, baseServings: dish.baseServings || 4, ingredients: dish.ingredients })), ...customCatalog];
+    const catalog = customCatalog;
     const dishSnapshot = normalized.map((item) => {
       const dish = catalog.find((candidate) => candidate.id === item.dishId);
       return dish ? { dishId: dish.id, name: dish.name, baseServings: dish.baseServings, ingredients: dish.ingredients } : null;

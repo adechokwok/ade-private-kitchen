@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const orders = sqliteTable("orders", {
   id: text("id").primaryKey(),
@@ -22,10 +22,19 @@ export const customDishes = sqliteTable("custom_dishes", {
   minutes: integer("minutes").notNull().default(30),
   baseServings: integer("base_servings").notNull().default(4),
   imageUrl: text("image_url").notNull().default(""),
+  imagePosition: text("image_position").notNull().default("center"),
+  gallery: text("gallery").notNull().default("[]"),
   ingredients: text("ingredients").notNull(),
   steps: text("steps").notNull().default("[]"),
   source: text("source").notNull().default(""),
   active: integer("active").notNull().default(1),
+  featured: integer("featured").notNull().default(0),
+  available: integer("available").notNull().default(1),
+  soldOut: integer("sold_out").notNull().default(0),
+  seasons: text("seasons").notNull().default("[]"),
+  occasions: text("occasions").notNull().default("[]"),
+  dietary: text("dietary").notNull().default("[]"),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -33,4 +42,26 @@ export const shoppingChecks = sqliteTable("shopping_checks", {
   itemKey: text("item_key").primaryKey(),
   checked: integer("checked").notNull().default(0),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const menuCategories = sqliteTable("menu_categories", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const pantryItems = sqliteTable("pantry_items", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  amount: real("amount").notNull(),
+  unit: text("unit").notNull(),
+  type: text("type").notNull().default("其他"),
+  location: text("location").notNull().default("家中库存"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const appSettings = sqliteTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull().default(""),
 });

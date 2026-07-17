@@ -12,10 +12,19 @@ export type Dish = {
   tone: string;
   tag?: string;
   imageUrl?: string;
+  imagePosition?: string;
+  gallery?: string[];
   source?: string;
   steps?: string[];
   active?: boolean;
   isCustom?: boolean;
+  featured?: boolean;
+  available?: boolean;
+  soldOut?: boolean;
+  seasons?: string[];
+  occasions?: string[];
+  dietary?: string[];
+  sortOrder?: number;
   ingredients: Ingredient[];
 };
 
