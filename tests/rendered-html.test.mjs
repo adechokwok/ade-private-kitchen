@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the menu and persistent order workflow", async () => {
-  const [page, chefPage, route, dishRoute, imageRoute, importRoute, shoppingRoute, categoryRoute, pantryRoute, migration, dishMigration, recipeMigration, upgradeMigration, operationsMigration, hosting] = await Promise.all([
+  const [page, chefPage, route, dishRoute, imageRoute, importRoute, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, journalRoute, migration, dishMigration, recipeMigration, upgradeMigration, operationsMigration, personalDinnerMigration, hosting] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/chef/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/orders/route.ts", import.meta.url), "utf8"),
@@ -13,11 +13,15 @@ test("ships the menu and persistent order workflow", async () => {
     readFile(new URL("../app/api/shopping/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/categories/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pantry/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/invites/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/order-status/[token]/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/journals/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0000_absurd_bucky.sql", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0001_opposite_ulik.sql", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0002_charming_madripoor.sql", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0003_furry_gideon.sql", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0004_smiling_celestials.sql", import.meta.url), "utf8"),
+    readFile(new URL("../drizzle/0005_bent_sleeper.sql", import.meta.url), "utf8"),
     readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
   ]);
 
@@ -49,6 +53,10 @@ test("ships the menu and persistent order workflow", async () => {
   assert.match(page, /中秋雅宴/);
   assert.match(page, /生日庆典/);
   assert.match(page, /window\.print/);
+  assert.match(page, /生成一场专属饭局/);
+  assert.match(page, /饭后留一页/);
+  assert.match(page, /让它学会我的做菜习惯/);
+  assert.match(page, /开始买菜/);
   assert.match(route, /export async function POST/);
   assert.match(route, /export async function PATCH/);
   assert.match(dishRoute, /getUploads\(\)\.put/);
@@ -62,6 +70,9 @@ test("ships the menu and persistent order workflow", async () => {
   assert.match(shoppingRoute, /shoppingChecks/);
   assert.match(categoryRoute, /mergeInto/);
   assert.match(pantryRoute, /pantryItems/);
+  assert.match(inviteRoute, /recommendedDishIds/);
+  assert.match(orderStatusRoute, /progressNote/);
+  assert.match(journalRoute, /dinner-journals/);
   assert.match(chefPage, /requireChatGPTUser/);
   assert.match(migration, /CREATE TABLE `orders`/);
   assert.match(dishMigration, /CREATE TABLE `custom_dishes`/);
@@ -71,6 +82,9 @@ test("ships the menu and persistent order workflow", async () => {
   assert.match(upgradeMigration, /ADD `dish_snapshot`/);
   assert.match(operationsMigration, /CREATE TABLE `pantry_items`/);
   assert.match(operationsMigration, /ADD `featured`/);
+  assert.match(personalDinnerMigration, /CREATE TABLE `dinner_invites`/);
+  assert.match(personalDinnerMigration, /ADD `guest_token`/);
+  assert.match(personalDinnerMigration, /ADD `substitutions`/);
   assert.match(hosting, /"d1": "DB"/);
   assert.match(hosting, /"r2": "UPLOADS"/);
   assert.doesNotMatch(page, /codex-preview|SkeletonPreview/);

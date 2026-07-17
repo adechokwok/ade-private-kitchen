@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { categories, dishes, type Dish, type Ingredient } from "./menu";
 
 type Cart = Record<string, number>;
@@ -14,7 +15,10 @@ type Order = {
   note: string;
   dishes: string;
   dishSnapshot: string;
-  status: "new" | "confirmed" | "done";
+  inviteId: string;
+  guestToken: string;
+  progressNote: string;
+  status: "new" | "confirmed" | "shopping" | "preparing" | "done" | "cancelled";
   createdAt: string;
 };
 type ManagedDish = Dish & { active: boolean; isCustom: true; createdAt?: string };
@@ -39,7 +43,13 @@ type RecipeDraft = {
   occasions?: string[];
   dietary?: string[];
   imagePosition?: string;
+  difficulty?: string;
+  recipeSummary?: string;
+  missingChecks?: string[];
+  substitutions?: Array<{ ingredient: string; alternatives: string[]; note: string }>;
 };
+type DinnerInvite = { id: string; token: string; title: string; message: string; mealDate: string; theme: "warm" | "romance" | "fine" | "festival"; dishIds: string[]; recommendedDishIds: string[]; active: boolean; createdAt: string };
+type DinnerJournal = { id: string; inviteId: string; title: string; note: string; imageUrls: string[]; createdAt: string };
 type RecipeScreenshot = { file: File; preview: string };
 type BanquetCourse = "starter" | "main" | "staple" | "soup";
 type BanquetItem = { dishId: string; course: BanquetCourse };
@@ -61,7 +71,7 @@ const banquetTemplates: Array<{ id: BanquetTemplate; name: string; occasion: str
   { id: "birthday", name: "生日庆典", occasion: "生日 · 派对", subtitle: "愿新一岁，万事胜意", mark: "★" },
 ];
 
-const statusLabel = { new: "待确认", confirmed: "已确认", done: "已完成" };
+const statusLabel = { new: "待确认", confirmed: "已确认", shopping: "买菜中", preparing: "制作中", done: "已完成", cancelled: "已取消" };
 const categoryEmoji: Record<string, string> = {
   全部: "✦", 家常热炒: "🍳", 江浙风味: "🌿", 川湘小馆: "🌶", 汤羹主食: "🥣", 海鲜: "🦐", 家常菜: "🥢",
 };
@@ -113,10 +123,10 @@ const newIngredientRow = (): IngredientRow => ({
   rowId: crypto.randomUUID(), name: "", amount: 100, unit: "g", type: "生鲜",
 });
 
-export default function Home({ initialMode = "menu", chefUser = "" }: { initialMode?: "menu" | "chef"; chefUser?: string }) {
+export default function Home({ initialMode = "menu", chefUser = "", initialInviteToken = "" }: { initialMode?: "menu" | "chef"; chefUser?: string; initialInviteToken?: string }) {
   const dishFormRef = useRef<HTMLFormElement>(null);
   const mode = initialMode;
-  const [chefView, setChefView] = useState<"overview" | "menuManager" | "banquet">("overview");
+  const [chefView, setChefView] = useState<"overview" | "menuManager" | "banquet" | "invitations">("overview");
   const [activeCategory, setActiveCategory] = useState("全部");
   const [cart, setCart] = useState<Cart>({});
   const [cartOpen, setCartOpen] = useState(false);
@@ -137,6 +147,12 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
   const [recipeImportText, setRecipeImportText] = useState("");
   const [recipeScreenshots, setRecipeScreenshots] = useState<RecipeScreenshot[]>([]);
   const [recipeDraft, setRecipeDraft] = useState<RecipeDraft | null>(null);
+  const [recipePreferences, setRecipePreferences] = useState("");
+  const [invites, setInvites] = useState<DinnerInvite[]>([]);
+  const [journals, setJournals] = useState<DinnerJournal[]>([]);
+  const [activeInvite, setActiveInvite] = useState<DinnerInvite | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(Boolean(initialInviteToken));
+  const [orderProgressUrl, setOrderProgressUrl] = useState("");
   const [banquetTemplate, setBanquetTemplate] = useState<BanquetTemplate>("home");
   const [banquetOrderId, setBanquetOrderId] = useState("");
   const [banquetItems, setBanquetItems] = useState<BanquetItem[]>([]);
@@ -146,7 +162,7 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
   const [banquetMessage, setBanquetMessage] = useState("为喜欢的人认真做一桌饭");
   const [notice, setNotice] = useState("");
 
-  const dishCatalog = useMemo<Dish[]>(() => customDishes.length ? customDishes : dishes, [customDishes]);
+  const dishCatalog = useMemo<Dish[]>(() => customDishes.length ? customDishes : (initialInviteToken ? [] : dishes), [customDishes, initialInviteToken]);
   const allDishes = useMemo(() => dishCatalog.filter((dish) => dish.active !== false && dish.available !== false), [dishCatalog]);
   const menuCategories = useMemo(() => managedCategories.length
     ? managedCategories.map((category) => category.name).filter((name) => allDishes.some((dish) => dish.category === name))
@@ -283,22 +299,54 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
     } catch { /* 不影响原始采购清单 */ }
   };
 
+  const loadInvites = async () => {
+    try {
+      const response = await fetch("/api/invites", { cache: "no-store" });
+      const data = await response.json() as { invites?: DinnerInvite[]; journals?: DinnerJournal[] };
+      if (response.ok) { setInvites(data.invites || []); setJournals(data.journals || []); }
+    } catch { /* 不影响订单和菜单管理 */ }
+  };
+
+  const loadRecipePreferences = async () => {
+    try {
+      const response = await fetch("/api/recipe-preferences", { cache: "no-store" });
+      const data = await response.json() as { preferences?: string };
+      if (response.ok) setRecipePreferences(data.preferences || "");
+    } catch { /* 仍可使用默认识别 */ }
+  };
+
+  const loadInvite = async (token: string) => {
+    setInviteLoading(true);
+    try {
+      const response = await fetch(`/api/invites/${token}`, { cache: "no-store" });
+      const data = await response.json() as { invite?: DinnerInvite; dishes?: ManagedDish[]; error?: string };
+      if (!response.ok || !data.invite) throw new Error(data.error || "邀请加载失败");
+      setActiveInvite(data.invite);
+      setCustomDishes(data.dishes || []);
+      setActiveCategory("全部");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "邀请加载失败");
+    } finally { setInviteLoading(false); }
+  };
+
   useEffect(() => {
     if (mode === "chef") {
-      loadOrders();
-      loadDishes();
-      loadShoppingChecks();
-      loadCategories();
-      loadPantry();
-      const timer = window.setInterval(() => loadOrders(true), 30000);
-      return () => window.clearInterval(timer);
+      let timer = 0;
+      const bootstrap = window.setTimeout(() => {
+        loadOrders(); loadDishes(); loadShoppingChecks(); loadCategories(); loadPantry(); loadInvites(); loadRecipePreferences();
+        timer = window.setInterval(() => loadOrders(true), 30000);
+      }, 0);
+      return () => { window.clearTimeout(bootstrap); if (timer) window.clearInterval(timer); };
     }
   }, [mode]);
 
   useEffect(() => {
-    loadDishes();
-    loadCategories();
-  }, []);
+    const bootstrap = window.setTimeout(() => {
+      if (initialInviteToken) loadInvite(initialInviteToken);
+      else { loadDishes(); loadCategories(); }
+    }, 0);
+    return () => window.clearTimeout(bootstrap);
+  }, [initialInviteToken]);
 
   useEffect(() => {
     if (!notice) return;
@@ -441,14 +489,16 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
           guestCount: Number(form.get("guestCount")),
           note: form.get("note"),
           dishes: cartItems.map((item) => ({ dishId: item.id, quantity: item.quantity })),
+          inviteToken: initialInviteToken || undefined,
         }),
       });
-      const data = await response.json() as { error?: string };
+      const data = await response.json() as { error?: string; guestToken?: string };
       if (!response.ok) throw new Error(data.error || "提交失败，请再试一次");
       setCart({});
       setCheckoutOpen(false);
       setCartOpen(false);
-      setNotice("点菜成功！我会尽快和你确认 🍽️");
+      if (data.guestToken) setOrderProgressUrl(`/order/${data.guestToken}`);
+      setNotice("点菜成功！厨房进度卡已经准备好 🍽️");
       event.currentTarget.reset();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "提交失败，请再试一次");
@@ -459,13 +509,15 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
 
   const updateOrderStatus = async (id: string, status: Order["status"]) => {
     try {
+      const defaultNotes: Partial<Record<Order["status"], string>> = { confirmed: "饭局确认好啦，我会按时准备。", shopping: "正在挑新鲜食材，等你带着好胃口来。", preparing: "厨房已经开火，香味正在慢慢冒出来。", done: "开饭啦，愿今晚吃得开心。" };
+      const progressNote = window.prompt("给朋友留一句进度小话（可直接确认默认内容）", defaultNotes[status] || "") ?? "";
       const response = await fetch("/api/orders", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id, status }),
+        body: JSON.stringify({ id, status, progressNote }),
       });
       if (!response.ok) throw new Error("更新失败");
-      setOrders((current) => current.map((order) => order.id === id ? { ...order, status } : order));
+      setOrders((current) => current.map((order) => order.id === id ? { ...order, status, progressNote } : order));
     } catch {
       setNotice("状态更新失败，请稍后重试");
     }
@@ -511,6 +563,9 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
     setValue("seasons", (draft.seasons || []).join("、"));
     setValue("occasions", (draft.occasions || []).join("、"));
     setValue("dietary", (draft.dietary || []).join("、"));
+    setValue("difficulty", draft.difficulty || "适中");
+    setValue("recipeSummary", draft.recipeSummary || "");
+    setValue("substitutions", JSON.stringify(draft.substitutions || []));
     setValue("imagePosition", draft.imagePosition || "center");
     setChecked("featured", Boolean(draft.featured));
     setChecked("available", draft.available !== false);
@@ -530,6 +585,7 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
       ingredients: dish.ingredients, steps: dish.steps || [], confidenceNotes: [],
       featured: dish.featured, available: dish.available, soldOut: dish.soldOut,
       seasons: dish.seasons, occasions: dish.occasions, dietary: dish.dietary,
+      difficulty: dish.difficulty, recipeSummary: dish.recipeSummary, substitutions: dish.substitutions,
       imagePosition: dish.imagePosition,
     });
     setNotice(`正在编辑“${dish.name}”`);
@@ -552,6 +608,7 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
       const form = new FormData();
       recipeScreenshots.forEach(({ file }) => form.append("images", file));
       form.set("text", recipeImportText);
+      form.set("preferences", recipePreferences);
       const response = await fetch("/api/recipe-import", { method: "POST", body: form });
       const data = await response.json() as { draft?: RecipeDraft; mode?: string; error?: string };
       if (!response.ok || !data.draft) throw new Error(data.error || "菜谱识别失败");
@@ -570,7 +627,8 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
     event.preventDefault();
     setDishSubmitting(true);
     const form = new FormData(event.currentTarget);
-    form.set("ingredients", JSON.stringify(ingredientRows.map(({ rowId: _rowId, ...ingredient }) => ingredient)));
+    form.set("ingredients", JSON.stringify(ingredientRows.map(({ name, amount, unit, type }) => ({ name, amount, unit, type }))));
+    if (!form.get("substitutions")) form.set("substitutions", JSON.stringify(recipeDraft?.substitutions || editingDish?.substitutions || []));
     if (editingDish) form.set("id", editingDish.id);
     try {
       const response = await fetch("/api/dishes", { method: editingDish ? "PUT" : "POST", body: form });
@@ -594,6 +652,49 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
     } finally {
       setDishSubmitting(false);
     }
+  };
+
+  const saveRecipePreferences = async () => {
+    const response = await fetch("/api/recipe-preferences", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ preferences: recipePreferences }) });
+    setNotice(response.ok ? "主厨习惯已记住，下次识别会优先参考" : "主厨习惯保存失败");
+  };
+
+  const createInvite = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const dishIds = form.getAll("dishIds").map(String);
+    const recommendedDishIds = form.getAll("recommendedDishIds").map(String);
+    const response = await fetch("/api/invites", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: form.get("title"), message: form.get("message"), mealDate: form.get("mealDate"), theme: form.get("theme"), dishIds, recommendedDishIds }) });
+    const data = await response.json() as { invite?: DinnerInvite; error?: string };
+    if (!response.ok || !data.invite) return setNotice(data.error || "邀请创建失败");
+    setInvites((current) => [data.invite!, ...current]);
+    event.currentTarget.reset();
+    setNotice("专属邀请已生成，可以发给朋友了");
+  };
+
+  const shareInvite = async (invite: DinnerInvite) => {
+    const url = `${window.location.origin}/invite/${invite.token}`;
+    try {
+      if (navigator.share) await navigator.share({ title: invite.title, text: invite.message || "来阿德小厨房点菜吧", url });
+      else await navigator.clipboard.writeText(url);
+      setNotice(navigator.share ? "邀请卡已打开分享" : "邀请链接已复制");
+    } catch (error) { if ((error as Error).name !== "AbortError") setNotice("分享失败，请稍后重试"); }
+  };
+
+  const toggleInvite = async (invite: DinnerInvite) => {
+    const response = await fetch("/api/invites", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: invite.id, active: !invite.active }) });
+    if (!response.ok) return setNotice("邀请状态更新失败");
+    setInvites((current) => current.map((item) => item.id === invite.id ? { ...item, active: !item.active } : item));
+  };
+
+  const saveJournal = async (event: FormEvent<HTMLFormElement>, invite: DinnerInvite) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget); form.set("inviteId", invite.id);
+    const response = await fetch("/api/journals", { method: "POST", body: form });
+    const data = await response.json() as { journal?: DinnerJournal; error?: string };
+    if (!response.ok || !data.journal) return setNotice(data.error || "餐桌日记保存失败");
+    setJournals((current) => [data.journal!, ...current.filter((item) => item.inviteId !== invite.id)]);
+    setNotice("餐桌日记已保存，朋友的进度页也会看到");
   };
 
   const toggleDish = async (dish: ManagedDish) => {
@@ -656,39 +757,43 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
   return (
     <main>
       <header className="topbar">
-        <a className="brand" href="/" aria-label="回到菜单">
+        <Link className="brand" href="/" aria-label="回到菜单">
           <span className="brand-mark">德</span>
           <span><strong>阿德小厨房</strong><small>只招待我喜欢的人</small></span>
-        </a>
+        </Link>
         <nav className="mode-switch" aria-label="页面切换">
-          <a className={mode === "menu" ? "active" : ""} href="/">朋友点菜</a>
-          <a className={mode === "chef" ? "active" : ""} href="/chef">主厨入口</a>
+          <Link className={mode === "menu" ? "active" : ""} href="/">朋友点菜</Link>
+          <Link className={mode === "chef" ? "active" : ""} href="/chef">主厨入口</Link>
           {mode === "chef" && chefUser && <span className="chef-user">{chefUser}</span>}
         </nav>
       </header>
 
       {mode === "menu" ? (
         <>
-          <section className="hero">
+          <section className={`hero${activeInvite ? ` invite-hero theme-${activeInvite.theme}` : ""}`}>
             <div className="hero-copy">
-              <div className="hero-greeting"><span><i></i> 厨房今日营业</span><small>嗨，今天也要被好好招待 👋</small></div>
-              <h1>想吃什么，<br /><em>我给你做。</em></h1>
-              <p>没有复杂规则，也不用跟我客气。挑几道你惦记的家常菜，剩下的交给主厨。</p>
+              <div className="hero-greeting"><span><i></i> {activeInvite ? "你的专属饭局" : "厨房今日营业"}</span><small>{activeInvite ? activeInvite.mealDate : "嗨，今天也要被好好招待 👋"}</small></div>
+              <h1>{activeInvite ? activeInvite.title : <>想吃什么，<br /><em>我给你做。</em></>}</h1>
+              <p>{activeInvite?.message || "没有复杂规则，也不用跟我客气。挑几道你惦记的家常菜，剩下的交给主厨。"}</p>
               <div className="hero-actions"><a href="#weekly-menu">开始点菜 <span>↓</span></a><p><strong>放心点</strong><small>不用替主厨省事</small></p><p><strong>提前 1 天</strong><small>让我从容去买菜</small></p></div>
             </div>
             <div className="hero-visual" aria-hidden="true">
-              <div className="hero-sticker">今日份<br /><strong>好好吃饭</strong></div>
+              <div className="hero-sticker">{activeInvite ? "只为你" : "今日份"}<br /><strong>{activeInvite ? "留了位置" : "好好吃饭"}</strong></div>
               <div className="hero-plate"><div className="plate-rim"><span className="plate-food">🍲</span></div><span className="leaf leaf-one">☘</span><span className="leaf leaf-two">🌿</span></div>
               <div className="hero-love-note"><span>主厨碎碎念</span><p>“点你真心想吃的，<br />不用替我省事。”</p></div>
               <span className="hero-spark spark-one">✦</span><span className="hero-spark spark-two">✦</span>
             </div>
           </section>
 
+          {orderProgressUrl && <section className="order-success-card"><span>点单已送进厨房</span><h2>接下来，就等香味慢慢靠近</h2><p>这张进度卡会告诉你：阿德确认了没有、买菜到哪一步、什么时候开火。</p><a href={orderProgressUrl}>查看我的厨房进度 <b>→</b></a></section>}
+
           <section className="menu-section" id="weekly-menu">
             <div className="section-heading">
-              <div><span className="eyebrow">THIS WEEK&apos;S LITTLE MENU</span><h2>挑几道喜欢的</h2><p>点菜不用客气，洗碗也不用你。</p></div>
+              <div><span className="eyebrow">{activeInvite ? "YOUR PRIVATE DINNER MENU" : "THIS WEEK'S LITTLE MENU"}</span><h2>{activeInvite ? "这桌菜，等你翻牌" : "挑几道喜欢的"}</h2><p>{activeInvite ? "阿德特意为这场饭局留出的菜单。" : "点菜不用客气，洗碗也不用你。"}</p></div>
               <div className="menu-count-pill"><strong>{allDishes.length}</strong><span>道拿手菜<br />等你翻牌</span></div>
             </div>
+            {inviteLoading && <div className="invite-loading">正在把你的专属菜单端上来…</div>}
+            {activeInvite && activeInvite.recommendedDishIds.length > 0 && <div className="recommended-combo"><span>主厨搭配</span><strong>如果不想纠结，就从这几道开始</strong><div>{activeInvite.recommendedDishIds.map((id) => dishCatalog.find((dish) => dish.id === id)).filter(Boolean).map((dish) => <button key={dish!.id} onClick={() => updateQuantity(dish!.id, 1)}>{dish!.name}<i>＋</i></button>)}</div></div>}
             <div className="category-tabs" role="tablist" aria-label="菜系分类">
               {["全部", ...menuCategories].map((category) => (
                 <button key={category} className={activeCategory === category ? "active" : ""} onClick={() => setActiveCategory(category)}><span>{categoryEmoji[category] || "•"}</span>{category}</button>
@@ -718,6 +823,7 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
                 );
               })}
             </div>
+            {!inviteLoading && initialInviteToken && !activeInvite && <div className="invite-loading"><strong>这份邀请暂时不能点菜</strong><p>可能饭局已经结束，可以问问阿德下一顿什么时候开席。</p></div>}
           </section>
 
           <section className="promise-strip">
@@ -743,6 +849,7 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
             <button className={chefView === "overview" ? "active" : ""} onClick={() => setChefView("overview")}>订单与采购</button>
             <button className={chefView === "menuManager" ? "active" : ""} onClick={() => setChefView("menuManager")}>菜单管理 <span>{dishCatalog.filter((dish) => dish.active !== false).length}</span></button>
             <button className={chefView === "banquet" ? "active" : ""} onClick={() => setChefView("banquet")}>宴席菜单 <span>{banquetItems.length}</span></button>
+            <button className={chefView === "invitations" ? "active" : ""} onClick={() => setChefView("invitations")}>饭局邀请 <span>{invites.filter((invite) => invite.active).length}</span></button>
           </div>
 
           {chefView === "overview" ? (
@@ -768,8 +875,11 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
                           {order.note && <p className="order-note">“{order.note}”</p>}
                           <div className="status-actions">
                             {order.status === "new" && <button onClick={() => updateOrderStatus(order.id, "confirmed")}>确认接单</button>}
-                            {order.status === "confirmed" && <button onClick={() => updateOrderStatus(order.id, "done")}>标记完成</button>}
+                            {order.status === "confirmed" && <button onClick={() => updateOrderStatus(order.id, "shopping")}>开始买菜</button>}
+                            {order.status === "shopping" && <button onClick={() => updateOrderStatus(order.id, "preparing")}>开始制作</button>}
+                            {order.status === "preparing" && <button onClick={() => updateOrderStatus(order.id, "done")}>通知开饭</button>}
                             {order.status === "done" && <button className="quiet" onClick={() => updateOrderStatus(order.id, "confirmed")}>重新打开</button>}
+                            {order.status !== "done" && order.status !== "cancelled" && <button className="quiet" onClick={() => updateOrderStatus(order.id, "cancelled")}>取消饭局</button>}
                           </div>
                         </article>
                       ))}
@@ -817,7 +927,8 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
                     <p>识别结果只会填入下方草稿，不会自动发布。</p>
                     <button type="button" onClick={analyzeRecipe} disabled={recipeImporting}>{recipeImporting ? "正在读菜谱…" : "开始识别并填入"}<span>→</span></button>
                   </div>
-                  {recipeDraft && <div className="import-result" role="status"><div><strong>✓ 已生成“{recipeDraft.name}”草稿</strong><span>{recipeDraft.ingredients.length} 种食材 · {recipeDraft.steps.length} 个步骤 · 来源：{recipeDraft.source || "待确认"}</span></div>{recipeDraft.confidenceNotes.length > 0 && <p>请核对：{recipeDraft.confidenceNotes.join("；")}</p>}</div>}
+                  <div className="recipe-preferences"><label><span>让它学会我的做菜习惯</span><textarea value={recipePreferences} onChange={(event) => setRecipePreferences(event.target.value)} placeholder="例如：默认少油少盐；香菜单独放；家里常用生抽而不是味极鲜；一勺按 15ml 计算。" /></label><button type="button" onClick={saveRecipePreferences}>保存习惯</button></div>
+                  {recipeDraft && <div className="import-result" role="status"><div><strong>✓ 已生成“{recipeDraft.name}”草稿</strong><span>{recipeDraft.ingredients.length} 种食材 · {recipeDraft.steps.length} 个步骤 · {recipeDraft.difficulty} · 来源：{recipeDraft.source || "待确认"}</span></div>{recipeDraft.recipeSummary && <p>{recipeDraft.recipeSummary}</p>}{Boolean(recipeDraft.confidenceNotes.length || recipeDraft.missingChecks?.length) && <p>请核对：{[...recipeDraft.confidenceNotes, ...(recipeDraft.missingChecks || [])].join("；")}</p>}{Boolean(recipeDraft.substitutions?.length) && <div className="substitution-chips">{recipeDraft.substitutions!.map((item) => <span key={item.ingredient}>{item.ingredient} 可换 {item.alternatives.join(" / ")}</span>)}</div>}</div>}
                 </div>
               </section>
 
@@ -837,10 +948,13 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
                     <label><span>预计烹饪时间</span><div className="input-suffix"><input name="minutes" type="number" min="5" max="360" defaultValue="30" required /><b>分钟</b></div></label>
                     <label><span>这份菜谱适合几人</span><div className="input-suffix"><input name="baseServings" type="number" min="1" max="20" defaultValue="4" required /><b>人</b></div><small>只用于后台换算采购量，朋友端不会显示。</small></label>
                     <label><span>菜谱来源</span><input name="source" maxLength={80} placeholder="例如：食遇日记 · 村驴" /></label>
+                    <label><span>操作难度</span><select name="difficulty" defaultValue="适中"><option>简单</option><option>适中</option><option>进阶</option></select></label>
                   </div>
+                  <input name="substitutions" type="hidden" />
                   <fieldset className="dish-status-fieldset"><legend>菜单状态</legend><div><label><input name="available" type="checkbox" defaultChecked /><span>本期可做</span></label><label><input name="featured" type="checkbox" /><span>主厨推荐</span></label><label><input name="soldOut" type="checkbox" /><span>暂时售罄</span></label></div><small>推荐和售罄会显示在朋友端；归档请在右侧菜品列表操作。</small></fieldset>
                   <div className="field-grid tag-field-grid"><label><span>适合季节</span><input name="seasons" maxLength={120} placeholder="春季、夏季、秋冬" /></label><label><span>适合场景</span><input name="occasions" maxLength={120} placeholder="二人晚餐、朋友聚会、生日" /></label><label><span>饮食与过敏提示</span><input name="dietary" maxLength={160} placeholder="含花生、含乳制品、可做素食" /></label></div>
                   <label className="wide-field"><span>菜品介绍</span><textarea name="description" maxLength={180} placeholder="简单介绍这道菜的味道和特色…" /></label>
+                  <label className="wide-field"><span>菜谱要点</span><textarea name="recipeSummary" maxLength={240} placeholder="例如：先煎香再焖，最后大火收汁到能挂在食材表面。" /></label>
                   <label className="wide-field"><span>烹饪步骤</span><textarea className="steps-textarea" name="steps" maxLength={12000} placeholder={'每行填写一个步骤，例如：\n1. 大虾剪去虾须，开背去虾线\n2. 白菜切块，小火煸炒至变软'} /></label>
 
                   <fieldset className="photo-fieldset">
@@ -892,7 +1006,7 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
               </aside>
               </div>
             </>
-          ) : (
+          ) : chefView === "banquet" ? (
             <section className="banquet-builder" aria-labelledby="banquet-builder-title">
               <div className="banquet-tools panel">
                 <div className="panel-title"><div><span>MENU COMPOSER</span><h2 id="banquet-builder-title">宴席菜单编排器</h2></div><small>点单 → 编排 → 导出</small></div>
@@ -953,6 +1067,34 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
                 <p className="preview-tip">导出后可保存为 PDF，也可以直接打印成桌面菜单。</p>
               </aside>
             </section>
+          ) : (
+            <section className="invitation-workspace">
+              <form className="invite-creator panel" onSubmit={createInvite}>
+                <div className="panel-title"><div><span>PRIVATE DINNER LINK</span><h2>生成一场专属饭局</h2></div><small>选菜 · 写话 · 分享</small></div>
+                <div className="invite-fields">
+                  <label><span>饭局名字</span><input name="title" required maxLength={48} placeholder="例如：周六来我家吃饭" /></label>
+                  <label><span>日期</span><input name="mealDate" type="date" min={today} defaultValue={today} required /></label>
+                  <label><span>邀请风格</span><select name="theme" defaultValue="warm"><option value="warm">温馨家常</option><option value="romance">二人世界</option><option value="fine">Fine Dinner</option><option value="festival">节日团圆</option></select></label>
+                  <label className="wide"><span>写给朋友的话</span><textarea name="message" maxLength={180} placeholder="例如：菜我来做，你只管带着好胃口来。" /></label>
+                </div>
+                <fieldset className="invite-dish-picker"><legend>这次开放哪些菜</legend><p>勾选“可点”会进入专属菜单；再勾“推荐”会组成主厨搭配。</p><div>{dishCatalog.filter((dish) => dish.active !== false && dish.available !== false).map((dish) => <article key={dish.id}><label><input type="checkbox" name="dishIds" value={dish.id} /><span>{dish.imageUrl ? <img src={dish.imageUrl} alt="" /> : "🍽️"}<b>{dish.name}</b><small>{dish.category}</small></span></label><label className="recommend-check"><input type="checkbox" name="recommendedDishIds" value={dish.id} />推荐</label></article>)}</div></fieldset>
+                <button className="primary-button">生成专属邀请 <span>→</span></button>
+              </form>
+
+              <div className="invite-list panel">
+                <div className="panel-title"><div><span>DINNER ARCHIVE</span><h2>我的饭局与餐桌日记</h2></div><small>{invites.length} 场</small></div>
+                {invites.length === 0 ? <div className="empty"><span>💌</span><strong>还没有专属饭局</strong><p>从左边挑几道菜，生成第一张只属于朋友的邀请。</p></div> : <div className="invite-cards">{invites.map((invite) => {
+                  const journal = journals.find((item) => item.inviteId === invite.id);
+                  return <article className={`invite-card theme-${invite.theme}${invite.active ? "" : " inactive"}`} key={invite.id}>
+                    <div className="invite-card-head"><span>{invite.mealDate}</span><em>{invite.active ? "邀请中" : "已结束"}</em></div>
+                    <h3>{invite.title}</h3><p>{invite.message || "菜我来做，你只管来。"}</p>
+                    <div className="invite-menu-preview">{invite.dishIds.map((id) => dishCatalog.find((dish) => dish.id === id)?.name).filter(Boolean).join(" · ")}</div>
+                    <div className="invite-actions"><button onClick={() => shareInvite(invite)}>分享邀请</button><a href={`/invite/${invite.token}`} target="_blank">预览</a><button className="quiet" onClick={() => toggleInvite(invite)}>{invite.active ? "结束邀请" : "重新开放"}</button></div>
+                    <form className="journal-form" onSubmit={(event) => saveJournal(event, invite)}><strong>饭后留一页</strong><input name="title" defaultValue={journal?.title || "今晚的餐桌日记"} maxLength={60} /><textarea name="note" defaultValue={journal?.note || ""} maxLength={800} placeholder="记下今晚最好吃的一道菜、最好笑的一句话…" /><label><span>上传餐桌照片（最多 6 张）</span><input name="images" type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" /></label>{journal?.imageUrls.length ? <div className="journal-thumbs">{journal.imageUrls.map((url) => <img src={url} alt="饭局记录" key={url} />)}</div> : null}<button>保存餐桌日记</button></form>
+                  </article>;
+                })}</div>}
+              </div>
+            </section>
           )}
         </section>
       )}
@@ -975,7 +1117,7 @@ export default function Home({ initialMode = "menu", chefUser = "" }: { initialM
             <button type="button" className="close" onClick={() => setCheckoutOpen(false)} aria-label="关闭">×</button>
             <span className="eyebrow">ALMOST DINNER TIME</span><h2>最后，把饭局约起来</h2><p>告诉我谁来、哪天来。你负责期待，我负责好吃。</p>
             <label><span>你的称呼</span><input name="customerName" required maxLength={30} placeholder="例如：小林" /></label>
-            <div className="form-row"><label><span>想哪天吃</span><input name="mealDate" type="date" min={today} defaultValue={today} required /></label><label><span>几个人</span><input name="guestCount" type="number" min="1" max="20" defaultValue="2" required /></label></div>
+            <div className="form-row"><label><span>想哪天吃</span><input name="mealDate" type="date" min={today} defaultValue={activeInvite?.mealDate || today} readOnly={Boolean(activeInvite)} required /></label><label><span>几个人</span><input name="guestCount" type="number" min="1" max="20" defaultValue="2" required /></label></div>
             <label><span>口味或忌口</span><textarea name="note" maxLength={200} placeholder="例如：少辣、不吃香菜，或者任何想说的话…" /></label>
             <button className="primary-button" disabled={submitting}>{submitting ? "正在提交…" : `确认点菜 · ${cartCount} 道`}<span>→</span></button>
           </form>

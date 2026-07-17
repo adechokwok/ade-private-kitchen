@@ -13,6 +13,14 @@ type RecipeDraft = {
   ingredients: Array<{ name: string; amount: number; unit: string; type: IngredientType }>;
   steps: string[];
   confidenceNotes: string[];
+  difficulty: "简单" | "适中" | "进阶";
+  recipeSummary: string;
+  missingChecks: string[];
+  substitutions: Array<{ ingredient: string; alternatives: string[]; note: string }>;
+  baseServings: number;
+  seasons: string[];
+  occasions: string[];
+  dietary: string[];
 };
 
 const acceptedImageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -80,6 +88,14 @@ function parseRecipeText(raw: string): RecipeDraft {
     ingredients,
     steps: stepLines,
     confidenceNotes: ["当前使用文字解析模式，请重点核对食材用量和烹饪时间。"],
+    difficulty: "适中",
+    recipeSummary: "已从文字拆成可编辑菜谱，请核对用量后保存。",
+    missingChecks: ["复核食材用量与单位"],
+    substitutions: [],
+    baseServings: 4,
+    seasons: [],
+    occasions: [],
+    dietary: [],
   };
 }
 
@@ -111,6 +127,18 @@ function normalizeDraft(value: unknown): RecipeDraft {
     ingredients,
     steps,
     confidenceNotes: Array.isArray(draft.confidenceNotes) ? draft.confidenceNotes.filter((note): note is string => typeof note === "string").map((note) => note.trim().slice(0, 120)).filter(Boolean).slice(0, 5) : [],
+    difficulty: draft.difficulty && ["简单", "适中", "进阶"].includes(draft.difficulty) ? draft.difficulty : "适中",
+    recipeSummary: typeof draft.recipeSummary === "string" ? draft.recipeSummary.trim().slice(0, 240) : "",
+    missingChecks: Array.isArray(draft.missingChecks) ? draft.missingChecks.filter((item): item is string => typeof item === "string").map((item) => item.trim().slice(0, 120)).filter(Boolean).slice(0, 10) : [],
+    substitutions: Array.isArray(draft.substitutions) ? draft.substitutions.map((item) => ({
+      ingredient: typeof item?.ingredient === "string" ? item.ingredient.trim().slice(0, 40) : "",
+      alternatives: Array.isArray(item?.alternatives) ? item.alternatives.filter((value): value is string => typeof value === "string").map((value) => value.trim().slice(0, 40)).filter(Boolean).slice(0, 5) : [],
+      note: typeof item?.note === "string" ? item.note.trim().slice(0, 100) : "",
+    })).filter((item) => item.ingredient && item.alternatives.length).slice(0, 12) : [],
+    baseServings: Math.max(1, Math.min(20, Math.round(Number(draft.baseServings) || 4))),
+    seasons: Array.isArray(draft.seasons) ? draft.seasons.filter((item): item is string => typeof item === "string").map((item) => item.trim().slice(0, 20)).filter(Boolean).slice(0, 8) : [],
+    occasions: Array.isArray(draft.occasions) ? draft.occasions.filter((item): item is string => typeof item === "string").map((item) => item.trim().slice(0, 20)).filter(Boolean).slice(0, 8) : [],
+    dietary: Array.isArray(draft.dietary) ? draft.dietary.filter((item): item is string => typeof item === "string").map((item) => item.trim().slice(0, 20)).filter(Boolean).slice(0, 8) : [],
   };
 }
 
@@ -133,8 +161,16 @@ function recipeSchema() {
       ingredients: { type: "array", items: ingredient },
       steps: { type: "array", items: { type: "string" } },
       confidenceNotes: { type: "array", items: { type: "string" } },
+      difficulty: { type: "string", enum: ["简单", "适中", "进阶"] },
+      recipeSummary: { type: "string" },
+      missingChecks: { type: "array", items: { type: "string" } },
+      substitutions: { type: "array", items: { type: "object", additionalProperties: false, properties: { ingredient: { type: "string" }, alternatives: { type: "array", items: { type: "string" } }, note: { type: "string" } }, required: ["ingredient", "alternatives", "note"] } },
+      baseServings: { type: "number" },
+      seasons: { type: "array", items: { type: "string" } },
+      occasions: { type: "array", items: { type: "string" } },
+      dietary: { type: "array", items: { type: "string" } },
     },
-    required: ["name", "category", "description", "flavor", "minutes", "source", "ingredients", "steps", "confidenceNotes"],
+    required: ["name", "category", "description", "flavor", "minutes", "source", "ingredients", "steps", "confidenceNotes", "difficulty", "recipeSummary", "missingChecks", "substitutions", "baseServings", "seasons", "occasions", "dietary"],
   };
 }
 
@@ -144,6 +180,7 @@ export async function POST(request: Request) {
   try {
     const form = await request.formData();
     const text = String(form.get("text") || "").trim().slice(0, 16000);
+    const preferences = String(form.get("preferences") || "").trim().slice(0, 1600);
     const images = form.getAll("images").filter((value): value is File => value instanceof File && value.size > 0).slice(0, 4);
     if (!text && images.length === 0) return Response.json({ error: "请上传菜谱截图，或粘贴菜谱文字" }, { status: 400 });
 
@@ -163,7 +200,7 @@ export async function POST(request: Request) {
 
     const content: Array<Record<string, unknown>> = [{
       type: "input_text",
-      text: `请从菜谱截图或文字中提取一份结构化中文菜谱。忠实于原文，不要编造看不清的数据。\n\n规则：\n1. 多张截图可能是同一道菜的不同部分，请合并。\n2. 食材数量必须是数字；“适量”写 amount=1、unit="适量"。\n3. category 使用适合私人菜单的简短分类。\n4. source 填原作者、栏目或来源；无法判断则填“截图智能录入”。\n5. confidenceNotes 只列出需要主人复核的不确定信息。\n${text ? `\n用户补充文字：\n${text}` : ""}`,
+      text: `请从菜谱截图或文字中提取一份结构化中文菜谱。忠实于原文，不要编造看不清的数据。\n\n规则：\n1. 多张截图可能是同一道菜的不同部分，请合并。\n2. 食材数量必须是数字；统一常用单位为 g、ml、个、片、勺或适量；“适量”写 amount=1、unit="适量"。\n3. category 使用适合私人菜单的简短分类。\n4. source 填原作者、栏目或来源；无法判断则填“截图智能录入”。\n5. confidenceNotes 只列不确定信息，missingChecks 列原菜谱缺失但做菜前应补齐的关键项。\n6. recipeSummary 用一两句话概括技法和成菜标准；difficulty 评估实际操作难度。\n7. substitutions 给出常见且稳妥的替代食材，不确定就留空。\n8. baseServings 根据原文判断，无法判断填 4；同时判断季节、场景和过敏提示。\n${preferences ? `\n主厨的个人习惯（仅在不违背原菜谱时采用）：\n${preferences}` : ""}\n${text ? `\n用户补充文字：\n${text}` : ""}`,
     }];
     for (const image of images) {
       const base64 = toBase64(await image.arrayBuffer());

@@ -75,6 +75,9 @@ function presentDish(row: typeof customDishes.$inferSelect) {
     seasons: parseList(row.seasons),
     occasions: parseList(row.occasions),
     dietary: parseList(row.dietary),
+    difficulty: row.difficulty,
+    recipeSummary: row.recipeSummary,
+    substitutions: parseList(row.substitutions),
     sortOrder: row.sortOrder,
     isCustom: true,
     emoji: "🍽️",
@@ -120,6 +123,9 @@ export async function POST(request: Request) {
     const seasons = tagList(form.get("seasons"));
     const occasions = tagList(form.get("occasions"));
     const dietary = tagList(form.get("dietary"));
+    const difficulty = ["简单", "适中", "进阶"].includes(String(form.get("difficulty"))) ? String(form.get("difficulty")) : "适中";
+    const recipeSummary = String(form.get("recipeSummary") || "").trim().slice(0, 240);
+    const substitutions = String(form.get("substitutions") || "[]");
     const imageFile = form.get("image");
     const galleryFiles = form.getAll("galleryImages").filter((value): value is File => value instanceof File && value.size > 0).slice(0, 4);
     const imagePosition = ["top", "center", "bottom"].includes(String(form.get("imagePosition"))) ? String(form.get("imagePosition")) : "center";
@@ -152,7 +158,8 @@ export async function POST(request: Request) {
       id, name, category, description, flavor, minutes, baseServings, imageUrl, imagePosition, gallery: JSON.stringify(gallery),
       ingredients: JSON.stringify(ingredients), steps: JSON.stringify(steps), source, active: 1,
       featured: featured ? 1 : 0, available: available ? 1 : 0, soldOut: soldOut ? 1 : 0,
-      seasons: JSON.stringify(seasons), occasions: JSON.stringify(occasions), dietary: JSON.stringify(dietary), sortOrder: Date.now(),
+      seasons: JSON.stringify(seasons), occasions: JSON.stringify(occasions), dietary: JSON.stringify(dietary),
+      difficulty, recipeSummary, substitutions, sortOrder: Date.now(),
     }).returning();
     return Response.json({ dish: presentDish(dish) }, { status: 201 });
   } catch (error) {
@@ -184,6 +191,9 @@ export async function PUT(request: Request) {
     const seasons = tagList(form.get("seasons"));
     const occasions = tagList(form.get("occasions"));
     const dietary = tagList(form.get("dietary"));
+    const difficulty = ["简单", "适中", "进阶"].includes(String(form.get("difficulty"))) ? String(form.get("difficulty")) : existing.difficulty;
+    const recipeSummary = String(form.get("recipeSummary") || "").trim().slice(0, 240);
+    const substitutions = String(form.get("substitutions") || "[]");
     const imageFile = form.get("image");
     const galleryFiles = form.getAll("galleryImages").filter((value): value is File => value instanceof File && value.size > 0).slice(0, 4);
     const imagePosition = ["top", "center", "bottom"].includes(String(form.get("imagePosition"))) ? String(form.get("imagePosition")) : existing.imagePosition;
@@ -219,6 +229,7 @@ export async function PUT(request: Request) {
       ingredients: JSON.stringify(ingredients), steps: JSON.stringify(steps), source,
       featured: featured ? 1 : 0, available: available ? 1 : 0, soldOut: soldOut ? 1 : 0,
       seasons: JSON.stringify(seasons), occasions: JSON.stringify(occasions), dietary: JSON.stringify(dietary),
+      difficulty, recipeSummary, substitutions,
     }).where(eq(customDishes.id, id)).returning();
     return Response.json({ dish: presentDish(dish) });
   } catch (error) {

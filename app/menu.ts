@@ -24,6 +24,9 @@ export type Dish = {
   seasons?: string[];
   occasions?: string[];
   dietary?: string[];
+  difficulty?: string;
+  recipeSummary?: string;
+  substitutions?: Array<{ ingredient: string; alternatives: string[]; note: string }>;
   sortOrder?: number;
   ingredients: Ingredient[];
 };

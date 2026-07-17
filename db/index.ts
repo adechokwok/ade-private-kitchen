@@ -27,12 +27,18 @@ export async function ensureOrdersSchema() {
     note TEXT NOT NULL DEFAULT '',
     dishes TEXT NOT NULL,
     dish_snapshot TEXT NOT NULL DEFAULT '[]',
+    invite_id TEXT NOT NULL DEFAULT '',
+    guest_token TEXT NOT NULL DEFAULT '',
+    progress_note TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'new',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`).run();
   const columns = await getD1().prepare("PRAGMA table_info(orders)").all<{ name: string }>();
   const names = new Set(columns.results.map((column) => column.name));
   if (!names.has("dish_snapshot")) await getD1().prepare("ALTER TABLE orders ADD COLUMN dish_snapshot TEXT NOT NULL DEFAULT '[]'").run();
+  if (!names.has("invite_id")) await getD1().prepare("ALTER TABLE orders ADD COLUMN invite_id TEXT NOT NULL DEFAULT ''").run();
+  if (!names.has("guest_token")) await getD1().prepare("ALTER TABLE orders ADD COLUMN guest_token TEXT NOT NULL DEFAULT ''").run();
+  if (!names.has("progress_note")) await getD1().prepare("ALTER TABLE orders ADD COLUMN progress_note TEXT NOT NULL DEFAULT ''").run();
 }
 
 export async function ensureCustomDishesSchema() {
@@ -57,6 +63,9 @@ export async function ensureCustomDishesSchema() {
     seasons TEXT NOT NULL DEFAULT '[]',
     occasions TEXT NOT NULL DEFAULT '[]',
     dietary TEXT NOT NULL DEFAULT '[]',
+    difficulty TEXT NOT NULL DEFAULT '适中',
+    recipe_summary TEXT NOT NULL DEFAULT '',
+    substitutions TEXT NOT NULL DEFAULT '[]',
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`).run();
@@ -74,6 +83,35 @@ export async function ensureCustomDishesSchema() {
   if (!names.has("occasions")) await getD1().prepare("ALTER TABLE custom_dishes ADD COLUMN occasions TEXT NOT NULL DEFAULT '[]'").run();
   if (!names.has("dietary")) await getD1().prepare("ALTER TABLE custom_dishes ADD COLUMN dietary TEXT NOT NULL DEFAULT '[]'").run();
   if (!names.has("sort_order")) await getD1().prepare("ALTER TABLE custom_dishes ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0").run();
+  if (!names.has("difficulty")) await getD1().prepare("ALTER TABLE custom_dishes ADD COLUMN difficulty TEXT NOT NULL DEFAULT '适中'").run();
+  if (!names.has("recipe_summary")) await getD1().prepare("ALTER TABLE custom_dishes ADD COLUMN recipe_summary TEXT NOT NULL DEFAULT ''").run();
+  if (!names.has("substitutions")) await getD1().prepare("ALTER TABLE custom_dishes ADD COLUMN substitutions TEXT NOT NULL DEFAULT '[]'").run();
+}
+
+export async function ensureDinnerInvitesSchema() {
+  await getD1().batch([
+    getD1().prepare(`CREATE TABLE IF NOT EXISTS dinner_invites (
+      id TEXT PRIMARY KEY NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL DEFAULT '',
+      meal_date TEXT NOT NULL,
+      theme TEXT NOT NULL DEFAULT 'warm',
+      dish_ids TEXT NOT NULL DEFAULT '[]',
+      recommended_dish_ids TEXT NOT NULL DEFAULT '[]',
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`),
+    getD1().prepare(`CREATE TABLE IF NOT EXISTS dinner_journals (
+      id TEXT PRIMARY KEY NOT NULL,
+      invite_id TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '今晚的餐桌日记',
+      note TEXT NOT NULL DEFAULT '',
+      image_urls TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`),
+    getD1().prepare("CREATE INDEX IF NOT EXISTS dinner_journals_invite_id_idx ON dinner_journals (invite_id)"),
+  ]);
 }
 
 export async function ensureShoppingChecksSchema() {
