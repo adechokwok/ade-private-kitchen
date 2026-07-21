@@ -64,10 +64,12 @@ test("uses NAS-local persistence and app-owned chef authentication", async () =>
   assert.match(healthRoute, /nas-local/);
 });
 
-test("includes a reproducible amd64 Docker deployment and backups", async () => {
-  const [dockerfile, compose, backup, readme, packageJson] = await Promise.all([
+test("includes a reproducible amd64 Docker deployment, updates, and backups", async () => {
+  const [dockerfile, compose, nasCompose, workflow, backup, readme, packageJson] = await Promise.all([
     readFile(new URL("../Dockerfile", import.meta.url), "utf8"),
     readFile(new URL("../compose.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../compose.nas.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../.github/workflows/publish-nas-image.yml", import.meta.url), "utf8"),
     readFile(new URL("../scripts/backup.mjs", import.meta.url), "utf8"),
     readFile(new URL("../README.md", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
@@ -79,6 +81,12 @@ test("includes a reproducible amd64 Docker deployment and backups", async () => 
   assert.match(compose, /NAS_DATA_PATH/);
   assert.match(compose, /NAS_BACKUP_PATH/);
   assert.match(compose, /service_healthy/);
+  assert.match(nasCompose, /ghcr\.io\/adechokwok\/ade-private-kitchen:latest/);
+  assert.match(nasCompose, /NAS_DATA_PATH/);
+  assert.match(workflow, /branches:\s*\n\s*- main/);
+  assert.match(workflow, /pnpm test/);
+  assert.match(workflow, /platforms: linux\/amd64/);
+  assert.match(workflow, /packages: write/);
   assert.match(backup, /database\.backup/);
   assert.match(backup, /uploads-latest/);
   assert.match(readme, /极空间 Z4Pro 部署/);

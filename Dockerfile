@@ -15,6 +15,9 @@ RUN corepack enable && pnpm run build
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
+LABEL org.opencontainers.image.source="https://github.com/adechokwok/ade-private-kitchen" \
+      org.opencontainers.image.title="阿德小厨房" \
+      org.opencontainers.image.description="阿德小厨房 NAS Docker 版"
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \
