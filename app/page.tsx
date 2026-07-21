@@ -51,6 +51,16 @@ type RecipeDraft = {
   missingChecks?: string[];
   substitutions?: Array<{ ingredient: string; alternatives: string[]; note: string }>;
 };
+type BulkRecipePreview = {
+  total: number;
+  toInsert: number;
+  toUpdate: number;
+  categories: string[];
+  sampleNames: string[];
+  fingerprint: string;
+  fileName: string;
+};
+type BulkRecipeResult = { total: number; inserted: number; updated: number; totalDishes: number; backupFile: string };
 type DinnerInvite = { id: string; token: string; title: string; message: string; mealDate: string; theme: "warm" | "romance" | "fine" | "festival"; dishIds: string[]; recommendedDishIds: string[]; active: boolean; createdAt: string };
 type DinnerJournal = { id: string; inviteId: string; title: string; note: string; imageUrls: string[]; createdAt: string };
 type RecipeScreenshot = { id: string; file: File; preview: string; rotation: 0 | 90 | 180 | 270 };
@@ -258,6 +268,10 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [recipeDraft, setRecipeDraft] = useState<RecipeDraft | null>(null);
   const [recipeEngine, setRecipeEngine] = useState("Qwen3-VL-Plus");
   const [recipePreferences, setRecipePreferences] = useState("");
+  const [bulkRecipeFile, setBulkRecipeFile] = useState<File | null>(null);
+  const [bulkRecipePreview, setBulkRecipePreview] = useState<BulkRecipePreview | null>(null);
+  const [bulkRecipeResult, setBulkRecipeResult] = useState<BulkRecipeResult | null>(null);
+  const [bulkRecipeLoading, setBulkRecipeLoading] = useState<"preview" | "import" | null>(null);
   const [invites, setInvites] = useState<DinnerInvite[]>([]);
   const [journals, setJournals] = useState<DinnerJournal[]>([]);
   const [activeInvite, setActiveInvite] = useState<DinnerInvite | null>(null);
@@ -970,6 +984,56 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     }
   };
 
+  const previewBulkRecipeFile = async (file: File) => {
+    setBulkRecipeLoading("preview");
+    setBulkRecipePreview(null);
+    setBulkRecipeResult(null);
+    try {
+      const form = new FormData();
+      form.set("action", "preview");
+      form.set("file", file);
+      const response = await fetch("/api/recipe-bulk-import", { method: "POST", body: form });
+      const data = await response.json() as { preview?: BulkRecipePreview; error?: string };
+      if (!response.ok || !data.preview) throw new Error(data.error || "菜谱文件预览失败");
+      setBulkRecipePreview(data.preview);
+      setNotice(`预览完成：将新增 ${data.preview.toInsert} 道、更新 ${data.preview.toUpdate} 道菜`);
+    } catch (error) {
+      setBulkRecipeFile(null);
+      setNotice(error instanceof Error ? error.message : "菜谱文件预览失败");
+    } finally {
+      setBulkRecipeLoading(null);
+    }
+  };
+
+  const selectBulkRecipeFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    setBulkRecipeFile(file);
+    setBulkRecipePreview(null);
+    setBulkRecipeResult(null);
+    if (file) void previewBulkRecipeFile(file);
+  };
+
+  const confirmBulkRecipeImport = async () => {
+    if (!bulkRecipeFile || !bulkRecipePreview) return setNotice("请先选择并预览菜谱 JSON 文件");
+    setBulkRecipeLoading("import");
+    try {
+      const form = new FormData();
+      form.set("action", "import");
+      form.set("file", bulkRecipeFile);
+      form.set("fingerprint", bulkRecipePreview.fingerprint);
+      const response = await fetch("/api/recipe-bulk-import", { method: "POST", body: form });
+      const data = await response.json() as { ok?: boolean; result?: BulkRecipeResult; error?: string };
+      if (!response.ok || !data.ok || !data.result) throw new Error(data.error || "批量导入失败");
+      setBulkRecipeResult(data.result);
+      await Promise.all([loadDishes(), loadCategories()]);
+      setNotice(`导入完成：新增 ${data.result.inserted} 道、更新 ${data.result.updated} 道菜，数据库已自动备份`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "批量导入失败，请稍后重试");
+    } finally {
+      setBulkRecipeLoading(null);
+    }
+  };
+
   const regenerateDishCopy = async (field: "description" | "slogan") => {
     const form = dishFormRef.current;
     if (!form) return;
@@ -1436,6 +1500,27 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   </div>
                   <div className="recipe-preferences"><label><span>让它学会我的做菜习惯</span><textarea value={recipePreferences} onChange={(event) => setRecipePreferences(event.target.value)} placeholder="例如：默认少油少盐；香菜单独放；家里常用生抽而不是味极鲜；一勺按 15ml 计算。" /></label><button type="button" onClick={saveRecipePreferences}>保存习惯</button></div>
                   {recipeDraft && <div className="import-result" role="status"><div className="import-result-head"><div><strong>✓ 已生成“{recipeDraft.name}”完整草稿</strong><span>{recipeDraft.ingredients.length} 种食材 · {recipeDraft.steps.length} 个步骤 · {recipeDraft.difficulty} · {recipeEngine}</span></div>{recipeDraft.recipeSummary && <p>{recipeDraft.recipeSummary}</p>}</div><div className="recipe-generated-copy"><span>点菜口号</span><strong>{recipeDraft.slogan || "等待生成"}</strong><p>{recipeDraft.description || "等待生成菜品介绍"}</p></div><div className="recipe-draft-preview"><section><b>识别出的用料</b><div>{recipeDraft.ingredients.map((item) => <span key={`${item.name}-${item.unit}`}>{item.name} {item.amount}{item.unit}</span>)}</div></section><section><b>识别出的做法</b><ol>{recipeDraft.steps.map((step, index) => <li key={`${index}-${step}`}>{step}</li>)}</ol></section></div>{Boolean(recipeDraft.confidenceNotes.length || recipeDraft.missingChecks?.length) && <p className="recipe-check-note">请核对：{[...recipeDraft.confidenceNotes, ...(recipeDraft.missingChecks || [])].join("；")}</p>}{Boolean(recipeDraft.substitutions?.length) && <div className="substitution-chips">{recipeDraft.substitutions!.map((item) => <span key={item.ingredient}>{item.ingredient} 可换 {item.alternatives.join(" / ")}</span>)}</div>}</div>}
+                </div>
+              </section>
+
+              <section className="bulk-recipe-import panel" aria-labelledby="bulk-recipe-import-title">
+                <div className="bulk-import-heading">
+                  <div><span>RECIPE LIBRARY IMPORT</span><h2 id="bulk-recipe-import-title">批量导入菜谱库</h2><p>把整理好的 JSON 菜谱一次合并进 NAS；先预览，再确认导入。</p></div>
+                  <em>自动备份 · 失败回滚</em>
+                </div>
+                <div className="bulk-import-body">
+                  <label className={bulkRecipeFile ? "bulk-import-picker selected" : "bulk-import-picker"}>
+                    <input type="file" accept=".json,application/json" onChange={selectBulkRecipeFile} />
+                    <span>{bulkRecipeLoading === "preview" ? "…" : "JSON"}</span>
+                    <div><strong>{bulkRecipeLoading === "preview" ? "正在检查菜谱文件…" : bulkRecipeFile?.name || "选择菜谱 JSON 文件"}</strong><small>最多 2MB、500 道菜；文件需要包含 recipes 列表</small></div>
+                    <b>{bulkRecipeFile ? "重新选择" : "选择文件"}</b>
+                  </label>
+                  {bulkRecipePreview && <div className="bulk-import-preview">
+                    <div className="bulk-import-stats"><article><small>文件内菜谱</small><strong>{bulkRecipePreview.total}</strong><span>道</span></article><article className="insert"><small>将新增</small><strong>{bulkRecipePreview.toInsert}</strong><span>道</span></article><article className="update"><small>将更新</small><strong>{bulkRecipePreview.toUpdate}</strong><span>道</span></article></div>
+                    <div className="bulk-import-details"><p><b>涉及分类</b>{bulkRecipePreview.categories.join("、")}</p><p><b>部分菜名</b>{bulkRecipePreview.sampleNames.join("、")}{bulkRecipePreview.total > bulkRecipePreview.sampleNames.length ? "……" : ""}</p></div>
+                    <div className="bulk-import-confirm"><p><strong>合并规则</strong><span>同名菜更新配方和步骤，但保留原有照片、上架状态和推荐设置；新菜直接加入菜单。确认前会把数据库备份到 NAS 的 import-backups 文件夹。</span></p><button type="button" onClick={confirmBulkRecipeImport} disabled={bulkRecipeLoading !== null || Boolean(bulkRecipeResult)}>{bulkRecipeLoading === "import" ? "正在备份并导入…" : bulkRecipeResult ? "本文件已导入" : `确认合并导入 ${bulkRecipePreview.total} 道菜`}</button></div>
+                  </div>}
+                  {bulkRecipeResult && <div className="bulk-import-success" role="status"><span>✓</span><div><strong>批量导入完成</strong><p>新增 {bulkRecipeResult.inserted} 道、更新 {bulkRecipeResult.updated} 道；当前菜谱库共 {bulkRecipeResult.totalDishes} 道。</p><small>安全备份：{bulkRecipeResult.backupFile}</small></div></div>}
                 </div>
               </section>
 
