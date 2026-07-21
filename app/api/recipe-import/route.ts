@@ -6,6 +6,7 @@ type RecipeDraft = {
   name: string;
   category: string;
   description: string;
+  slogan: string;
   flavor: string;
   minutes: number;
   source: string;
@@ -20,6 +21,11 @@ type RecipeDraft = {
   seasons: string[];
   occasions: string[];
   dietary: string[];
+};
+
+type ChatCompletionPayload = {
+  error?: { message?: string };
+  choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
 };
 
 const acceptedImageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -52,7 +58,6 @@ function parseRecipeText(raw: string): RecipeDraft {
   const sourceMatch = normalized.match(/【([^】]{1,30})】/);
   const titleLine = lines.find((line) => !sectionPattern.test(line) && !/^\d+[.、）)]/.test(line) && line.length <= 45) || "待命名菜谱";
   const name = titleLine.replace(/【[^】]+】/g, "").replace(/^(菜名|名称)[:：]\s*/, "").trim() || "待命名菜谱";
-
   const ingredientHeading = lines.findIndex((line) => /^(食材清单|食材|配料|用料)[:：]?$/.test(line));
   const stepHeading = lines.findIndex((line) => /^(烹饪步骤|制作步骤|做法|步骤)[:：]?$/.test(line));
   const ingredientSource = ingredientHeading >= 0
@@ -63,24 +68,18 @@ function parseRecipeText(raw: string): RecipeDraft {
   for (const match of ingredientSource.matchAll(ingredientPattern)) {
     const ingredientName = match[1].replace(/^(食材清单|食材|配料|用料)[:：]?/, "").trim();
     if (!ingredientName || ingredients.some((item) => item.name === ingredientName)) continue;
-    ingredients.push({
-      name: ingredientName,
-      amount: Number(match[2]),
-      unit: normalizeUnit(match[3]),
-      type: inferIngredientType(ingredientName),
-    });
+    ingredients.push({ name: ingredientName, amount: Number(match[2]), unit: normalizeUnit(match[3]), type: inferIngredientType(ingredientName) });
   }
-
   const stepLines = (stepHeading >= 0 ? lines.slice(stepHeading + 1) : lines)
     .filter((line) => /^\d+[.、）)]\s*/.test(line) || /^【[^】]+】/.test(line))
     .map((line) => line.replace(/^\d+[.、）)]\s*/, "").trim())
     .filter((line) => line.length > 4);
   const description = lines.find((line) => line !== titleLine && !sectionPattern.test(line) && !/^\d+[.、）)]/.test(line) && line.length >= 12 && line.length <= 180) || "";
-
   return {
     name,
     category: inferCategory(normalized),
     description,
+    slogan: `${name}，今天就想吃这一口`.slice(0, 60),
     flavor: /麻辣|香辣|辣椒|花椒/.test(normalized) ? "香辣" : "家常风味",
     minutes: 30,
     source: sourceMatch?.[1] || "文字智能录入",
@@ -101,9 +100,7 @@ function parseRecipeText(raw: string): RecipeDraft {
 function toBase64(buffer: ArrayBuffer) {
   const bytes = new Uint8Array(buffer);
   let binary = "";
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-  }
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
   return btoa(binary);
 }
 
@@ -120,9 +117,10 @@ function normalizeDraft(value: unknown): RecipeDraft {
     name: typeof draft.name === "string" ? draft.name.trim().slice(0, 40) : "待命名菜谱",
     category: typeof draft.category === "string" ? draft.category.trim().slice(0, 30) : "家常菜",
     description: typeof draft.description === "string" ? draft.description.trim().slice(0, 180) : "",
+    slogan: typeof draft.slogan === "string" ? draft.slogan.trim().replace(/[“”"。]$/g, "").slice(0, 60) : "",
     flavor: typeof draft.flavor === "string" ? draft.flavor.trim().slice(0, 30) : "家常风味",
     minutes: Math.min(360, Math.max(5, Math.round(Number(draft.minutes) || 30))),
-    source: typeof draft.source === "string" ? draft.source.trim().slice(0, 80) : "智能菜谱录入",
+    source: typeof draft.source === "string" ? draft.source.trim().slice(0, 80) : "截图智能录入",
     ingredients,
     steps,
     confidenceNotes: Array.isArray(draft.confidenceNotes) ? draft.confidenceNotes.filter((note): note is string => typeof note === "string").map((note) => note.trim().slice(0, 120)).filter(Boolean).slice(0, 5) : [],
@@ -141,36 +139,27 @@ function normalizeDraft(value: unknown): RecipeDraft {
   };
 }
 
-function recipeSchema() {
-  const ingredient = {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      name: { type: "string" }, amount: { type: "number" }, unit: { type: "string" },
-      type: { type: "string", enum: ["生鲜", "蔬菜", "调料", "其他"] },
-    },
-    required: ["name", "amount", "unit", "type"],
-  };
-  return {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      name: { type: "string" }, category: { type: "string" }, description: { type: "string" },
-      flavor: { type: "string" }, minutes: { type: "number" }, source: { type: "string" },
-      ingredients: { type: "array", items: ingredient },
-      steps: { type: "array", items: { type: "string" } },
-      confidenceNotes: { type: "array", items: { type: "string" } },
-      difficulty: { type: "string", enum: ["简单", "适中", "进阶"] },
-      recipeSummary: { type: "string" },
-      missingChecks: { type: "array", items: { type: "string" } },
-      substitutions: { type: "array", items: { type: "object", additionalProperties: false, properties: { ingredient: { type: "string" }, alternatives: { type: "array", items: { type: "string" } }, note: { type: "string" } }, required: ["ingredient", "alternatives", "note"] } },
-      baseServings: { type: "number" },
-      seasons: { type: "array", items: { type: "string" } },
-      occasions: { type: "array", items: { type: "string" } },
-      dietary: { type: "array", items: { type: "string" } },
-    },
-    required: ["name", "category", "description", "flavor", "minutes", "source", "ingredients", "steps", "confidenceNotes", "difficulty", "recipeSummary", "missingChecks", "substitutions", "baseServings", "seasons", "occasions", "dietary"],
-  };
+function parseJsonObject(raw: string) {
+  const withoutFence = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  try { return JSON.parse(withoutFence); } catch { /* 部分兼容接口会在 JSON 前后加说明 */ }
+  const start = withoutFence.indexOf("{");
+  const end = withoutFence.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("识别结果不是有效菜谱，请重新拍清楚后再试");
+  return JSON.parse(withoutFence.slice(start, end + 1));
+}
+
+function chatMessageText(payload: ChatCompletionPayload) {
+  const content = payload.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.map((item) => item.text || "").join("");
+  return "";
+}
+
+function compatibleBaseUrl() {
+  const configured = process.env.OPENAI_BASE_URL?.trim() || "https://dashscope.aliyuncs.com/compatible-mode/v1";
+  const url = new URL(configured);
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("智能识别接口地址配置不正确");
+  return configured.replace(/\/+$/, "");
 }
 
 export async function POST(request: Request) {
@@ -181,6 +170,12 @@ export async function POST(request: Request) {
     const text = String(form.get("text") || "").trim().slice(0, 16000);
     const preferences = String(form.get("preferences") || "").trim().slice(0, 1600);
     const images = form.getAll("images").filter((value): value is File => value instanceof File && value.size > 0).slice(0, 4);
+    const rotations = (() => {
+      try {
+        const value = JSON.parse(String(form.get("rotations") || "[]"));
+        return Array.isArray(value) ? value.map((item) => [0, 90, 180, 270].includes(Number(item)) ? Number(item) : 0).slice(0, 4) : [];
+      } catch { return []; }
+    })();
     if (!text && images.length === 0) return Response.json({ error: "请上传菜谱截图，或粘贴菜谱文字" }, { status: 400 });
 
     let totalBytes = 0;
@@ -192,41 +187,53 @@ export async function POST(request: Request) {
     if (totalBytes > 14 * 1024 * 1024) return Response.json({ error: "截图总大小请控制在 14MB 以内" }, { status: 400 });
 
     const apiKey = process.env.OPENAI_API_KEY?.trim();
-    const recipeModel = process.env.OPENAI_RECIPE_MODEL?.trim();
+    const recipeModel = process.env.OPENAI_RECIPE_MODEL?.trim() || process.env.OPENAI_MODEL?.trim() || "qwen3-vl-plus";
     if (!apiKey) {
-      if (text) return Response.json({ draft: parseRecipeText(text), mode: "text-fallback" });
-      return Response.json({ error: "图片智能识别尚未配置。可以先粘贴菜谱文字进行自动拆解。", code: "AI_NOT_CONFIGURED" }, { status: 503 });
+      if (text) return Response.json({ draft: parseRecipeText(text), mode: "text-fallback", model: "本地文字解析" });
+      return Response.json({ error: "通义千问图片识别尚未配置。请在极空间中填写 OPENAI_API_KEY。", code: "AI_NOT_CONFIGURED" }, { status: 503 });
     }
 
-    const content: Array<Record<string, unknown>> = [{
-      type: "input_text",
-      text: `请从菜谱截图或文字中提取一份结构化中文菜谱。忠实于原文，不要编造看不清的数据。\n\n规则：\n1. 多张截图可能是同一道菜的不同部分，请合并。\n2. 食材数量必须是数字；统一常用单位为 g、ml、个、片、勺或适量；“适量”写 amount=1、unit="适量"。\n3. category 使用适合私人菜单的简短分类。\n4. source 填原作者、栏目或来源；无法判断则填“截图智能录入”。\n5. confidenceNotes 只列不确定信息，missingChecks 列原菜谱缺失但做菜前应补齐的关键项。\n6. recipeSummary 用一两句话概括技法和成菜标准；difficulty 评估实际操作难度。\n7. substitutions 给出常见且稳妥的替代食材，不确定就留空。\n8. baseServings 根据原文判断，无法判断填 4；同时判断季节、场景和过敏提示。\n${preferences ? `\n主厨的个人习惯（仅在不违背原菜谱时采用）：\n${preferences}` : ""}\n${text ? `\n用户补充文字：\n${text}` : ""}`,
-    }];
+    const orientationHint = images.length
+      ? rotations.map((rotation, index) => `第 ${index + 1} 张${rotation ? `请先顺时针旋转 ${rotation}°` : "方向无需调整"}`).join("；")
+      : "";
+    const prompt = `你是家庭主厨的菜谱整理助手。请仔细阅读所有图片（包括横拍、竖拍、书页跨页和带步骤小图的照片），把同一道菜合并成一份完整菜谱，并只返回一个 JSON 对象，不要使用 Markdown。
+
+必须忠实抄录图片中能看清的内容，不得凭空补写原文没有的精确用量。图片中如果有“材料、步骤、诀窍、提示”等栏目，要完整归入对应字段。步骤按实际先后顺序写清动作、火候、时间和判断标准。
+
+JSON 字段必须包含：name、category、description、slogan、flavor、minutes、source、ingredients、steps、confidenceNotes、difficulty、recipeSummary、missingChecks、substitutions、baseServings、seasons、occasions、dietary。
+description 要用 40–80 个中文字符准确写出菜品的口感、香气和做法亮点；slogan 要用 8–18 个中文字符写成点菜端的一句俏皮推荐语，例如可乐鸡翅可写“大人小孩都很难拒绝”，不要使用引号和句号。
+ingredients 每项包含 name、amount、unit、type；type 只能是“生鲜、蔬菜、调料、其他”。数量必须是数字；原文写“适量”时使用 amount=1、unit="适量"。看不清的内容放到 confidenceNotes；原文确实没有但下厨前需要确认的内容放到 missingChecks。difficulty 只能是“简单、适中、进阶”。无法判断份量时 baseServings=4。
+
+图片方向提示：${orientationHint || "无图片"}。
+${preferences ? `\n主厨习惯（仅在不违背原菜谱时参考）：\n${preferences}` : ""}
+${text ? `\n用户补充文字：\n${text}` : ""}`;
+    const content: Array<Record<string, unknown>> = [{ type: "text", text: prompt }];
     for (const image of images) {
-      const base64 = toBase64(await image.arrayBuffer());
-      content.push({ type: "input_image", image_url: `data:${image.type};base64,${base64}`, detail: "high" });
+      content.push({ type: "image_url", image_url: { url: `data:${image.type};base64,${toBase64(await image.arrayBuffer())}` } });
     }
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetch(`${compatibleBaseUrl()}/chat/completions`, {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({
-        model: recipeModel || "gpt-5.4-mini",
-        input: [{ role: "user", content }],
-        reasoning: { effort: "low" },
-        text: { format: { type: "json_schema", name: "recipe_draft", strict: true, schema: recipeSchema() } },
+        model: recipeModel,
+        messages: [{ role: "user", content }],
+        response_format: { type: "json_object" },
+        temperature: 0.1,
+        max_tokens: 8000,
+        enable_thinking: false,
       }),
+      signal: AbortSignal.timeout(120000),
     });
-    const payload = await response.json() as {
-      error?: { message?: string };
-      output_text?: string;
-      output?: Array<{ content?: Array<{ type?: string; text?: string }> }>;
-    };
-    if (!response.ok) throw new Error(payload.error?.message || "图片识别服务暂时不可用");
-    const outputText = payload.output_text || payload.output?.flatMap((item) => item.content || []).find((item) => item.type === "output_text")?.text;
-    if (!outputText) throw new Error("没有识别出可用的菜谱内容");
-    return Response.json({ draft: normalizeDraft(JSON.parse(outputText)), mode: "vision" });
+    const payload = await response.json() as ChatCompletionPayload;
+    if (!response.ok) throw new Error(payload.error?.message || "通义千问图片识别服务暂时不可用");
+    const outputText = chatMessageText(payload);
+    if (!outputText) throw new Error("通义千问没有返回可用的菜谱内容");
+    return Response.json({ draft: normalizeDraft(parseJsonObject(outputText)), mode: "qwen-vision", model: recipeModel });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "菜谱识别失败，请稍后重试" }, { status: 500 });
+    const message = error instanceof Error && error.name === "TimeoutError"
+      ? "图片识别超过 2 分钟，请减少截图数量或压缩图片后重试"
+      : error instanceof Error ? error.message : "菜谱识别失败，请稍后重试";
+    return Response.json({ error: message }, { status: 500 });
   }
 }

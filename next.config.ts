@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
+  distDir: process.env.NODE_ENV === "development" ? ".next-local" : ".next",
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   output: "standalone",
   poweredByHeader: false,
   serverExternalPackages: ["better-sqlite3"],

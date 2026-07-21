@@ -59,11 +59,16 @@ export async function POST(request: Request) {
       name: dish.name,
       baseServings: dish.baseServings || 4,
       ingredients: (() => { try { return JSON.parse(dish.ingredients); } catch { return []; } })(),
+      steps: (() => { try { return JSON.parse(dish.steps); } catch { return []; } })(),
+      minutes: dish.minutes,
+      recipeSummary: dish.recipeSummary,
+      source: dish.source,
+      difficulty: dish.difficulty,
     }));
     const catalog = customCatalog;
     const dishSnapshot = normalized.map((item) => {
       const dish = catalog.find((candidate) => candidate.id === item.dishId);
-      return dish ? { dishId: dish.id, name: dish.name, baseServings: dish.baseServings, ingredients: dish.ingredients } : null;
+      return dish ? { dishId: dish.id, name: dish.name, baseServings: dish.baseServings, ingredients: dish.ingredients, steps: dish.steps, minutes: dish.minutes, recipeSummary: dish.recipeSummary, source: dish.source, difficulty: dish.difficulty } : null;
     }).filter(Boolean);
 
     await ensureOrdersSchema();

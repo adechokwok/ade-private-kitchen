@@ -3,12 +3,15 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the private menu and chef workflow", async () => {
-  const [page, ordersRoute, dishRoute, imageRoute, importRoute, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute] = await Promise.all([
+  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, importRoute, copyRoute, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute, kitchenStatusRoute, schema, database] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/orders/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/dishes/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/dish-images/[id]/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-import/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/recipe-copy/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/shopping/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/categories/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pantry/route.ts", import.meta.url), "utf8"),
@@ -16,10 +19,26 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../app/api/order-status/[token]/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/order/[token]/status-client.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/journals/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/kitchen-status/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/index.ts", import.meta.url), "utf8"),
   ]);
 
-  for (const phrase of ["朋友点菜", "阿德小厨房", "想吃什么", "今天也要被好好招待", "点菜不用客气", "主厨保证书", "主厨工作台", "采购清单", "菜单管理", "菜品类型（可自定义）", "家中库存", "智能菜谱录入", "宴席菜单编排器", "生成一场专属饭局", "饭后留一页"]) assert.match(page, new RegExp(phrase));
+  for (const phrase of [
+    "朋友点菜", "阿德小厨房", "想吃什么", "主厨工作台", "接单信息汇总", "把点单编成正式宴席菜单",
+    "订单和采购提醒", "制作执行台", "合并备菜清单", "倒排烹饪顺序", "单菜计时器", "库存不足提醒",
+    "等待通知的饭局", "菜单管理", "菜品类型（可自定义）", "点菜端 slogan", "千问再生成", "家中库存",
+    "智能菜谱录入", "生成一场专属饭局", "饭后留一页", "温馨家宴", "二人世界", "Fine Dining",
+    "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐",
+  ]) assert.match(page, new RegExp(phrase));
   assert.match(page, /从本地上传照片/);
+  assert.match(page, /封面智能取景/);
+  assert.match(page, /自动取景/);
+  assert.match(page, /chef-portrait\.jpg/);
+  assert.match(page, /阿德私厨志/);
+  assert.match(page, /chef-studio\.jpg/);
+  assert.match(page, /厨房今天休息/);
+  assert.match(page, /kitchen-status-toggle/);
   assert.match(page, /window\.print/);
   assert.match(page, /function createClientRowId/);
   assert.match(page, /getRandomValues/);
@@ -34,10 +53,29 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(ordersRoute, /export async function POST/);
   assert.match(ordersRoute, /export async function PATCH/);
   assert.match(dishRoute, /getUploads\(\)\.put/);
+  assert.match(dishRoute, /normalizeImagePosition/);
   assert.match(dishRoute, /chefApiGuard/);
   assert.match(imageRoute, /getUploads\(\)\.get/);
-  assert.match(importRoute, /input_image/);
+  assert.match(importRoute, /chat\/completions/);
+  assert.match(importRoute, /image_url/);
+  assert.match(importRoute, /qwen3-vl-plus/);
+  assert.match(importRoute, /slogan/);
+  assert.match(importRoute, /process\.env\.OPENAI_BASE_URL/);
+  assert.match(importRoute, /process\.env\.OPENAI_MODEL/);
   assert.match(importRoute, /process\.env\.OPENAI_API_KEY/);
+  assert.match(importRoute, /rotations/);
+  assert.match(page, /rotateRecipeScreenshot/);
+  assert.match(page, /managed-recipe-details/);
+  assert.match(globalStyles, /\.screenshot-frame img \{ position: absolute;/);
+  assert.match(globalStyles, /max-height: 100%/);
+  assert.match(nextConfig, /allowedDevOrigins: \["127\.0\.0\.1", "localhost"\]/);
+  assert.match(copyRoute, /OPENAI_API_KEY/);
+  assert.match(copyRoute, /qwen3-vl-plus/);
+  assert.match(copyRoute, /description/);
+  assert.match(copyRoute, /slogan/);
+  assert.match(schema, /slogan: text\("slogan"\)/);
+  assert.match(database, /addColumn\("custom_dishes", columns, "slogan"/);
+  assert.match(ordersRoute, /steps: dish\.steps/);
   assert.match(shoppingRoute, /shoppingChecks/);
   assert.match(categoryRoute, /mergeInto/);
   assert.match(pantryRoute, /pantryItems/);
@@ -50,6 +88,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(statusClient, /setInterval\(\(\) => void load\(\), 15000\)/);
   assert.match(statusClient, /每 15 秒自动更新/);
   assert.match(journalRoute, /dinner-journals/);
+  assert.match(kitchenStatusRoute, /kitchen_open_v1/);
+  assert.match(kitchenStatusRoute, /chefApiGuard/);
   assert.doesNotMatch(page, /codex-preview|SkeletonPreview/);
 });
 

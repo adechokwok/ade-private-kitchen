@@ -13,7 +13,7 @@ export async function GET(_request: Request, context: { params: Promise<{ token:
   const ids = parseList(invite.dishIds) as string[];
   const rows = await getDb().select().from(customDishes).where(eq(customDishes.active, 1));
   const dishes = rows.filter((dish) => ids.includes(dish.id) && dish.available).map((dish) => ({
-    id: dish.id, name: dish.name, category: dish.category, description: dish.description, imageUrl: dish.imageUrl,
+    id: dish.id, name: dish.name, category: dish.category, description: dish.description, slogan: dish.slogan, imageUrl: dish.imageUrl,
     imagePosition: dish.imagePosition, featured: Boolean(dish.featured), available: Boolean(dish.available), soldOut: Boolean(dish.soldOut),
     dietary: parseList(dish.dietary), emoji: "🍽️", tone: "custom", flavor: "", minutes: 0, baseServings: 4, ingredients: [], steps: [], source: "", active: true, isCustom: true,
   }));

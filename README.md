@@ -9,7 +9,14 @@
 - 主厨工作台使用独立密码与安全会话保护。
 - Docker 容器提供健康检查，备份容器每天备份数据库并镜像照片目录。
 - GitHub 每次收到 `main` 分支更新后会先自动测试，再发布新的极空间 Docker 镜像。
-- 智能菜谱录入可以选配 OpenAI API；不配置时仍支持文字菜谱解析。
+- 智能菜谱录入使用通义千问 Qwen3-VL-Plus 读取截图、书页照片、食材和步骤；不配置时仍支持文字菜谱解析。
+- 主厨工作台按“接单 → 订单和采购 → 制作 → 开饭”展开；接单页汇总朋友订单并可直接编排宴席菜单，完成订单自动归档。
+- 制作执行台会同步日期、人数、忌口、换算后的用料和完整步骤，并提供合并备菜、按开饭时间倒排、单菜计时器与库存不足提醒。
+- 宴席编排器提供 10 套独立主题：温馨家宴、二人世界、Fine Dining、新春团圆、中秋雅宴、生日烛光、乔迁暖居、夏日晚风、冬日圣诞和周末早午餐；每套背景都只装饰页边，保证菜单正文易读。
+- 通义千问会为识别出的菜谱生成菜品介绍与点菜 slogan；两项都能在菜单编辑中修改或单独重新生成。
+- 菜品封面上传后会在浏览器本地智能寻找主体，并支持拖动、焦点滑杆和缩放微调；取景参数随菜品保存在 NAS，朋友端同步显示。
+- 朋友点菜首页保留温暖红色卡片布局，以竖版主厨肖像制作杂志封面式首屏，并在菜品区后使用横版厨房肖像作为主厨见面礼。
+- 主厨端可切换“厨房今日营业 / 厨房今天休息”；状态保存在 NAS SQLite，朋友端同步显示绿灯或红灯。
 
 ## 极空间 Z4Pro 部署
 
@@ -37,8 +44,12 @@ NAS_BACKUP_PATH=/极空间中实际选择的备份目录
 智能菜谱图片识别需要额外填写：
 
 ```dotenv
-OPENAI_API_KEY=你的服务器端API密钥
+OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+OPENAI_API_KEY=你的阿里云 DashScope API Key
+OPENAI_MODEL=qwen3-vl-plus
 ```
+
+API Key 只保存在 NAS 环境变量中。上传的菜谱截图会发往通义千问进行当次识别，识别完成后只把你确认保存的结构化菜谱写入 NAS；截图本身不会作为菜品照片自动保存。菜单编辑中的“千问再生成”同样使用这套配置，只把当前菜名、配方、步骤和已有文案发给千问。
 
 ### 3. 首次连接 GitHub 镜像仓库
 
@@ -48,13 +59,7 @@ OPENAI_API_KEY=你的服务器端API密钥
 ghcr.io/adechokwok/ade-private-kitchen:latest
 ```
 
-因为 GitHub 仓库是私有的，极空间第一次拉取镜像前需要登录一次：
-
-1. 在 GitHub 创建一个只勾选 `read:packages` 的 Personal Access Token（classic）。
-2. 在极空间 Docker 的镜像仓库或 Registry 设置中添加 `ghcr.io`。
-3. 用户名填写 `adechokwok`，密码填写刚创建的 Token。
-
-Token 只保存在极空间中，不要写入 `.env`、Compose 文件或发送到聊天里。
+仓库和 GHCR Package 都设为公开后，极空间可以直接拉取镜像，不需要 GitHub 用户名或 Token。仓库公开不会自动保证旧 Package 同步公开；如果仍提示无权限，请在 GitHub Package settings 中把镜像可见性改为 Public。
 
 ### 4. 创建 Compose 项目
 

@@ -77,6 +77,7 @@ export async function ensureCustomDishesSchema() {
     name TEXT NOT NULL,
     category TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
+    slogan TEXT NOT NULL DEFAULT '',
     flavor TEXT NOT NULL DEFAULT '家常风味',
     minutes INTEGER NOT NULL DEFAULT 30,
     base_servings INTEGER NOT NULL DEFAULT 4,
@@ -100,6 +101,7 @@ export async function ensureCustomDishesSchema() {
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
   const columns = tableColumns("custom_dishes");
+  addColumn("custom_dishes", columns, "slogan", "TEXT NOT NULL DEFAULT ''");
   addColumn("custom_dishes", columns, "steps", "TEXT NOT NULL DEFAULT '[]'");
   addColumn("custom_dishes", columns, "source", "TEXT NOT NULL DEFAULT ''");
   addColumn("custom_dishes", columns, "base_servings", "INTEGER NOT NULL DEFAULT 4");
@@ -167,7 +169,7 @@ export async function ensureMenuLibrary() {
     const insertSeed = getSqlite().transaction(() => {
       for (const [index, dish] of seedDishes.entries()) {
         getDb().insert(schema.customDishes).values({
-          id: dish.id, name: dish.name, category: dish.category, description: dish.description,
+          id: dish.id, name: dish.name, category: dish.category, description: dish.description, slogan: dish.slogan || "",
           flavor: dish.flavor, minutes: dish.minutes, baseServings: dish.baseServings || 4,
           imageUrl: dish.imageUrl || "", imagePosition: dish.imagePosition || "center", gallery: JSON.stringify(dish.gallery || []), ingredients: JSON.stringify(dish.ingredients), steps: JSON.stringify(dish.steps || []),
           source: dish.source || "阿德经典菜单", active: 1, featured: dish.tag ? 1 : 0, available: 1, soldOut: 0,
@@ -177,6 +179,12 @@ export async function ensureMenuLibrary() {
       getDb().insert(schema.appSettings).values({ key: "classic_menu_v1", value: new Date().toISOString() }).onConflictDoNothing().run();
     });
     insertSeed();
+  }
+
+  for (const dish of seedDishes) {
+    if (dish.slogan) getSqlite().prepare("UPDATE custom_dishes SET slogan = ? WHERE id = ? AND slogan = ''").run(dish.slogan, dish.id);
+    if (dish.recipeSummary) getSqlite().prepare("UPDATE custom_dishes SET recipe_summary = ? WHERE id = ? AND recipe_summary = ''").run(dish.recipeSummary, dish.id);
+    if (dish.steps?.length) getSqlite().prepare("UPDATE custom_dishes SET steps = ? WHERE id = ? AND (steps = '' OR steps = '[]')").run(JSON.stringify(dish.steps), dish.id);
   }
 
   const dishCategories = getSqlite().prepare("SELECT DISTINCT category AS name FROM custom_dishes WHERE category <> ''").all() as Array<{ name: string }>;
