@@ -328,3 +328,28 @@ footer span { letter-spacing: .12em; } footer p { opacity: .48; font: 11px syste
   body.printing-menu .banquet-preview, body.printing-menu .banquet-preview * { visibility: visible !important; }
   body.printing-menu .banquet-preview { position: absolute; left: 0; top: 0; width: 148mm; min-height: 210mm; max-width: none; margin: 0; padding: 15mm 14mm 11mm; border: 0; box-shadow: none; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
+
+/* NAS self-hosted chef sign-in */
+.chef-logout { display: flex; align-items: center; }
+.chef-logout button { border: 0; background: transparent; color: #756d64; padding: 8px 10px; font: 10px system-ui, sans-serif; cursor: pointer; }
+.chef-login-page { min-height: 100vh; display: grid; place-items: center; padding: 28px 18px; background: radial-gradient(circle at 15% 10%, rgba(221,153,102,.24), transparent 30%), linear-gradient(145deg,#f6efe5,#fcfaf6); }
+.chef-login-card { width: min(470px,100%); padding: 46px; border: 1px solid rgba(72,51,37,.08); border-radius: 32px; background: rgba(255,255,255,.9); box-shadow: 0 28px 80px rgba(64,42,28,.13); }
+.chef-login-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; }
+.chef-login-brand span { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 14px 14px 14px 4px; background: var(--red); color: #fff; font-size: 20px; }
+.chef-login-brand strong { font-size: 18px; }
+.chef-login-eyebrow { margin: 40px 0 12px; color: var(--red); font: 800 9px system-ui,sans-serif; letter-spacing: .18em; }
+.chef-login-card h1 { margin: 0; font-size: 42px; }
+.chef-login-card > p:not(.chef-login-eyebrow) { color: var(--muted); line-height: 1.8; }
+.chef-login-card form { display: grid; gap: 10px; margin-top: 28px; }
+.chef-login-card form label { color: #655b53; font: 700 11px system-ui,sans-serif; }
+.chef-login-card form input { width: 100%; height: 50px; border: 1px solid var(--line); border-radius: 13px; background: #fffdf9; padding: 0 14px; font-size: 17px; }
+.chef-login-card form button { height: 50px; margin-top: 6px; border: 0; border-radius: 13px; background: var(--ink); color: #fff; font-weight: 700; cursor: pointer; }
+.chef-login-error { color: #a44134; font: 11px system-ui,sans-serif; }
+.chef-login-alert { display: grid; gap: 6px; margin-top: 24px; padding: 16px; border-radius: 14px; background: #fff0df; color: #704536; }
+.chef-login-alert span { font: 11px/1.7 system-ui,sans-serif; }
+.chef-login-back { display: inline-block; margin-top: 26px; color: #7c7169; font: 11px system-ui,sans-serif; text-decoration: none; }
+@media (max-width: 720px) {
+  .chef-logout button { padding-inline: 6px; }
+  .chef-login-card { padding: 34px 24px; border-radius: 26px; }
+  .chef-login-card h1 { font-size: 36px; }
+}

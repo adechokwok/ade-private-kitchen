@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 import { chefApiGuard } from "../../chef-auth";
 
 type IngredientType = "生鲜" | "蔬菜" | "调料" | "其他";
@@ -192,8 +191,9 @@ export async function POST(request: Request) {
     }
     if (totalBytes > 14 * 1024 * 1024) return Response.json({ error: "截图总大小请控制在 14MB 以内" }, { status: 400 });
 
-    const runtime = env as unknown as { OPENAI_API_KEY?: string; OPENAI_RECIPE_MODEL?: string };
-    if (!runtime.OPENAI_API_KEY) {
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    const recipeModel = process.env.OPENAI_RECIPE_MODEL?.trim();
+    if (!apiKey) {
       if (text) return Response.json({ draft: parseRecipeText(text), mode: "text-fallback" });
       return Response.json({ error: "图片智能识别尚未配置。可以先粘贴菜谱文字进行自动拆解。", code: "AI_NOT_CONFIGURED" }, { status: 503 });
     }
@@ -209,9 +209,9 @@ export async function POST(request: Request) {
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
-      headers: { authorization: `Bearer ${runtime.OPENAI_API_KEY}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({
-        model: runtime.OPENAI_RECIPE_MODEL || "gpt-5.4-mini",
+        model: recipeModel || "gpt-5.4-mini",
         input: [{ role: "user", content }],
         reasoning: { effort: "low" },
         text: { format: { type: "json_schema", name: "recipe_draft", strict: true, schema: recipeSchema() } },

@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/.pnpm-store/
 /.pnp
 .pnp.*
 .yarn/*
@@ -42,3 +43,7 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/data/
+/nas-data/
+/nas-backups/
+/secrets/

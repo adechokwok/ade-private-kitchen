@@ -1,0 +1,49 @@
+name: ade-private-kitchen
+
+services:
+  kitchen:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ade-private-kitchen:latest
+    container_name: ade-private-kitchen
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3099}:3000"
+    environment:
+      DATA_DIR: /data
+      CHEF_PASSWORD: "${CHEF_PASSWORD:?请在 .env 中设置至少 10 位的主厨密码}"
+      SESSION_SECRET: "${SESSION_SECRET:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_RECIPE_MODEL: "${OPENAI_RECIPE_MODEL:-gpt-5.4-mini}"
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+    volumes:
+      - "${NAS_DATA_PATH:-./nas-data}:/data"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  backup:
+    platform: linux/amd64
+    image: ade-private-kitchen:latest
+    container_name: ade-private-kitchen-backup
+    restart: unless-stopped
+    depends_on:
+      kitchen:
+        condition: service_healthy
+    command: ["node", "scripts/backup.mjs", "--watch"]
+    environment:
+      DATA_DIR: /data
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-14}"
+      BACKUP_INTERVAL_HOURS: "${BACKUP_INTERVAL_HOURS:-24}"
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+    volumes:
+      - "${NAS_DATA_PATH:-./nas-data}:/data"
+      - "${NAS_BACKUP_PATH:-./nas-backups}:/backups"

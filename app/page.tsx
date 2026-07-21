@@ -423,10 +423,11 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const shareShoppingList = async () => {
     const text = shoppingText();
+    const canShare = typeof navigator.share === "function";
     try {
-      if (navigator.share) await navigator.share({ title: "阿德小厨房采购清单", text });
+      if (canShare) await navigator.share({ title: "阿德小厨房采购清单", text });
       else await navigator.clipboard.writeText(text);
-      setNotice(navigator.share ? "采购清单已打开分享" : "采购清单已复制，可粘贴到微信或备忘录");
+      setNotice(canShare ? "采购清单已打开分享" : "采购清单已复制，可粘贴到微信或备忘录");
     } catch (error) {
       if ((error as Error).name !== "AbortError") setNotice("复制失败，请稍后重试");
     }
@@ -674,10 +675,11 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const shareInvite = async (invite: DinnerInvite) => {
     const url = `${window.location.origin}/invite/${invite.token}`;
+    const canShare = typeof navigator.share === "function";
     try {
-      if (navigator.share) await navigator.share({ title: invite.title, text: invite.message || "来阿德小厨房点菜吧", url });
+      if (canShare) await navigator.share({ title: invite.title, text: invite.message || "来阿德小厨房点菜吧", url });
       else await navigator.clipboard.writeText(url);
-      setNotice(navigator.share ? "邀请卡已打开分享" : "邀请链接已复制");
+      setNotice(canShare ? "邀请卡已打开分享" : "邀请链接已复制");
     } catch (error) { if ((error as Error).name !== "AbortError") setNotice("分享失败，请稍后重试"); }
   };
 
@@ -765,6 +767,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
           <Link className={mode === "menu" ? "active" : ""} href="/">朋友点菜</Link>
           <Link className={mode === "chef" ? "active" : ""} href="/chef">主厨入口</Link>
           {mode === "chef" && chefUser && <span className="chef-user">{chefUser}</span>}
+          {mode === "chef" && <form className="chef-logout" action="/api/auth/logout" method="post"><button type="submit">退出</button></form>}
         </nav>
       </header>
 
@@ -843,7 +846,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         <section className="chef-page">
           <div className="chef-heading">
             <div><span className="eyebrow">KITCHEN DASHBOARD</span><h1>主厨工作台</h1><p>订单、备菜、采购和菜单，都在这里管理。</p></div>
-            {chefView === "overview" && <button className="refresh-button" onClick={loadOrders} disabled={loadingOrders}>{loadingOrders ? "刷新中…" : "刷新订单"}</button>}
+            {chefView === "overview" && <button className="refresh-button" onClick={() => loadOrders()} disabled={loadingOrders}>{loadingOrders ? "刷新中…" : "刷新订单"}</button>}
           </div>
           <div className="chef-subnav" role="tablist" aria-label="主厨工具">
             <button className={chefView === "overview" ? "active" : ""} onClick={() => setChefView("overview")}>订单与采购</button>
