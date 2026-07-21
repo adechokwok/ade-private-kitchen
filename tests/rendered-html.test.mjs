@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the private menu and chef workflow", async () => {
-  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, importRoute, copyRoute, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute, kitchenStatusRoute, schema, database] = await Promise.all([
+  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, importRoute, bulkImportRoute, copyRoute, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute, kitchenStatusRoute, schema, database] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
@@ -11,6 +11,7 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../app/api/dishes/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/dish-images/[id]/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-import/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/recipe-bulk-import/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-copy/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/shopping/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/categories/route.ts", import.meta.url), "utf8"),
@@ -28,7 +29,7 @@ test("ships the private menu and chef workflow", async () => {
     "朋友点菜", "阿德小厨房", "想吃什么", "主厨工作台", "接单信息汇总", "把点单编成正式宴席菜单",
     "订单和采购提醒", "制作执行台", "合并备菜清单", "倒排烹饪顺序", "单菜计时器", "库存不足提醒",
     "等待通知的饭局", "菜单管理", "菜品类型（可自定义）", "点菜端 slogan", "千问再生成", "家中库存",
-    "智能菜谱录入", "生成一场专属饭局", "饭后留一页", "温馨家宴", "二人世界", "Fine Dining",
+    "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "生成一场专属饭局", "饭后留一页", "温馨家宴", "二人世界", "Fine Dining",
     "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐",
   ]) assert.match(page, new RegExp(phrase));
   assert.match(page, /从本地上传照片/);
@@ -63,6 +64,14 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(importRoute, /process\.env\.OPENAI_BASE_URL/);
   assert.match(importRoute, /process\.env\.OPENAI_MODEL/);
   assert.match(importRoute, /process\.env\.OPENAI_API_KEY/);
+  assert.match(bulkImportRoute, /chefApiGuard/);
+  assert.match(bulkImportRoute, /sqlite\.backup/);
+  assert.match(bulkImportRoute, /sqlite\.transaction/);
+  assert.match(bulkImportRoute, /fingerprint !== parsed\.fingerprint/);
+  assert.match(bulkImportRoute, /import-backups/);
+  assert.match(bulkImportRoute, /UPDATE custom_dishes SET/);
+  assert.match(page, /\/api\/recipe-bulk-import/);
+  assert.match(globalStyles, /\.bulk-import-preview/);
   assert.match(importRoute, /rotations/);
   assert.match(page, /rotateRecipeScreenshot/);
   assert.match(page, /managed-recipe-details/);
