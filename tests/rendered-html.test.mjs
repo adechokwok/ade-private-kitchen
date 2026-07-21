@@ -20,6 +20,9 @@ test("ships the private menu and chef workflow", async () => {
   for (const phrase of ["朋友点菜", "阿德小厨房", "想吃什么", "今天也要被好好招待", "点菜不用客气", "主厨保证书", "主厨工作台", "采购清单", "菜单管理", "菜品类型（可自定义）", "家中库存", "智能菜谱录入", "宴席菜单编排器", "生成一场专属饭局", "饭后留一页"]) assert.match(page, new RegExp(phrase));
   assert.match(page, /从本地上传照片/);
   assert.match(page, /window\.print/);
+  assert.match(page, /function createClientRowId/);
+  assert.match(page, /getRandomValues/);
+  assert.doesNotMatch(page, /rowId: crypto\.randomUUID\(\)/);
   assert.match(page, /\/api\/auth\/logout/);
   assert.match(ordersRoute, /export async function POST/);
   assert.match(ordersRoute, /export async function PATCH/);
