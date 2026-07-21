@@ -19,5 +19,5 @@ export async function GET(_request: Request, context: { params: Promise<{ token:
     const [journalRow] = await getDb().select().from(dinnerJournals).where(eq(dinnerJournals.inviteId, order.inviteId)).limit(1);
     if (journalRow) journal = { ...journalRow, imageUrls: parseList(journalRow.imageUrls) };
   }
-  return Response.json({ order: { customerName: order.customerName, mealDate: order.mealDate, guestCount: order.guestCount, dishes: parseList(order.dishes), dishSnapshot: parseList(order.dishSnapshot), status: order.status, progressNote: order.progressNote, createdAt: order.createdAt }, invite, journal });
+  return Response.json({ order: { customerName: order.customerName, mealDate: order.mealDate, guestCount: order.guestCount, dishes: parseList(order.dishes), dishSnapshot: parseList(order.dishSnapshot), status: order.status, progressNote: order.progressNote, statusUpdatedAt: order.statusUpdatedAt, createdAt: order.createdAt }, invite, journal });
 }

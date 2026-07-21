@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the private menu and chef workflow", async () => {
-  const [page, ordersRoute, dishRoute, imageRoute, importRoute, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, journalRoute] = await Promise.all([
+  const [page, ordersRoute, dishRoute, imageRoute, importRoute, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/orders/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/dishes/route.ts", import.meta.url), "utf8"),
@@ -14,6 +14,7 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../app/api/pantry/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/invites/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/order-status/[token]/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/order/[token]/status-client.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/journals/route.ts", import.meta.url), "utf8"),
   ]);
 
@@ -23,6 +24,12 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /function createClientRowId/);
   assert.match(page, /getRandomValues/);
   assert.doesNotMatch(page, /rowId: crypto\.randomUUID\(\)/);
+  assert.doesNotMatch(page, /event\.currentTarget\.reset\(\)/);
+  assert.match(page, /const formElement = event\.currentTarget/);
+  assert.match(page, /order-success-dialog/);
+  assert.match(page, /quantity-stepper/);
+  assert.match(page, /archivedOrders/);
+  assert.match(page, /通知开饭 · 强提醒/);
   assert.match(page, /\/api\/auth\/logout/);
   assert.match(ordersRoute, /export async function POST/);
   assert.match(ordersRoute, /export async function PATCH/);
@@ -36,6 +43,12 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(pantryRoute, /pantryItems/);
   assert.match(inviteRoute, /recommendedDishIds/);
   assert.match(orderStatusRoute, /progressNote/);
+  assert.match(ordersRoute, /statusUpdatedAt/);
+  assert.match(statusClient, /status-update-modal/);
+  assert.match(statusClient, /localStorage/);
+  assert.match(statusClient, /setTimeout\(\(\) => void load\(\), 0\)/);
+  assert.match(statusClient, /setInterval\(\(\) => void load\(\), 15000\)/);
+  assert.match(statusClient, /每 15 秒自动更新/);
   assert.match(journalRoute, /dinner-journals/);
   assert.doesNotMatch(page, /codex-preview|SkeletonPreview/);
 });

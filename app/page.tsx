@@ -18,6 +18,7 @@ type Order = {
   inviteId: string;
   guestToken: string;
   progressNote: string;
+  statusUpdatedAt: string;
   status: "new" | "confirmed" | "shopping" | "preparing" | "done" | "cancelled";
   createdAt: string;
 };
@@ -72,6 +73,7 @@ const banquetTemplates: Array<{ id: BanquetTemplate; name: string; occasion: str
 ];
 
 const statusLabel = { new: "待确认", confirmed: "已确认", shopping: "买菜中", preparing: "制作中", done: "已完成", cancelled: "已取消" };
+const isArchivedOrder = (order: Order) => order.status === "done" || order.status === "cancelled";
 const categoryEmoji: Record<string, string> = {
   全部: "✦", 家常热炒: "🍳", 江浙风味: "🌿", 川湘小馆: "🌶", 汤羹主食: "🥣", 海鲜: "🦐", 家常菜: "🥢",
 };
@@ -164,6 +166,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [activeInvite, setActiveInvite] = useState<DinnerInvite | null>(null);
   const [inviteLoading, setInviteLoading] = useState(Boolean(initialInviteToken));
   const [orderProgressUrl, setOrderProgressUrl] = useState("");
+  const [orderSuccessOpen, setOrderSuccessOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [banquetTemplate, setBanquetTemplate] = useState<BanquetTemplate>("home");
   const [banquetOrderId, setBanquetOrderId] = useState("");
   const [banquetItems, setBanquetItems] = useState<BanquetItem[]>([]);
@@ -188,6 +192,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     .map((dish) => ({ ...dish, quantity: cart[dish.id] }));
   const activeBanquetTemplate = banquetTemplates.find((template) => template.id === banquetTemplate) || banquetTemplates[0];
   const selectedBanquetOrder = orders.find((order) => order.id === banquetOrderId);
+  const activeOrders = orders.filter((order) => !isArchivedOrder(order));
+  const archivedOrders = orders.filter(isArchivedOrder);
 
   const courseForDish = (dish?: Dish): BanquetCourse => {
     const text = `${dish?.name || ""}${dish?.category || ""}`;
@@ -371,7 +377,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const shoppingList = useMemo(() => {
     const totals = new Map<string, { itemKey: string; name: string; amount: number; unit: string; type: string; location: string; stockUsed: number }>();
-    orders.filter((order) => order.status !== "done").forEach((order) => {
+    activeOrders.forEach((order) => {
       const snapshots = parseDishSnapshot(order);
       parseItems(order).forEach((item) => {
         const snapshot = snapshots.find((candidate) => candidate.dishId === item.dishId);
@@ -398,7 +404,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       const stockUsed = Math.min(item.amount, stocked);
       return { ...item, stockUsed, amount: Math.max(0, item.amount - stockUsed) };
     }).filter((item) => item.amount > 0.01).sort((a, b) => a.location.localeCompare(b.location, "zh-CN") || a.type.localeCompare(b.type, "zh-CN"));
-  }, [orders, dishCatalog, pantryItems]);
+  }, [activeOrders, dishCatalog, pantryItems]);
 
   const setShoppingChecked = async (itemKey: string, checked: boolean) => {
     setShoppingChecks((current) => ({ ...current, [itemKey]: checked }));
@@ -446,12 +452,13 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const submitPantryItem = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const response = await fetch("/api/pantry", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.fromEntries(form)) });
     const data = await response.json() as { item?: PantryItem; error?: string };
     if (!response.ok || !data.item) return setNotice(data.error || "库存保存失败");
     setPantryItems((current) => [...current, data.item!]);
-    event.currentTarget.reset();
+    formElement.reset();
     setNotice(`已记住家里有${data.item.name}`);
   };
 
@@ -463,12 +470,13 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const addCategory = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const response = await fetch("/api/categories", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: form.get("name") }) });
     const data = await response.json() as { category?: MenuCategory; error?: string };
     if (!response.ok || !data.category) return setNotice(data.error || "分类添加失败");
     setManagedCategories((current) => current.some((item) => item.id === data.category!.id) ? current : [...current, data.category!]);
-    event.currentTarget.reset();
+    formElement.reset();
   };
 
   const changeCategory = async (category: MenuCategory, mode: "rename" | "merge") => {
@@ -489,8 +497,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const submitOrder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setSubmitting(true);
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     try {
       const response = await fetch("/api/orders", {
         method: "POST",
@@ -509,9 +518,12 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       setCart({});
       setCheckoutOpen(false);
       setCartOpen(false);
-      if (data.guestToken) setOrderProgressUrl(`/order/${data.guestToken}`);
+      if (data.guestToken) {
+        setOrderProgressUrl(`/order/${data.guestToken}`);
+        setOrderSuccessOpen(true);
+      }
       setNotice("点菜成功！厨房进度卡已经准备好 🍽️");
-      event.currentTarget.reset();
+      formElement.reset();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "提交失败，请再试一次");
     } finally {
@@ -522,18 +534,46 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const updateOrderStatus = async (id: string, status: Order["status"]) => {
     try {
       const defaultNotes: Partial<Record<Order["status"], string>> = { confirmed: "饭局确认好啦，我会按时准备。", shopping: "正在挑新鲜食材，等你带着好胃口来。", preparing: "厨房已经开火，香味正在慢慢冒出来。", done: "开饭啦，愿今晚吃得开心。" };
-      const progressNote = window.prompt("给朋友留一句进度小话（可直接确认默认内容）", defaultNotes[status] || "") ?? "";
+      if (status === "done" && !window.confirm("确认通知开饭？朋友的进度页会弹出全屏强提醒，订单随后自动归档。")) return;
+      const suggestedNote = defaultNotes[status] || (status === "cancelled" ? "这场饭局先暂停，等我们下次再好好约。" : "");
+      const promptResult = window.prompt(status === "done" ? "填写开饭强提醒内容（可直接确认默认内容）" : "填写朋友端弹窗提醒内容（可直接确认默认内容）", suggestedNote);
+      if (promptResult === null) return;
+      const progressNote = promptResult.trim() || suggestedNote;
       const response = await fetch("/api/orders", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id, status, progressNote }),
       });
-      if (!response.ok) throw new Error("更新失败");
-      setOrders((current) => current.map((order) => order.id === id ? { ...order, status, progressNote } : order));
+      const data = await response.json() as { order?: Order; error?: string };
+      if (!response.ok || !data.order) throw new Error(data.error || "更新失败");
+      setOrders((current) => current.map((order) => order.id === id ? data.order! : order));
+      if (status === "done") setNotice("开饭强提醒已发出，订单已自动归档");
+      else if (status === "cancelled") setNotice("取消通知已发出，订单已归档");
+      else setNotice("进度已更新，朋友端会弹窗提醒");
     } catch {
       setNotice("状态更新失败，请稍后重试");
     }
   };
+
+  const renderOrderCard = (order: Order, archived = false) => (
+    <article className={`order-card${archived ? " archived" : ""}`} key={order.id}>
+      <div className="order-top"><div><strong>{order.customerName}</strong><span>#{order.id.slice(-6).toUpperCase()}</span></div><em className={`status ${order.status}`}>{statusLabel[order.status]}</em></div>
+      <div className="order-facts"><span>📅 {order.mealDate}</span><span>👥 {order.guestCount} 人</span></div>
+      <div className="ordered-dishes">
+        {parseItems(order).map((item) => <div key={item.dishId}><span>{parseDishSnapshot(order).find((dish) => dish.dishId === item.dishId)?.name || dishCatalog.find((dish) => dish.id === item.dishId)?.name || "历史菜品"}</span><strong>× {item.quantity}</strong></div>)}
+      </div>
+      {order.note && <p className="order-note">“{order.note}”</p>}
+      {order.progressNote && <p className="order-progress-note"><span>最近通知</span>{order.progressNote}</p>}
+      <div className="status-actions">
+        {!archived && order.status === "new" && <button onClick={() => updateOrderStatus(order.id, "confirmed")}>确认接单</button>}
+        {!archived && order.status === "confirmed" && <button onClick={() => updateOrderStatus(order.id, "shopping")}>开始买菜</button>}
+        {!archived && order.status === "shopping" && <button onClick={() => updateOrderStatus(order.id, "preparing")}>开始制作</button>}
+        {!archived && order.status === "preparing" && <button className="ready-alert" onClick={() => updateOrderStatus(order.id, "done")}><span aria-hidden="true">🔔</span> 通知开饭 · 强提醒</button>}
+        {archived && <button className="quiet" onClick={() => updateOrderStatus(order.id, "confirmed")}>重新打开订单</button>}
+        {!archived && <button className="quiet" onClick={() => updateOrderStatus(order.id, "cancelled")}>取消饭局</button>}
+      </div>
+    </article>
+  );
 
   const updateIngredient = (rowId: string, field: keyof Ingredient, value: string) => {
     setIngredientRows((current) => current.map((row) => row.rowId === rowId
@@ -637,8 +677,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const submitDish = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setDishSubmitting(true);
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     form.set("ingredients", JSON.stringify(ingredientRows.map(({ name, amount, unit, type }) => ({ name, amount, unit, type }))));
     if (!form.get("substitutions")) form.set("substitutions", JSON.stringify(recipeDraft?.substitutions || editingDish?.substitutions || []));
     if (editingDish) form.set("id", editingDish.id);
@@ -649,7 +690,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       setCustomDishes((current) => editingDish
         ? current.map((dish) => dish.id === data.dish!.id ? data.dish! : dish)
         : [data.dish!, ...current]);
-      event.currentTarget.reset();
+      formElement.reset();
       if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
       setImagePreview("");
       setIngredientRows([newIngredientRow()]);
@@ -673,14 +714,15 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const createInvite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const dishIds = form.getAll("dishIds").map(String);
     const recommendedDishIds = form.getAll("recommendedDishIds").map(String);
     const response = await fetch("/api/invites", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: form.get("title"), message: form.get("message"), mealDate: form.get("mealDate"), theme: form.get("theme"), dishIds, recommendedDishIds }) });
     const data = await response.json() as { invite?: DinnerInvite; error?: string };
     if (!response.ok || !data.invite) return setNotice(data.error || "邀请创建失败");
     setInvites((current) => [data.invite!, ...current]);
-    event.currentTarget.reset();
+    formElement.reset();
     setNotice("专属邀请已生成，可以发给朋友了");
   };
 
@@ -828,9 +870,12 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                       <div className="dish-quip">{dishQuips[dish.id] || ["这道很适合一起分享", "今天吃点认真做的", "一口下去，很有家的感觉"][index % 3]}</div>
                       <p>{dish.description}</p>
                       {dish.dietary && dish.dietary.length > 0 && <div className="dish-safety-tags">{dish.dietary.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}
-                      <div className="quantity-control">
-                        {quantity > 0 && <><button onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong></>}
-                        <button disabled={dish.soldOut} className={quantity ? "add filled" : "add"} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? <span>下次再约</span> : quantity ? "+" : <><span>想吃这道</span><b>＋</b></>}</button>
+                      <div className={quantity ? "quantity-control has-quantity" : "quantity-control"}>
+                        {quantity > 0 ? <div className="quantity-stepper" aria-label={`${dish.name}已选 ${quantity} 份`}>
+                          <button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}><span className="control-mark minus" aria-hidden="true" /></button>
+                          <strong><small>已选</small>{quantity} 份</strong>
+                          <button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}><span className="control-mark plus" aria-hidden="true" /></button>
+                        </div> : <button type="button" disabled={dish.soldOut} className="add" onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? <span>下次再约</span> : <><span>想吃这道</span><b className="plus-mark" aria-hidden="true" /></>}</button>}
                       </div>
                     </div>
                   </article>
@@ -849,7 +894,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
           {cartCount > 0 && (
             <button className="floating-cart" onClick={() => setCartOpen(true)}>
-              <span className="cart-icon">{cartCount}</span><span><small>这顿有着落了</small><strong>已选 {cartCount} 道菜</strong></span><b>去确认菜单 <i>→</i></b>
+              <span className="cart-icon">{cartCount}</span><span><small>这顿有着落了</small><strong>{cartItems.length} 道菜 · 共 {cartCount} 份</strong></span><b>去确认菜单 <i>→</i></b>
             </button>
           )}
         </>
@@ -870,35 +915,16 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             <>
               <div className="stats-row">
                 <div><small>新订单</small><strong>{orders.filter((o) => o.status === "new").length}</strong><span>待确认</span></div>
-                <div><small>待准备菜品</small><strong>{orders.filter((o) => o.status !== "done").reduce((sum, o) => sum + parseItems(o).reduce((s, i) => s + i.quantity, 0), 0)}</strong><span>份</span></div>
+                <div><small>待准备菜品</small><strong>{activeOrders.reduce((sum, o) => sum + parseItems(o).reduce((s, i) => s + i.quantity, 0), 0)}</strong><span>份</span></div>
                 <div><small>采购项目</small><strong>{shoppingList.length}</strong><span>种食材</span></div>
               </div>
 
               <div className="chef-grid">
                 <div className="orders-panel panel">
-                  <div className="panel-title"><div><span>订单</span><h2>朋友们点了什么</h2></div><small>{orders.length} 个订单</small></div>
-                  {loadingOrders && orders.length === 0 ? <div className="empty">正在端上订单…</div> : orders.length === 0 ? <div className="empty"><span>🍽️</span><strong>还没有人点菜</strong><p>把页面发给朋友，第一份菜单就会出现在这里。</p></div> : (
-                    <div className="order-list">
-                      {orders.map((order) => (
-                        <article className="order-card" key={order.id}>
-                          <div className="order-top"><div><strong>{order.customerName}</strong><span>#{order.id.slice(-6).toUpperCase()}</span></div><em className={`status ${order.status}`}>{statusLabel[order.status]}</em></div>
-                          <div className="order-facts"><span>📅 {order.mealDate}</span><span>👥 {order.guestCount} 人</span></div>
-                          <div className="ordered-dishes">
-                            {parseItems(order).map((item) => <div key={item.dishId}><span>{parseDishSnapshot(order).find((dish) => dish.dishId === item.dishId)?.name || dishCatalog.find((dish) => dish.id === item.dishId)?.name || "历史菜品"}</span><strong>× {item.quantity}</strong></div>)}
-                          </div>
-                          {order.note && <p className="order-note">“{order.note}”</p>}
-                          <div className="status-actions">
-                            {order.status === "new" && <button onClick={() => updateOrderStatus(order.id, "confirmed")}>确认接单</button>}
-                            {order.status === "confirmed" && <button onClick={() => updateOrderStatus(order.id, "shopping")}>开始买菜</button>}
-                            {order.status === "shopping" && <button onClick={() => updateOrderStatus(order.id, "preparing")}>开始制作</button>}
-                            {order.status === "preparing" && <button onClick={() => updateOrderStatus(order.id, "done")}>通知开饭</button>}
-                            {order.status === "done" && <button className="quiet" onClick={() => updateOrderStatus(order.id, "confirmed")}>重新打开</button>}
-                            {order.status !== "done" && order.status !== "cancelled" && <button className="quiet" onClick={() => updateOrderStatus(order.id, "cancelled")}>取消饭局</button>}
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  )}
+                  <div className="panel-title"><div><span>进行中订单</span><h2>朋友们点了什么</h2></div><small>{activeOrders.length} 个进行中</small></div>
+                  <div className="order-update-tip"><span aria-hidden="true">🔔</span><p><strong>进度更新会强提醒</strong>每次确认、买菜、制作或开饭，朋友端都会弹窗一次。</p></div>
+                  {loadingOrders && orders.length === 0 ? <div className="empty">正在端上订单…</div> : activeOrders.length === 0 ? <div className="empty compact"><span>🍽️</span><strong>当前没有进行中的订单</strong><p>{archivedOrders.length ? "已完成的饭局都收进下方归档。" : "把页面发给朋友，第一份菜单就会出现在这里。"}</p></div> : <div className="order-list">{activeOrders.map((order) => renderOrderCard(order))}</div>}
+                  {archivedOrders.length > 0 && <section className="order-archive"><button type="button" className="order-archive-toggle" onClick={() => setArchiveOpen((value) => !value)} aria-expanded={archiveOpen}><span><b>订单归档</b><small>已完成和已取消的历史饭局</small></span><strong>{archivedOrders.length} 份 {archiveOpen ? "收起 ↑" : "查看 ↓"}</strong></button>{archiveOpen && <div className="order-list archived-list">{archivedOrders.map((order) => renderOrderCard(order, true))}</div>}</section>}
                 </div>
 
                 <aside className="shopping-panel panel">
@@ -1118,7 +1144,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
           <aside className="cart-drawer" role="dialog" aria-modal="true" aria-label="已选菜单">
             <button className="close" onClick={() => setCartOpen(false)} aria-label="关闭">×</button>
             <span className="eyebrow">YOUR HAPPY LITTLE MENU</span><h2>这顿想吃这些</h2>
-            <div className="cart-lines">{cartItems.map((item) => <div key={item.id}><span className="mini-emoji">{item.imageUrl ? <img src={item.imageUrl} alt="" /> : item.emoji}</span><span><strong>{item.name}</strong></span><div><button onClick={() => updateQuantity(item.id, -1)}>−</button><b>{item.quantity}</b><button onClick={() => updateQuantity(item.id, 1)}>+</button></div></div>)}</div>
+            <div className="cart-lines">{cartItems.map((item) => <div key={item.id}><span className="mini-emoji">{item.imageUrl ? <img src={item.imageUrl} alt="" /> : item.emoji}</span><span><strong>{item.name}</strong></span><div><button type="button" onClick={() => updateQuantity(item.id, -1)} aria-label={`减少${item.name}`}><span className="control-mark minus" aria-hidden="true" /></button><b>{item.quantity}</b><button type="button" onClick={() => updateQuantity(item.id, 1)} aria-label={`增加${item.name}`}><span className="control-mark plus" aria-hidden="true" /></button></div></div>)}</div>
             <p className="cart-hint">眼光不错呀。提交后我会和你确认时间，再认真去买菜。</p>
             <button className="primary-button" onClick={() => setCheckoutOpen(true)}>把这顿饭约起来 <span>→</span></button>
           </aside>
@@ -1133,8 +1159,22 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             <label><span>你的称呼</span><input name="customerName" required maxLength={30} placeholder="例如：小林" /></label>
             <div className="form-row"><label><span>想哪天吃</span><input name="mealDate" type="date" min={today} defaultValue={activeInvite?.mealDate || today} readOnly={Boolean(activeInvite)} required /></label><label><span>几个人</span><input name="guestCount" type="number" min="1" max="20" defaultValue="2" required /></label></div>
             <label><span>口味或忌口</span><textarea name="note" maxLength={200} placeholder="例如：少辣、不吃香菜，或者任何想说的话…" /></label>
-            <button className="primary-button" disabled={submitting}>{submitting ? "正在提交…" : `确认点菜 · ${cartCount} 道`}<span>→</span></button>
+            <button className="primary-button" disabled={submitting}>{submitting ? "正在提交…" : `确认点菜 · ${cartItems.length} 道 / ${cartCount} 份`}<span>→</span></button>
           </form>
+        </div>
+      )}
+
+      {orderSuccessOpen && orderProgressUrl && (
+        <div className="overlay checkout-overlay">
+          <section className="checkout-card order-success-dialog" role="dialog" aria-modal="true" aria-label="点菜成功">
+            <button type="button" className="close" onClick={() => setOrderSuccessOpen(false)} aria-label="关闭">×</button>
+            <div className="order-success-mark" aria-hidden="true">✓</div>
+            <span className="eyebrow">ORDER RECEIVED</span>
+            <h2>点单已经送进厨房</h2>
+            <p>进度卡会自动更新主厨确认、买菜和开火状态。建议现在打开，并把页面留在微信里。</p>
+            <a className="primary-button" href={orderProgressUrl}>查看实时厨房进度 <span>→</span></a>
+            <button type="button" className="order-success-secondary" onClick={() => setOrderSuccessOpen(false)}>继续看看菜单</button>
+          </section>
         </div>
       )}
 
