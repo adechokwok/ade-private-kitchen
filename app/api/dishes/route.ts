@@ -46,6 +46,17 @@ function safeNetworkImageUrl(value: string) {
   }
 }
 
+function normalizeImagePosition(value: FormDataEntryValue | null, fallback = "center") {
+  const candidate = String(value || "").trim();
+  if (["top", "center", "bottom"].includes(candidate)) return candidate;
+  const match = candidate.match(/^(\d{1,3}(?:\.\d+)?):(\d{1,3}(?:\.\d+)?):(1(?:\.\d+)?|0?\.\d+)$/);
+  if (!match) return fallback;
+  const x = Math.min(100, Math.max(0, Number(match[1])));
+  const y = Math.min(100, Math.max(0, Number(match[2])));
+  const zoom = Math.min(1.8, Math.max(1, Number(match[3])));
+  return `${Math.round(x)}:${Math.round(y)}:${zoom.toFixed(2)}`;
+}
+
 function tagList(value: FormDataEntryValue | null) {
   return String(value || "").split(/[,，、]/).map((item) => item.trim().slice(0, 20)).filter(Boolean).slice(0, 12);
 }
@@ -59,6 +70,7 @@ function presentDish(row: typeof customDishes.$inferSelect) {
     name: row.name,
     category: row.category,
     description: row.description,
+    slogan: row.slogan,
     flavor: row.flavor,
     minutes: row.minutes,
     baseServings: row.baseServings,
@@ -93,7 +105,7 @@ export async function GET(request: Request) {
     const fullAccess = isChefRequest(request);
     const presented = rows.map(presentDish);
     return Response.json({ dishes: fullAccess ? presented : presented.filter((dish) => dish.active && dish.available).map((dish) => ({
-      id: dish.id, name: dish.name, category: dish.category, description: dish.description,
+      id: dish.id, name: dish.name, category: dish.category, description: dish.description, slogan: dish.slogan,
       imageUrl: dish.imageUrl, imagePosition: dish.imagePosition, gallery: dish.gallery, active: dish.active, isCustom: true, emoji: dish.emoji, tone: dish.tone,
       flavor: "", minutes: 0, baseServings: 4, ingredients: [], steps: [], source: "",
       featured: dish.featured, available: dish.available, soldOut: dish.soldOut, seasons: [], occasions: [], dietary: dish.dietary, sortOrder: dish.sortOrder,
@@ -111,6 +123,7 @@ export async function POST(request: Request) {
     const name = String(form.get("name") || "").trim().slice(0, 40);
     const category = String(form.get("category") || "").trim().slice(0, 30);
     const description = String(form.get("description") || "").trim().slice(0, 180);
+    const slogan = String(form.get("slogan") || "").trim().slice(0, 60);
     const flavor = String(form.get("flavor") || "家常风味").trim().slice(0, 30);
     const minutes = Number(form.get("minutes"));
     const baseServings = Number(form.get("baseServings") || 4);
@@ -128,7 +141,7 @@ export async function POST(request: Request) {
     const substitutions = String(form.get("substitutions") || "[]");
     const imageFile = form.get("image");
     const galleryFiles = form.getAll("galleryImages").filter((value): value is File => value instanceof File && value.size > 0).slice(0, 4);
-    const imagePosition = ["top", "center", "bottom"].includes(String(form.get("imagePosition"))) ? String(form.get("imagePosition")) : "center";
+    const imagePosition = normalizeImagePosition(form.get("imagePosition"));
     let imageUrl = safeNetworkImageUrl(String(form.get("imageUrl") || ""));
 
     if (!name) return Response.json({ error: "请填写菜名" }, { status: 400 });
@@ -155,7 +168,7 @@ export async function POST(request: Request) {
 
     await ensureMenuLibrary();
     const [dish] = await getDb().insert(customDishes).values({
-      id, name, category, description, flavor, minutes, baseServings, imageUrl, imagePosition, gallery: JSON.stringify(gallery),
+      id, name, category, description, slogan, flavor, minutes, baseServings, imageUrl, imagePosition, gallery: JSON.stringify(gallery),
       ingredients: JSON.stringify(ingredients), steps: JSON.stringify(steps), source, active: 1,
       featured: featured ? 1 : 0, available: available ? 1 : 0, soldOut: soldOut ? 1 : 0,
       seasons: JSON.stringify(seasons), occasions: JSON.stringify(occasions), dietary: JSON.stringify(dietary),
@@ -179,6 +192,7 @@ export async function PUT(request: Request) {
     const name = String(form.get("name") || "").trim().slice(0, 40);
     const category = String(form.get("category") || "").trim().slice(0, 30);
     const description = String(form.get("description") || "").trim().slice(0, 180);
+    const slogan = String(form.get("slogan") || "").trim().slice(0, 60);
     const flavor = String(form.get("flavor") || "家常风味").trim().slice(0, 30);
     const minutes = Number(form.get("minutes"));
     const baseServings = Number(form.get("baseServings") || 4);
@@ -196,7 +210,7 @@ export async function PUT(request: Request) {
     const substitutions = String(form.get("substitutions") || "[]");
     const imageFile = form.get("image");
     const galleryFiles = form.getAll("galleryImages").filter((value): value is File => value instanceof File && value.size > 0).slice(0, 4);
-    const imagePosition = ["top", "center", "bottom"].includes(String(form.get("imagePosition"))) ? String(form.get("imagePosition")) : existing.imagePosition;
+    const imagePosition = normalizeImagePosition(form.get("imagePosition"), existing.imagePosition);
     const networkImage = safeNetworkImageUrl(String(form.get("imageUrl") || ""));
     let imageUrl = networkImage || existing.imageUrl;
     let gallery = (() => { try { return JSON.parse(existing.gallery) as string[]; } catch { return []; } })();
@@ -225,7 +239,7 @@ export async function PUT(request: Request) {
     }
 
     const [dish] = await getDb().update(customDishes).set({
-      name, category, description, flavor, minutes, baseServings, imageUrl, imagePosition, gallery: JSON.stringify(gallery),
+      name, category, description, slogan, flavor, minutes, baseServings, imageUrl, imagePosition, gallery: JSON.stringify(gallery),
       ingredients: JSON.stringify(ingredients), steps: JSON.stringify(steps), source,
       featured: featured ? 1 : 0, available: available ? 1 : 0, soldOut: soldOut ? 1 : 0,
       seasons: JSON.stringify(seasons), occasions: JSON.stringify(occasions), dietary: JSON.stringify(dietary),
@@ -273,13 +287,15 @@ export async function DELETE(request: Request) {
     const orderRows = await getDb().select().from(orders);
     for (const order of orderRows) {
       let items: Array<{ dishId: string }> = [];
-      let snapshots: Array<{ dishId: string; name: string; baseServings: number; ingredients: unknown[] }> = [];
+      let snapshots: Array<{ dishId: string; name: string; baseServings: number; ingredients: unknown[]; steps?: string[]; minutes?: number; recipeSummary?: string; source?: string; difficulty?: string }> = [];
       try { items = JSON.parse(order.dishes); } catch { /* 忽略损坏的旧记录 */ }
       try { snapshots = JSON.parse(order.dishSnapshot); } catch { /* 从空快照补齐 */ }
       if (items.some((item) => item.dishId === id) && !snapshots.some((item) => item.dishId === id)) {
         let ingredients: unknown[] = [];
         try { ingredients = JSON.parse(existing.ingredients); } catch { /* 保留空配方 */ }
-        snapshots.push({ dishId: id, name: existing.name, baseServings: existing.baseServings || 4, ingredients });
+        let steps: string[] = [];
+        try { steps = JSON.parse(existing.steps); } catch { /* 保留空步骤 */ }
+        snapshots.push({ dishId: id, name: existing.name, baseServings: existing.baseServings || 4, ingredients, steps, minutes: existing.minutes, recipeSummary: existing.recipeSummary, source: existing.source, difficulty: existing.difficulty });
         await getDb().update(orders).set({ dishSnapshot: JSON.stringify(snapshots) }).where(eq(orders.id, order.id));
       }
     }

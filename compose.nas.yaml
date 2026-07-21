@@ -15,7 +15,9 @@ services:
       CHEF_PASSWORD: "${CHEF_PASSWORD:?请在 .env 中设置至少 10 位的主厨密码}"
       SESSION_SECRET: "${SESSION_SECRET:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-      OPENAI_RECIPE_MODEL: "${OPENAI_RECIPE_MODEL:-gpt-5.4-mini}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-qwen3-vl-plus}"
+      OPENAI_RECIPE_MODEL: "${OPENAI_RECIPE_MODEL:-}"
       PUID: "${PUID:-1000}"
       PGID: "${PGID:-1000}"
     volumes:

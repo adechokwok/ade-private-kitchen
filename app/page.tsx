@@ -1,12 +1,13 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { categories, dishes, type Dish, type Ingredient } from "./menu";
 
 type Cart = Record<string, number>;
 type OrderItem = { dishId: string; quantity: number };
-type DishSnapshot = { dishId: string; name: string; baseServings: number; ingredients: Ingredient[] };
+type DishSnapshot = { dishId: string; name: string; baseServings: number; ingredients: Ingredient[]; steps?: string[]; minutes?: number; recipeSummary?: string; source?: string; difficulty?: string };
 type Order = {
   id: string;
   customerName: string;
@@ -30,6 +31,7 @@ type RecipeDraft = {
   name: string;
   category: string;
   description: string;
+  slogan: string;
   flavor: string;
   minutes: number;
   baseServings?: number;
@@ -51,10 +53,12 @@ type RecipeDraft = {
 };
 type DinnerInvite = { id: string; token: string; title: string; message: string; mealDate: string; theme: "warm" | "romance" | "fine" | "festival"; dishIds: string[]; recommendedDishIds: string[]; active: boolean; createdAt: string };
 type DinnerJournal = { id: string; inviteId: string; title: string; note: string; imageUrls: string[]; createdAt: string };
-type RecipeScreenshot = { file: File; preview: string };
+type RecipeScreenshot = { id: string; file: File; preview: string; rotation: 0 | 90 | 180 | 270 };
+type ImageCrop = { x: number; y: number; zoom: number };
 type BanquetCourse = "starter" | "main" | "staple" | "soup";
 type BanquetItem = { dishId: string; course: BanquetCourse };
-type BanquetTemplate = "home" | "romance" | "fine" | "spring" | "midautumn" | "birthday";
+type BanquetTemplate = "home" | "romance" | "fine" | "spring" | "midautumn" | "birthday" | "housewarming" | "summer" | "christmas" | "brunch";
+type ChefView = "accepting" | "shopping" | "cooking" | "serving" | "menuManager" | "invitations";
 
 const banquetCourses: Array<{ id: BanquetCourse; label: string; english: string }> = [
   { id: "starter", label: "å¼€èƒƒå‰èœ", english: "APPETIZER" },
@@ -63,31 +67,26 @@ const banquetCourses: Array<{ id: BanquetCourse; label: string; english: string 
   { id: "soup", label: "æ±¤é¥®ç”œå“", english: "SOUP & DESSERT" },
 ];
 
-const banquetTemplates: Array<{ id: BanquetTemplate; name: string; occasion: string; subtitle: string; mark: string }> = [
-  { id: "home", name: "æ¸©é¦¨å®¶å®´", occasion: "äº²å‹å°èš", subtitle: "ä¸€æ¡Œå®¶å¸¸å‘³ï¼Œéƒ½æ˜¯æƒ¦å¿µ", mark: "å®¶" },
-  { id: "romance", name: "äºŒäººä¸–ç•Œ", occasion: "çº¦ä¼š Â· çºªå¿µæ—¥", subtitle: "Tonight, just for us", mark: "â™¡" },
-  { id: "fine", name: "Fine Dining", occasion: "æ­£å¼æ™šå®´", subtitle: "A PRIVATE DINING EXPERIENCE", mark: "FD" },
-  { id: "spring", name: "æ–°æ˜¥å›¢åœ†", occasion: "æ˜¥èŠ‚ Â· é™¤å¤•", subtitle: "å²å²å¸¸æ¬¢æ„‰ï¼Œå¹´å¹´çš†èƒœæ„", mark: "æ˜¥" },
-  { id: "midautumn", name: "ä¸­ç§‹é›…å®´", occasion: "ä¸­ç§‹ Â· èµæœˆ", subtitle: "æ¸…é£æ˜æœˆï¼Œäººé—´å›¢åœ†", mark: "æœˆ" },
-  { id: "birthday", name: "ç”Ÿæ—¥åº†å…¸", occasion: "ç”Ÿæ—¥ Â· æ´¾å¯¹", subtitle: "æ„¿æ–°ä¸€å²ï¼Œä¸‡äº‹èƒœæ„", mark: "â˜…" },
+const banquetTemplates: Array<{ id: BanquetTemplate; name: string; occasion: string; subtitle: string; mark: string; defaultTitle: string; defaultMessage: string }> = [
+  { id: "home", name: "æ¸©é¦¨å®¶å®´", occasion: "äº²å‹å°èš", subtitle: "ä¸€æ¡Œå®¶å¸¸å‘³ï¼Œéƒ½æ˜¯æƒ¦å¿µ", mark: "å®¶", defaultTitle: "ä»Šæ™šå®¶å®´", defaultMessage: "ä¸ºå–œæ¬¢çš„äººè®¤çœŸåšä¸€æ¡Œé¥­" },
+  { id: "romance", name: "äºŒäººä¸–ç•Œ", occasion: "çº¦ä¼š Â· çºªå¿µæ—¥", subtitle: "TONIGHT, JUST FOR US", mark: "â™¡", defaultTitle: "ä¸¤ä¸ªäººçš„æ™šé¤", defaultMessage: "æŠŠä»Šæ™šç•™ç»™å¥½èœï¼Œä¹Ÿç•™ç»™å½¼æ­¤" },
+  { id: "fine", name: "Fine Dining", occasion: "æ­£å¼æ™šå®´", subtitle: "A PRIVATE DINING EXPERIENCE", mark: "FD", defaultTitle: "ä¸»å¨ç§å®´", defaultMessage: "ä¸€é“ä¸€é“ï¼Œè®¤çœŸå‘ˆä¸Šä»Šæ™šçš„å¿ƒæ„" },
+  { id: "spring", name: "æ–°æ˜¥å›¢åœ†", occasion: "æ˜¥èŠ‚ Â· é™¤å¤•", subtitle: "å²å²å¸¸æ¬¢æ„‰ï¼Œå¹´å¹´çš†èƒœæ„", mark: "æ˜¥", defaultTitle: "æ–°æ˜¥å›¢åœ†å®´", defaultMessage: "å›´åä¸€æ¡Œï¼Œå…±å°æ–°å²å¥½å‘³" },
+  { id: "midautumn", name: "ä¸­ç§‹é›…å®´", occasion: "ä¸­ç§‹ Â· èµæœˆ", subtitle: "æ¸…é£æ˜æœˆï¼Œäººé—´å›¢åœ†", mark: "æœˆ", defaultTitle: "æœˆä¸‹å›¢åœ†å®´", defaultMessage: "æœˆæ»¡æ¯æ»¡ï¼Œæ„¿äººé•¿ä¹…" },
+  { id: "birthday", name: "ç”Ÿæ—¥çƒ›å…‰", occasion: "ç”Ÿæ—¥ Â· åº†ç¥", subtitle: "MAKE A WISH TONIGHT", mark: "â˜…", defaultTitle: "ç”Ÿæ—¥æ™šå®´", defaultMessage: "æ„¿æ–°ä¸€å²æœ‰å¥½å‘³ï¼Œä¹Ÿæœ‰æ›´å¤šå¥½äº‹å‘ç”Ÿ" },
+  { id: "housewarming", name: "ä¹”è¿æš–å±…", occasion: "æ–°å®¶ Â· æš–æˆ¿", subtitle: "NEW HOME, WARM TABLE", mark: "å®…", defaultTitle: "ä¹”è¿æš–å±…å®´", defaultMessage: "æ–°å±…æœ‰çƒŸç«ï¼Œå¾€åçš†æ˜¯å¥½æ—¥å­" },
+  { id: "summer", name: "å¤æ—¥æ™šé£", occasion: "éœ²å° Â· å°èš", subtitle: "A BREEZY SUMMER TABLE", mark: "å¤", defaultTitle: "å¤æ—¥æ™šé£å®´", defaultMessage: "è¶æ™šé£æ¸©æŸ”ï¼Œä¸€èµ·æ…¢æ…¢åƒé¥­" },
+  { id: "christmas", name: "å†¬æ—¥åœ£è¯", occasion: "åœ£è¯ Â· å†¬å¤œ", subtitle: "A COZY WINTER FEAST", mark: "âœ¦", defaultTitle: "å†¬æ—¥åœ£è¯å°å®´", defaultMessage: "ç¯ç«æ¸©æš–ï¼Œæ„¿ä»Šæ™šçš„å¿«ä¹å¦‚çº¦è€Œè‡³" },
+  { id: "brunch", name: "å‘¨æœ«æ—©åˆé¤", occasion: "å‘¨æœ« Â· Brunch", subtitle: "SLOW MORNING, GOOD FOOD", mark: "â˜€", defaultTitle: "å‘¨æœ«æ—©åˆé¤", defaultMessage: "ç¡åˆ°è‡ªç„¶é†’ï¼Œå†è®¤çœŸåƒä¸€é¡¿" },
 ];
 
 const statusLabel = { new: "å¾…ç¡®è®¤", confirmed: "å·²ç¡®è®¤", shopping: "ä¹°èœä¸­", preparing: "åˆ¶ä½œä¸­", done: "å·²å®Œæˆ", cancelled: "å·²å–æ¶ˆ" };
+const cookingStages: Array<{ id: Order["status"]; label: string }> = [{ id: "confirmed", label: "æ¥å•" }, { id: "shopping", label: "ä¹°èœ" }, { id: "preparing", label: "åˆ¶ä½œ" }, { id: "done", label: "å¼€é¥­" }];
+const statusProgressIndex: Record<Order["status"], number> = { new: -1, confirmed: 0, shopping: 1, preparing: 2, done: 3, cancelled: -1 };
 const isArchivedOrder = (order: Order) => order.status === "done" || order.status === "cancelled";
 const categoryEmoji: Record<string, string> = {
   å…¨éƒ¨: "âœ¦", å®¶å¸¸çƒ­ç‚’: "ğŸ³", æ±Ÿæµ™é£å‘³: "ğŸŒ¿", å·æ¹˜å°é¦†: "ğŸŒ¶", æ±¤ç¾¹ä¸»é£Ÿ: "ğŸ¥£", æµ·é²œ: "ğŸ¦", å®¶å¸¸èœ: "ğŸ¥¢",
 };
-const dishQuips: Record<string, string> = {
-  "cola-wings": "å¤§äººå°å­©éƒ½å¾ˆéš¾æ‹’ç»",
-  "tomato-beef": "æ±¤æ±è¯·åŠ¡å¿…ç•™ç»™ç±³é¥­",
-  "shrimp-eggs": "è½¯ä¹ä¹çš„ä¸€å£é²œ",
-  "dongpo-pork": "å€¼å¾—ä¸ºå®ƒå¤šæ·»åŠç¢—é¥­",
-  "mapo-tofu": "ä»Šæ™šæ¥ç‚¹çƒ­ä¹å¸¦åŠ²çš„",
-  "pepper-chicken": "éº»é¦™ä¸Šå¤´ï¼Œå¿«ä¹åŠ å€",
-  "lotus-soup": "å…ˆå–å£æ±¤ï¼Œæ…¢æ…¢åƒé¥­",
-  "scallion-noodles": "ç®€å•ï¼Œä½†ä¼šè®©äººæƒ³å¿µ",
-};
-
 function parseItems(order: Order): OrderItem[] {
   try {
     return JSON.parse(order.dishes) as OrderItem[];
@@ -103,6 +102,24 @@ function parseDishSnapshot(order: Order): DishSnapshot[] {
 function formatAmount(value: number, unit: string) {
   const rounded = Number.isInteger(value) ? value : Number(value.toFixed(1));
   return `${rounded}${unit}`;
+}
+
+function formatClockMinutes(value: number) {
+  const normalized = ((value % 1440) + 1440) % 1440;
+  return `${String(Math.floor(normalized / 60)).padStart(2, "0")}:${String(normalized % 60).padStart(2, "0")}`;
+}
+
+function formatCountdown(milliseconds: number) {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function prepActionForIngredient(type: string, name: string) {
+  if (type === "ç”Ÿé²œ") return /è‚‰|é¸¡|é¸­|ç‰›|ç¾Š|æ’éª¨/.test(name) ? "åˆ†åˆ‡ / è…Œåˆ¶" : "æ¸…æ´— / æ²¥å¹²";
+  if (type === "è”¬èœ") return /è‘±|å§œ|è’œ|æ¤’/.test(name) ? "æ¸…æ´— / åˆ‡é…" : "æ¸…æ´— / æ”¹åˆ€";
+  if (type === "è°ƒæ–™") return "æå‰ç§°é‡";
+  return "å¤‡é½å¾…ç”¨";
 }
 
 const ingredientAliases: Record<string, string> = {
@@ -136,10 +153,85 @@ const newIngredientRow = (): IngredientRow => ({
   rowId: createClientRowId(), name: "", amount: 100, unit: "g", type: "ç”Ÿé²œ",
 });
 
+const defaultImageCrop: ImageCrop = { x: 50, y: 50, zoom: 1 };
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function parseImageCrop(value?: string): ImageCrop {
+  if (value === "top") return { x: 50, y: 18, zoom: 1 };
+  if (value === "bottom") return { x: 50, y: 82, zoom: 1 };
+  if (!value || value === "center") return { ...defaultImageCrop };
+  const [rawX, rawY, rawZoom] = value.split(":").map(Number);
+  if (![rawX, rawY, rawZoom].every(Number.isFinite)) return { ...defaultImageCrop };
+  return { x: clamp(rawX, 0, 100), y: clamp(rawY, 0, 100), zoom: clamp(rawZoom, 1, 1.8) };
+}
+
+function serializeImageCrop(crop: ImageCrop) {
+  return `${Math.round(crop.x)}:${Math.round(crop.y)}:${crop.zoom.toFixed(2)}`;
+}
+
+function dishImageStyle(value?: string) {
+  const crop = parseImageCrop(value);
+  return {
+    objectPosition: `${crop.x}% ${crop.y}%`,
+    transform: `scale(${crop.zoom})`,
+    transformOrigin: `${crop.x}% ${crop.y}%`,
+  };
+}
+
+function findSmartImageCrop(image: HTMLImageElement): ImageCrop {
+  const canvas = document.createElement("canvas");
+  const size = 96;
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return { ...defaultImageCrop, zoom: 1.06 };
+  try {
+    context.drawImage(image, 0, 0, size, size);
+    const pixels = context.getImageData(0, 0, size, size).data;
+    let weightedX = 0;
+    let weightedY = 0;
+    let total = 0;
+    const luminanceAt = (x: number, y: number) => {
+      const offset = (y * size + x) * 4;
+      return pixels[offset] * .299 + pixels[offset + 1] * .587 + pixels[offset + 2] * .114;
+    };
+    for (let y = 2; y < size - 2; y += 2) {
+      for (let x = 2; x < size - 2; x += 2) {
+        const offset = (y * size + x) * 4;
+        const red = pixels[offset];
+        const green = pixels[offset + 1];
+        const blue = pixels[offset + 2];
+        const saturation = Math.max(red, green, blue) - Math.min(red, green, blue);
+        const edge = Math.abs(luminanceAt(x + 2, y) - luminanceAt(x - 2, y)) + Math.abs(luminanceAt(x, y + 2) - luminanceAt(x, y - 2));
+        const centerDistance = Math.hypot(x - size / 2, y - size / 2) / (size * .7);
+        const centerPrior = Math.max(0, 1 - centerDistance) * 24;
+        const score = Math.pow(Math.max(1, edge * 1.45 + saturation * .35 + centerPrior), 1.35);
+        weightedX += x * score;
+        weightedY += y * score;
+        total += score;
+      }
+    }
+    if (!total) return { ...defaultImageCrop, zoom: 1.06 };
+    return {
+      x: clamp(weightedX / total / (size - 1) * 100, 18, 82),
+      y: clamp(weightedY / total / (size - 1) * 100, 16, 84),
+      zoom: 1.06,
+    };
+  } catch {
+    return { ...defaultImageCrop, zoom: 1.06 };
+  }
+}
+
 export default function Home({ initialMode = "menu", chefUser = "", initialInviteToken = "" }: { initialMode?: "menu" | "chef"; chefUser?: string; initialInviteToken?: string }) {
   const dishFormRef = useRef<HTMLFormElement>(null);
+  const coverImageRef = useRef<HTMLImageElement>(null);
+  const coverDragRef = useRef<{ pointerId: number; clientX: number; clientY: number; crop: ImageCrop } | null>(null);
+  const recipeScreenshotUrlsRef = useRef<string[]>([]);
   const mode = initialMode;
-  const [chefView, setChefView] = useState<"overview" | "menuManager" | "banquet" | "invitations">("overview");
+  const [chefView, setChefView] = useState<ChefView>("accepting");
   const [activeCategory, setActiveCategory] = useState("å…¨éƒ¨");
   const [cart, setCart] = useState<Cart>({});
   const [cartOpen, setCartOpen] = useState(false);
@@ -153,13 +245,18 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [shoppingChecks, setShoppingChecks] = useState<Record<string, boolean>>({});
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([newIngredientRow()]);
   const [imagePreview, setImagePreview] = useState("");
+  const [imageCrop, setImageCrop] = useState<ImageCrop>(defaultImageCrop);
+  const [autoCropPending, setAutoCropPending] = useState(false);
+  const [cropMode, setCropMode] = useState<"" | "auto" | "manual" | "saved">("");
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [dishSubmitting, setDishSubmitting] = useState(false);
+  const [copyGenerating, setCopyGenerating] = useState<"description" | "slogan" | null>(null);
   const [recipeImporting, setRecipeImporting] = useState(false);
   const [recipeImportText, setRecipeImportText] = useState("");
   const [recipeScreenshots, setRecipeScreenshots] = useState<RecipeScreenshot[]>([]);
   const [recipeDraft, setRecipeDraft] = useState<RecipeDraft | null>(null);
+  const [recipeEngine, setRecipeEngine] = useState("Qwen3-VL-Plus");
   const [recipePreferences, setRecipePreferences] = useState("");
   const [invites, setInvites] = useState<DinnerInvite[]>([]);
   const [journals, setJournals] = useState<DinnerJournal[]>([]);
@@ -168,1018 +265,19 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [orderProgressUrl, setOrderProgressUrl] = useState("");
   const [orderSuccessOpen, setOrderSuccessOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [cookingChecks, setCookingChecks] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {};
+    try { return JSON.parse(window.localStorage.getItem("ade-kitchen-cooking-checks") || "{}"); } catch { return {}; }
+  });
   const [banquetTemplate, setBanquetTemplate] = useState<BanquetTemplate>("home");
   const [banquetOrderId, setBanquetOrderId] = useState("");
   const [banquetItems, setBanquetItems] = useState<BanquetItem[]>([]);
   const [banquetDishId, setBanquetDishId] = useState("");
   const [banquetTitle, setBanquetTitle] = useState("ä»Šæ™šå®¶å®´");
-  const [banquetDate, setBanquetDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [banquetMessage, setBanquetMessage] = useState("ä¸ºå–œæ¬¢çš„äººè®¤çœŸåšä¸€æ¡Œé¥­");
-  const [notice, setNotice] = useState("");
-
-  const dishCatalog = useMemo<Dish[]>(() => customDishes.length ? customDishes : (initialInviteToken ? [] : dishes), [customDishes, initialInviteToken]);
-  const allDishes = useMemo(() => dishCatalog.filter((dish) => dish.active !== false && dish.available !== false), [dishCatalog]);
-  const menuCategories = useMemo(() => managedCategories.length
-    ? managedCategories.map((category) => category.name).filter((name) => allDishes.some((dish) => dish.category === name))
-    : Array.from(new Set([...categories, ...allDishes.map((dish) => dish.category)])), [managedCategories, allDishes]);
-  const filteredDishes = activeCategory === "å…¨éƒ¨"
-    ? allDishes
-    : allDishes.filter((dish) => dish.category === activeCategory);
-
-  const cartCount = Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
-  const cartItems = allDishes
-    .filter((dish) => cart[dish.id])
-    .map((dish) => ({ ...dish, quantity: cart[dish.id] }));
-  const activeBanquetTemplate = banquetTemplates.find((template) => template.id === banquetTemplate) || banquetTemplates[0];
-  const selectedBanquetOrder = orders.find((order) => order.id === banquetOrderId);
-  const activeOrders = orders.filter((order) => !isArchivedOrder(order));
-  const archivedOrders = orders.filter(isArchivedOrder);
-
-  const courseForDish = (dish?: Dish): BanquetCourse => {
-    const text = `${dish?.name || ""}${dish?.category || ""}`;
-    if (/[æ±¤ç¾¹é¥®å“ç”œå“ç³–æ°´ç¾¹]/.test(text)) return "soup";
-    if (/[é¥­é¢ç²‰ç²¥é¥¼åŒ…é¦’å¤´é¥ºä¸»é£Ÿ]/.test(text)) return "staple";
-    if (/[å‡‰æ‹Œå†·ç›˜æ²™æ‹‰å‰èœå¤å‘³]/.test(text)) return "starter";
-    return "main";
-  };
-
-  const banquetDishes = banquetItems.map((item) => ({ ...item, dish: dishCatalog.find((dish) => dish.id === item.dishId) })).filter((item): item is BanquetItem & { dish: Dish } => Boolean(item.dish));
-
-  const updateQuantity = (dishId: string, change: number) => {
-    setCart((current) => {
-      const next = Math.max(0, (current[dishId] || 0) + change);
-      const updated = { ...current, [dishId]: next };
-      if (next === 0) delete updated[dishId];
-      return updated;
-    });
-  };
-
-  const composeFromOrder = (orderId: string) => {
-    setBanquetOrderId(orderId);
-    const order = orders.find((item) => item.id === orderId);
-    if (!order) {
-      setBanquetItems([]);
-      return;
-    }
-    const uniqueIds = Array.from(new Set(parseItems(order).map((item) => item.dishId)));
-    setBanquetItems(uniqueIds.map((dishId) => ({ dishId, course: courseForDish(dishCatalog.find((dish) => dish.id === dishId)) })));
-    setBanquetTitle(`${order.customerName}çš„ç§æˆ¿æ™šå®´`);
-    setBanquetDate(order.mealDate);
-    setBanquetMessage(order.note ? `ä»Šæ—¥å¿ƒæ„ï¼š${order.note}` : `ä¸º ${order.guestCount} ä½æœ‹å‹è®¤çœŸå‡†å¤‡çš„ä¸€æ¡Œé¥­`);
-    setNotice(`å·²æŠŠ ${uniqueIds.length} é“èœè‡ªåŠ¨æ’å…¥å®´å¸­èœå•`);
-  };
-
-  const addBanquetDish = () => {
-    if (!banquetDishId) return;
-    if (banquetItems.some((item) => item.dishId === banquetDishId)) {
-      setNotice("è¿™é“èœå·²ç»åœ¨å®´å¸­èœå•ä¸­äº†");
-      return;
-    }
-    const dish = dishCatalog.find((item) => item.id === banquetDishId);
-    setBanquetItems((current) => [...current, { dishId: banquetDishId, course: courseForDish(dish) }]);
-    setBanquetDishId("");
-  };
-
-  const updateBanquetCourse = (dishId: string, course: BanquetCourse) => {
-    setBanquetItems((current) => current.map((item) => item.dishId === dishId ? { ...item, course } : item));
-  };
-
-  const moveBanquetDish = (dishId: string, direction: -1 | 1) => {
-    setBanquetItems((current) => {
-      const index = current.findIndex((item) => item.dishId === dishId);
-      const target = index + direction;
-      if (index < 0 || target < 0 || target >= current.length) return current;
-      const next = [...current];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  };
-
-  const printBanquetMenu = () => {
-    if (!banquetItems.length) {
-      setNotice("è¯·å…ˆä»è®¢å•æˆ–èœè°±åº“ä¸­åŠ å…¥èœå“");
-      return;
-    }
-    document.body.classList.add("printing-menu");
-    const cleanup = () => document.body.classList.remove("printing-menu");
-    window.addEventListener("afterprint", cleanup, { once: true });
-    window.setTimeout(() => window.print(), 80);
-    window.setTimeout(cleanup, 3000);
-  };
-
-  const loadOrders = async (silent = false) => {
-    if (!silent) setLoadingOrders(true);
-    try {
-      const response = await fetch("/api/orders", { cache: "no-store" });
-      const data = await response.json() as { orders?: Order[]; error?: string };
-      if (!response.ok) throw new Error(data.error || "è®¢å•åŠ è½½å¤±è´¥");
-      setOrders(data.orders || []);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "è®¢å•åŠ è½½å¤±è´¥");
-    } finally {
-      if (!silent) setLoadingOrders(false);
-    }
-  };
-
-  const loadShoppingChecks = async () => {
-    try {
-      const response = await fetch("/api/shopping", { cache: "no-store" });
-      const data = await response.json() as { checks?: Record<string, boolean> };
-      if (response.ok) setShoppingChecks(data.checks || {});
-    } catch { /* ä¸»æ¸…å•ä»ç„¶å¯ä»¥æ­£å¸¸ä½¿ç”¨ */ }
-  };
-
-  const loadDishes = async () => {
-    try {
-      const response = await fetch("/api/dishes", { cache: "no-store" });
-      const data = await response.json() as { dishes?: ManagedDish[]; error?: string };
-      if (!response.ok) throw new Error(data.error || "èœå•åŠ è½½å¤±è´¥");
-      setCustomDishes(data.dishes || []);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "èœå•åŠ è½½å¤±è´¥");
-    }
-  };
-
-  const loadCategories = async () => {
-    try {
-      const response = await fetch("/api/categories", { cache: "no-store" });
-      const data = await response.json() as { categories?: MenuCategory[] };
-      if (response.ok) setManagedCategories(data.categories || []);
-    } catch { /* åˆ†ç±»ä»å¯ä»èœå“ä¸­è‡ªåŠ¨ç”Ÿæˆ */ }
-  };
-
-  const loadPantry = async () => {
-    try {
-      const response = await fetch("/api/pantry", { cache: "no-store" });
-      const data = await response.json() as { items?: PantryItem[] };
-      if (response.ok) setPantryItems(data.items || []);
-    } catch { /* ä¸å½±å“åŸå§‹é‡‡è´­æ¸…å• */ }
-  };
-
-  const loadInvites = async () => {
-    try {
-      const response = await fetch("/api/invites", { cache: "no-store" });
-      const data = await response.json() as { invites?: DinnerInvite[]; journals?: DinnerJournal[] };
-      if (response.ok) { setInvites(data.invites || []); setJournals(data.journals || []); }
-    } catch { /* ä¸å½±å“è®¢å•å’Œèœå•ç®¡ç† */ }
-  };
-
-  const loadRecipePreferences = async () => {
-    try {
-      const response = await fetch("/api/recipe-preferences", { cache: "no-store" });
-      const data = await response.json() as { preferences?: string };
-      if (response.ok) setRecipePreferences(data.preferences || "");
-    } catch { /* ä»å¯ä½¿ç”¨é»˜è®¤è¯†åˆ« */ }
-  };
-
-  const loadInvite = async (token: string) => {
-    setInviteLoading(true);
-    try {
-      const response = await fetch(`/api/invites/${token}`, { cache: "no-store" });
-      const data = await response.json() as { invite?: DinnerInvite; dishes?: ManagedDish[]; error?: string };
-      if (!response.ok || !data.invite) throw new Error(data.error || "é‚€è¯·åŠ è½½å¤±è´¥");
-      setActiveInvite(data.invite);
-      setCustomDishes(data.dishes || []);
-      setActiveCategory("å…¨éƒ¨");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "é‚€è¯·åŠ è½½å¤±è´¥");
-    } finally { setInviteLoading(false); }
-  };
-
-  useEffect(() => {
-    if (mode === "chef") {
-      let timer = 0;
-      const bootstrap = window.setTimeout(() => {
-        loadOrders(); loadDishes(); loadShoppingChecks(); loadCategories(); loadPantry(); loadInvites(); loadRecipePreferences();
-        timer = window.setInterval(() => loadOrders(true), 30000);
-      }, 0);
-      return () => { window.clearTimeout(bootstrap); if (timer) window.clearInterval(timer); };
-    }
-  }, [mode]);
-
-  useEffect(() => {
-    const bootstrap = window.setTimeout(() => {
-      if (initialInviteToken) loadInvite(initialInviteToken);
-      else { loadDishes(); loadCategories(); }
-    }, 0);
-    return () => window.clearTimeout(bootstrap);
-  }, [initialInviteToken]);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(""), 3200);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
-
-  useEffect(() => () => {
-    recipeScreenshots.forEach((screenshot) => URL.revokeObjectURL(screenshot.preview));
-  }, [recipeScreenshots]);
-
-  const shoppingList = useMemo(() => {
-    const totals = new Map<string, { itemKey: string; name: string; amount: number; unit: string; type: string; location: string; stockUsed: number }>();
-    activeOrders.forEach((order) => {
-      const snapshots = parseDishSnapshot(order);
-      parseItems(order).forEach((item) => {
-        const snapshot = snapshots.find((candidate) => candidate.dishId === item.dishId);
-        const dish = dishCatalog.find((candidate) => candidate.id === item.dishId);
-        const ingredients = snapshot?.ingredients || dish?.ingredients || [];
-        const scale = (order.guestCount / (snapshot?.baseServings || dish?.baseServings || 4)) * item.quantity;
-        ingredients.forEach((ingredient) => {
-          const name = normalizedIngredientName(ingredient.name);
-          const key = `${name}-${ingredient.unit}`;
-          const current = totals.get(key);
-          totals.set(key, {
-            itemKey: key,
-            ...ingredient,
-            name,
-            location: shoppingLocation(ingredient.type),
-            stockUsed: 0,
-            amount: (current?.amount || 0) + ingredient.amount * scale,
-          });
-        });
-      });
-    });
-    return Array.from(totals.values()).map((item) => {
-      const stocked = pantryItems.filter((pantry) => normalizedIngredientName(pantry.name) === item.name && pantry.unit === item.unit).reduce((sum, pantry) => sum + pantry.amount, 0);
-      const stockUsed = Math.min(item.amount, stocked);
-      return { ...item, stockUsed, amount: Math.max(0, item.amount - stockUsed) };
-    }).filter((item) => item.amount > 0.01).sort((a, b) => a.location.localeCompare(b.location, "zh-CN") || a.type.localeCompare(b.type, "zh-CN"));
-  }, [activeOrders, dishCatalog, pantryItems]);
-
-  const setShoppingChecked = async (itemKey: string, checked: boolean) => {
-    setShoppingChecks((current) => ({ ...current, [itemKey]: checked }));
-    try {
-      const response = await fetch("/api/shopping", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ itemKey, checked }) });
-      if (!response.ok) throw new Error();
-    } catch {
-      setShoppingChecks((current) => ({ ...current, [itemKey]: !checked }));
-      setNotice("é‡‡è´­çŠ¶æ€ä¿å­˜å¤±è´¥ï¼Œè¯·ç¨åé‡è¯•");
-    }
-  };
-
-  const resetShoppingChecks = async () => {
-    const response = await fetch("/api/shopping", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ reset: true }) });
-    if (response.ok) {
-      setShoppingChecks({});
-      setNotice("é‡‡è´­æ¸…å•å·²é‡æ–°å¼€å§‹");
-    } else {
-      setNotice("é‡‡è´­æ¸…å•é‡ç½®å¤±è´¥");
-    }
-  };
-
-  const shoppingText = () => {
-    const lines = ["é˜¿å¾·å°å¨æˆ¿ Â· é‡‡è´­æ¸…å•"];
-    ["èœå¸‚åœº / ç”Ÿé²œåŒº", "è°ƒå‘³å“åŒº", "è¶…å¸‚å…¶ä»–åŒº"].forEach((location) => {
-      const items = shoppingList.filter((item) => item.location === location);
-      if (!items.length) return;
-      lines.push(`\nã€${location}ã€‘`, ...items.map((item) => `${shoppingChecks[item.itemKey] ? "âœ“" : "â–¡"} ${item.name} ${formatAmount(item.amount, item.unit)}`));
-    });
-    if (pantryItems.length) lines.push(`\nå®¶ä¸­åº“å­˜å·²è‡ªåŠ¨æŠµæ‰£ ${pantryItems.length} é¡¹ã€‚`);
-    return lines.join("\n");
-  };
-
-  const shareShoppingList = async () => {
-    const text = shoppingText();
-    const canShare = typeof navigator.share === "function";
-    try {
-      if (canShare) await navigator.share({ title: "é˜¿å¾·å°å¨æˆ¿é‡‡è´­æ¸…å•", text });
-      else await navigator.clipboard.writeText(text);
-      setNotice(canShare ? "é‡‡è´­æ¸…å•å·²æ‰“å¼€åˆ†äº«" : "é‡‡è´­æ¸…å•å·²å¤åˆ¶ï¼Œå¯ç²˜è´´åˆ°å¾®ä¿¡æˆ–å¤‡å¿˜å½•");
-    } catch (error) {
-      if ((error as Error).name !== "AbortError") setNotice("å¤åˆ¶å¤±è´¥ï¼Œè¯·ç¨åé‡è¯•");
-    }
-  };
-
-  const submitPantryItem = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const response = await fetch("/api/pantry", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.fromEntries(form)) });
-    const data = await response.json() as { item?: PantryItem; error?: string };
-    if (!response.ok || !data.item) return setNotice(data.error || "åº“å­˜ä¿å­˜å¤±è´¥");
-    setPantryItems((current) => [...current, data.item!]);
-    formElement.reset();
-    setNotice(`å·²è®°ä½å®¶é‡Œæœ‰${data.item.name}`);
-  };
-
-  const deletePantryItem = async (item: PantryItem) => {
-    const response = await fetch(`/api/pantry?id=${encodeURIComponent(item.id)}`, { method: "DELETE" });
-    if (!response.ok) return setNotice("åº“å­˜åˆ é™¤å¤±è´¥");
-    setPantryItems((current) => current.filter((candidate) => candidate.id !== item.id));
-  };
-
-  const addCategory = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const response = await fetch("/api/categories", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: form.get("name") }) });
-    const data = await response.json() as { category?: MenuCategory; error?: string };
-    if (!response.ok || !data.category) return setNotice(data.error || "åˆ†ç±»æ·»åŠ å¤±è´¥");
-    setManagedCategories((current) => current.some((item) => item.id === data.category!.id) ? current : [...current, data.category!]);
-    formElement.reset();
-  };
-
-  const changeCategory = async (category: MenuCategory, mode: "rename" | "merge") => {
-    const value = window.prompt(mode === "rename" ? `æŠŠâ€œ${category.name}â€æ”¹æˆï¼š` : `æŠŠâ€œ${category.name}â€åˆå¹¶åˆ°å“ªä¸ªåˆ†ç±»ï¼Ÿ`, "");
-    if (!value?.trim()) return;
-    const response = await fetch("/api/categories", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: category.id, [mode === "rename" ? "name" : "mergeInto"]: value.trim() }) });
-    const data = await response.json() as { categories?: MenuCategory[]; error?: string };
-    if (!response.ok) return setNotice(data.error || "åˆ†ç±»æ›´æ–°å¤±è´¥");
-    setManagedCategories(data.categories || []);
-    await loadDishes();
-  };
-
-  const moveCategory = async (category: MenuCategory, direction: -1 | 1) => {
-    const response = await fetch("/api/categories", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: category.id, direction }) });
-    const data = await response.json() as { categories?: MenuCategory[] };
-    if (response.ok) setManagedCategories(data.categories || []);
-  };
-
-  const submitOrder = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    setSubmitting(true);
-    const form = new FormData(formElement);
-    try {
-      const response = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          customerName: form.get("customerName"),
-          mealDate: form.get("mealDate"),
-          guestCount: Number(form.get("guestCount")),
-          note: form.get("note"),
-          dishes: cartItems.map((item) => ({ dishId: item.id, quantity: item.quantity })),
-          inviteToken: initialInviteToken || undefined,
-        }),
-      });
-      const data = await response.json() as { error?: string; guestToken?: string };
-      if (!response.ok) throw new Error(data.error || "æäº¤å¤±è´¥ï¼Œè¯·å†è¯•ä¸€æ¬¡");
-      setCart({});
-      setCheckoutOpen(false);
-      setCartOpen(false);
-      if (data.guestToken) {
-        setOrderProgressUrl(`/order/${data.guestToken}`);
-        setOrderSuccessOpen(true);
-      }
-      setNotice("ç‚¹èœæˆåŠŸï¼å¨æˆ¿è¿›åº¦å¡å·²ç»å‡†å¤‡å¥½ ğŸ½ï¸");
-      formElement.reset();
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "æäº¤å¤±è´¥ï¼Œè¯·å†è¯•ä¸€æ¬¡");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const updateOrderStatus = async (id: string, status: Order["status"]) => {
-    try {
-      const defaultNotes: Partial<Record<Order["status"], string>> = { confirmed: "é¥­å±€ç¡®è®¤å¥½å•¦ï¼Œæˆ‘ä¼šæŒ‰æ—¶å‡†å¤‡ã€‚", shopping: "æ­£åœ¨æŒ‘æ–°é²œé£Ÿæï¼Œç­‰ä½ å¸¦ç€å¥½èƒƒå£æ¥ã€‚", preparing: "å¨æˆ¿å·²ç»å¼€ç«ï¼Œé¦™å‘³æ­£åœ¨æ…¢æ…¢å†’å‡ºæ¥ã€‚", done: "å¼€é¥­å•¦ï¼Œæ„¿ä»Šæ™šåƒå¾—å¼€å¿ƒã€‚" };
-      if (status === "done" && !window.confirm("ç¡®è®¤é€šçŸ¥å¼€é¥­ï¼Ÿæœ‹å‹çš„è¿›åº¦é¡µä¼šå¼¹å‡ºå…¨å±å¼ºæé†’ï¼Œè®¢å•éšåè‡ªåŠ¨å½’æ¡£ã€‚")) return;
-      const suggestedNote = defaultNotes[status] || (status === "cancelled" ? "è¿™åœºé¥­å±€å…ˆæš‚åœï¼Œç­‰æˆ‘ä»¬ä¸‹æ¬¡å†å¥½å¥½çº¦ã€‚" : "");
-      const promptResult = window.prompt(status === "done" ? "å¡«å†™å¼€é¥­å¼ºæé†’å†…å®¹ï¼ˆå¯ç›´æ¥ç¡®è®¤é»˜è®¤å†…å®¹ï¼‰" : "å¡«å†™æœ‹å‹ç«¯å¼¹çª—æé†’å†…å®¹ï¼ˆå¯ç›´æ¥ç¡®è®¤é»˜è®¤å†…å®¹ï¼‰", suggestedNote);
-      if (promptResult === null) return;
-      const progressNote = promptResult.trim() || suggestedNote;
-      const response = await fetch("/api/orders", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id, status, progressNote }),
-      });
-      const data = await response.json() as { order?: Order; error?: string };
-      if (!response.ok || !data.order) throw new Error(data.error || "æ›´æ–°å¤±è´¥");
-      setOrders((current) => current.map((order) => order.id === id ? data.order! : order));
-      if (status === "done") setNotice("å¼€é¥­å¼ºæé†’å·²å‘å‡ºï¼Œè®¢å•å·²è‡ªåŠ¨å½’æ¡£");
-      else if (status === "cancelled") setNotice("å–æ¶ˆé€šçŸ¥å·²å‘å‡ºï¼Œè®¢å•å·²å½’æ¡£");
-      else setNotice("è¿›åº¦å·²æ›´æ–°ï¼Œæœ‹å‹ç«¯ä¼šå¼¹çª—æé†’");
-    } catch {
-      setNotice("çŠ¶æ€æ›´æ–°å¤±è´¥ï¼Œè¯·ç¨åé‡è¯•");
-    }
-  };
-
-  const renderOrderCard = (order: Order, archived = false) => (
-    <article className={`order-card${archived ? " archived" : ""}`} key={order.id}>
-      <div className="order-top"><div><strong>{order.customerName}</strong><span>#{order.id.slice(-6).toUpperCase()}</span></div><em className={`status ${order.status}`}>{statusLabel[order.status]}</em></div>
-      <div className="order-facts"><span>ğŸ“… {order.mealDate}</span><span>ğŸ‘¥ {order.guestCount} äºº</span></div>
-      <div className="ordered-dishes">
-        {parseItems(order).map((item) => <div key={item.dishId}><span>{parseDishSnapshot(order).find((dish) => dish.dishId === item.dishId)?.name || dishCatalog.find((dish) => dish.id === item.dishId)?.name || "å†å²èœå“"}</span><strong>Ã— {item.quantity}</strong></div>)}
-      </div>
-      {order.note && <p className="order-note">â€œ{order.note}â€</p>}
-      {order.progressNote && <p className="order-progress-note"><span>æœ€è¿‘é€šçŸ¥</span>{order.progressNote}</p>}
-      <div className="status-actions">
-        {!archived && order.status === "new" && <button onClick={() => updateOrderStatus(order.id, "confirmed")}>ç¡®è®¤æ¥å•</button>}
-        {!archived && order.status === "confirmed" && <button onClick={() => updateOrderStatus(order.id, "shopping")}>å¼€å§‹ä¹°èœ</button>}
-        {!archived && order.status === "shopping" && <button onClick={() => updateOrderStatus(order.id, "preparing")}>å¼€å§‹åˆ¶ä½œ</button>}
-        {!archived && order.status === "preparing" && <button className="ready-alert" onClick={() => updateOrderStatus(order.id, "done")}><span aria-hidden="true">ğŸ””</span> é€šçŸ¥å¼€é¥­ Â· å¼ºæé†’</button>}
-        {archived && <button className="quiet" onClick={() => updateOrderStatus(order.id, "confirmed")}>é‡æ–°æ‰“å¼€è®¢å•</button>}
-        {!archived && <button className="quiet" onClick={() => updateOrderStatus(order.id, "cancelled")}>å–æ¶ˆé¥­å±€</button>}
-      </div>
-    </article>
-  );
-
-  const updateIngredient = (rowId: string, field: keyof Ingredient, value: string) => {
-    setIngredientRows((current) => current.map((row) => row.rowId === rowId
-      ? { ...row, [field]: field === "amount" ? Number(value) : value }
-      : row));
-  };
-
-  const previewLocalImage = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
-    setImagePreview(file ? URL.createObjectURL(file) : "");
-  };
-
-  const selectRecipeScreenshots = (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []).slice(0, 4);
-    setRecipeScreenshots(files.map((file) => ({ file, preview: URL.createObjectURL(file) })));
-    setRecipeDraft(null);
-  };
-
-  const fillDishForm = (draft: RecipeDraft) => {
-    const form = dishFormRef.current;
-    if (!form) return;
-    const setValue = (name: string, value: string) => {
-      const field = form.elements.namedItem(name);
-      if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) field.value = value;
-    };
-    const setChecked = (name: string, checked: boolean) => {
-      const field = form.elements.namedItem(name);
-      if (field instanceof HTMLInputElement) field.checked = checked;
-    };
-    setValue("name", draft.name);
-    setValue("category", draft.category);
-    setValue("flavor", draft.flavor);
-    setValue("minutes", String(draft.minutes));
-    setValue("baseServings", String(draft.baseServings || 4));
-    setValue("description", draft.description);
-    setValue("source", draft.source);
-    setValue("steps", draft.steps.map((step, index) => `${index + 1}. ${step}`).join("\n"));
-    setValue("seasons", (draft.seasons || []).join("ã€"));
-    setValue("occasions", (draft.occasions || []).join("ã€"));
-    setValue("dietary", (draft.dietary || []).join("ã€"));
-    setValue("difficulty", draft.difficulty || "é€‚ä¸­");
-    setValue("recipeSummary", draft.recipeSummary || "");
-    setValue("substitutions", JSON.stringify(draft.substitutions || []));
-    setValue("imagePosition", draft.imagePosition || "center");
-    setChecked("featured", Boolean(draft.featured));
-    setChecked("available", draft.available !== false);
-    setChecked("soldOut", Boolean(draft.soldOut));
-    setIngredientRows(draft.ingredients.length
-      ? draft.ingredients.map((ingredient) => ({ ...ingredient, rowId: createClientRowId() }))
-      : [newIngredientRow()]);
-    window.setTimeout(() => form.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
-  };
-
-  const startEditingDish = (dish: ManagedDish) => {
-    setEditingDish(dish);
-    setImagePreview(dish.imageUrl || "");
-    fillDishForm({
-      name: dish.name, category: dish.category, description: dish.description, flavor: dish.flavor,
-      minutes: dish.minutes, baseServings: dish.baseServings || 4, source: dish.source || "",
-      ingredients: dish.ingredients, steps: dish.steps || [], confidenceNotes: [],
-      featured: dish.featured, available: dish.available, soldOut: dish.soldOut,
-      seasons: dish.seasons, occasions: dish.occasions, dietary: dish.dietary,
-      difficulty: dish.difficulty, recipeSummary: dish.recipeSummary, substitutions: dish.substitutions,
-      imagePosition: dish.imagePosition,
-    });
-    setNotice(`æ­£åœ¨ç¼–è¾‘â€œ${dish.name}â€`);
-  };
-
-  const cancelEditingDish = () => {
-    setEditingDish(null);
-    dishFormRef.current?.reset();
-    setIngredientRows([newIngredientRow()]);
-    setImagePreview("");
-  };
-
-  const analyzeRecipe = async () => {
-    if (!recipeScreenshots.length && !recipeImportText.trim()) {
-      setNotice("è¯·å…ˆä¸Šä¼ èœè°±æˆªå›¾ï¼Œæˆ–ç²˜è´´èœè°±æ–‡å­—");
-      return;
-    }
-    setRecipeImporting(true);
-    try {
-      const form = new FormData();
-      recipeScreenshots.forEach(({ file }) => form.append("images", file));
-      form.set("text", recipeImportText);
-      form.set("preferences", recipePreferences);
-      const response = await fetch("/api/recipe-import", { method: "POST", body: form });
-      const data = await response.json() as { draft?: RecipeDraft; mode?: string; error?: string };
-      if (!response.ok || !data.draft) throw new Error(data.error || "èœè°±è¯†åˆ«å¤±è´¥");
-      setRecipeDraft(data.draft);
-      fillDishForm(data.draft);
-      const summary = `${data.draft.ingredients.length} ç§é£Ÿæã€${data.draft.steps.length} ä¸ªæ­¥éª¤`;
-      setNotice(data.mode === "text-fallback" ? `å·²ç”¨æ–‡å­—æ¨¡å¼æ‹†è§£ ${summary}ï¼Œè¯·æ ¡å¯¹` : `è¯†åˆ«å®Œæˆï¼š${summary}`);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "èœè°±è¯†åˆ«å¤±è´¥ï¼Œè¯·ç¨åé‡è¯•");
-    } finally {
-      setRecipeImporting(false);
-    }
-  };
-
-  const submitDish = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    setDishSubmitting(true);
-    const form = new FormData(formElement);
-    form.set("ingredients", JSON.stringify(ingredientRows.map(({ name, amount, unit, type }) => ({ name, amount, unit, type }))));
-    if (!form.get("substitutions")) form.set("substitutions", JSON.stringify(recipeDraft?.substitutions || editingDish?.substitutions || []));
-    if (editingDish) form.set("id", editingDish.id);
-    try {
-      const response = await fetch("/api/dishes", { method: editingDish ? "PUT" : "POST", body: form });
-      const data = await response.json() as { dish?: ManagedDish; error?: string };
-      if (!response.ok || !data.dish) throw new Error(data.error || "èœå“ä¿å­˜å¤±è´¥");
-      setCustomDishes((current) => editingDish
-        ? current.map((dish) => dish.id === data.dish!.id ? data.dish! : dish)
-        : [data.dish!, ...current]);
-      formElement.reset();
-      if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
-      setImagePreview("");
-      setIngredientRows([newIngredientRow()]);
-      setRecipeDraft(null);
-      setRecipeImportText("");
-      setRecipeScreenshots([]);
-      setNotice(editingDish ? `â€œ${data.dish.name}â€å·²ä¿å­˜æ›´æ–°` : `â€œ${data.dish.name}â€å·²åŠ å…¥èœå•`);
-      setEditingDish(null);
-      await loadCategories();
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "èœå“ä¿å­˜å¤±è´¥");
-    } finally {
-      setDishSubmitting(false);
-    }
-  };
-
-  const saveRecipePreferences = async () => {
-    const response = await fetch("/api/recipe-preferences", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ preferences: recipePreferences }) });
-    setNotice(response.ok ? "ä¸»å¨ä¹ æƒ¯å·²è®°ä½ï¼Œä¸‹æ¬¡è¯†åˆ«ä¼šä¼˜å…ˆå‚è€ƒ" : "ä¸»å¨ä¹ æƒ¯ä¿å­˜å¤±è´¥");
-  };
-
-  const createInvite = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const dishIds = form.getAll("dishIds").map(String);
-    const recommendedDishIds = form.getAll("recommendedDishIds").map(String);
-    const response = await fetch("/api/invites", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: form.get("title"), message: form.get("message"), mealDate: form.get("mealDate"), theme: form.get("theme"), dishIds, recommendedDishIds }) });
-    const data = await response.json() as { invite?: DinnerInvite; error?: string };
-    if (!response.ok || !data.invite) return setNotice(data.error || "é‚€è¯·åˆ›å»ºå¤±è´¥");
-    setInvites((current) => [data.invite!, ...current]);
-    formElement.reset();
-    setNotice("ä¸“å±é‚€è¯·å·²ç”Ÿæˆï¼Œå¯ä»¥å‘ç»™æœ‹å‹äº†");
-  };
-
-  const shareInvite = async (invite: DinnerInvite) => {
-    const url = `${window.location.origin}/invite/${invite.token}`;
-    const canShare = typeof navigator.share === "function";
-    try {
-      if (canShare) await navigator.share({ title: invite.title, text: invite.message || "æ¥é˜¿å¾·å°å¨æˆ¿ç‚¹èœå§", url });
-      else await navigator.clipboard.writeText(url);
-      setNotice(canShare ? "é‚€è¯·å¡å·²æ‰“å¼€åˆ†äº«" : "é‚€è¯·é“¾æ¥å·²å¤åˆ¶");
-    } catch (error) { if ((error as Error).name !== "AbortError") setNotice("åˆ†äº«å¤±è´¥ï¼Œè¯·ç¨åé‡è¯•"); }
-  };
-
-  const toggleInvite = async (invite: DinnerInvite) => {
-    const response = await fetch("/api/invites", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: invite.id, active: !invite.active }) });
-    if (!response.ok) return setNotice("é‚€è¯·çŠ¶æ€æ›´æ–°å¤±è´¥");
-    setInvites((current) => current.map((item) => item.id === invite.id ? { ...item, active: !item.active } : item));
-  };
-
-  const saveJournal = async (event: FormEvent<HTMLFormElement>, invite: DinnerInvite) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget); form.set("inviteId", invite.id);
-    const response = await fetch("/api/journals", { method: "POST", body: form });
-    const data = await response.json() as { journal?: DinnerJournal; error?: string };
-    if (!response.ok || !data.journal) return setNotice(data.error || "é¤æ¡Œæ—¥è®°ä¿å­˜å¤±è´¥");
-    setJournals((current) => [data.journal!, ...current.filter((item) => item.inviteId !== invite.id)]);
-    setNotice("é¤æ¡Œæ—¥è®°å·²ä¿å­˜ï¼Œæœ‹å‹çš„è¿›åº¦é¡µä¹Ÿä¼šçœ‹åˆ°");
-  };
-
-  const toggleDish = async (dish: ManagedDish) => {
-    try {
-      const response = await fetch("/api/dishes", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: dish.id, active: !dish.active }),
-      });
-      const data = await response.json() as { dish?: ManagedDish; error?: string };
-      if (!response.ok || !data.dish) throw new Error(data.error || "æ›´æ–°å¤±è´¥");
-      setCustomDishes((current) => current.map((item) => item.id === dish.id ? data.dish! : item));
-      setCart((current) => {
-        if (data.dish!.active) return current;
-        const next = { ...current };
-        delete next[dish.id];
-        return next;
-      });
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "èœå“çŠ¶æ€æ›´æ–°å¤±è´¥");
-    }
-  };
-
-  const setDishFlag = async (dish: ManagedDish, field: "featured" | "available" | "soldOut", value: boolean) => {
-    const response = await fetch("/api/dishes", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: dish.id, [field]: value }) });
-    const data = await response.json() as { dish?: ManagedDish; error?: string };
-    if (!response.ok || !data.dish) return setNotice(data.error || "èœå“çŠ¶æ€æ›´æ–°å¤±è´¥");
-    setCustomDishes((current) => current.map((item) => item.id === dish.id ? data.dish! : item));
-    if (field === "soldOut" && value) setCart((current) => { const next = { ...current }; delete next[dish.id]; return next; });
-  };
-
-  const duplicateDish = async (dish: ManagedDish) => {
-    const response = await fetch("/api/dishes/duplicate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: dish.id }) });
-    const data = await response.json() as { dish?: ManagedDish; error?: string };
-    if (!response.ok || !data.dish) return setNotice(data.error || "å¤åˆ¶å¤±è´¥");
-    setCustomDishes((current) => [...current, data.dish!]);
-    setNotice(`å·²å¤åˆ¶â€œ${dish.name}â€ï¼Œå‰¯æœ¬æš‚æœªä¸Šæ¶`);
-  };
-
-  const deleteDish = async (dish: ManagedDish) => {
-    if (!window.confirm(`ç¡®å®šæ°¸ä¹…åˆ é™¤â€œ${dish.name}â€å—ï¼Ÿä¸€èˆ¬å»ºè®®å…ˆå½’æ¡£ï¼Œå†å²è®¢å•ä»ä¼šä¿ç•™èœåã€‚`)) return;
-    try {
-      const response = await fetch(`/api/dishes?id=${encodeURIComponent(dish.id)}`, { method: "DELETE" });
-      const data = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(data.error || "åˆ é™¤å¤±è´¥");
-      setCustomDishes((current) => current.filter((item) => item.id !== dish.id));
-      setCart((current) => {
-        const next = { ...current };
-        delete next[dish.id];
-        return next;
-      });
-      setNotice(`â€œ${dish.name}â€å·²ä»èœå•åˆ é™¤`);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "åˆ é™¤å¤±è´¥");
-    }
-  };
-
-  const today = new Date().toISOString().slice(0, 10);
-
-  return (
-    <main>
-      <header className="topbar">
-        <Link className="brand" href="/" aria-label="å›åˆ°èœå•">
-          <span className="brand-mark">å¾·</span>
-          <span><strong>é˜¿å¾·å°å¨æˆ¿</strong><small>åªæ‹›å¾…æˆ‘å–œæ¬¢çš„äºº</small></span>
-        </Link>
-        <nav className="mode-switch" aria-label="é¡µé¢åˆ‡æ¢">
-          <Link className={mode === "menu" ? "active" : ""} href="/">æœ‹å‹ç‚¹èœ</Link>
-          <Link className={mode === "chef" ? "active" : ""} href="/chef">ä¸»å¨å…¥å£</Link>
-          {mode === "chef" && chefUser && <span className="chef-user">{chefUser}</span>}
-          {mode === "chef" && <form className="chef-logout" action="/api/auth/logout" method="post"><button type="submit">é€€å‡º</button></form>}
-        </nav>
-      </header>
-
-      {mode === "menu" ? (
-        <>
-          <section className={`hero${activeInvite ? ` invite-hero theme-${activeInvite.theme}` : ""}`}>
-            <div className="hero-copy">
-              <div className="hero-greeting"><span><i></i> {activeInvite ? "ä½ çš„ä¸“å±é¥­å±€" : "å¨æˆ¿ä»Šæ—¥è¥ä¸š"}</span><small>{activeInvite ? activeInvite.mealDate : "å—¨ï¼Œä»Šå¤©ä¹Ÿè¦è¢«å¥½å¥½æ‹›å¾… ğŸ‘‹"}</small></div>
-              <h1>{activeInvite ? activeInvite.title : <>æƒ³åƒä»€ä¹ˆï¼Œ<br /><em>æˆ‘ç»™ä½ åšã€‚</em></>}</h1>
-              <p>{activeInvite?.message || "æ²¡æœ‰å¤æ‚è§„åˆ™ï¼Œä¹Ÿä¸ç”¨è·Ÿæˆ‘å®¢æ°”ã€‚æŒ‘å‡ é“ä½ æƒ¦è®°çš„å®¶å¸¸èœï¼Œå‰©ä¸‹çš„äº¤ç»™ä¸»å¨ã€‚"}</p>
-              <div className="hero-actions"><a href="#weekly-menu">å¼€å§‹ç‚¹èœ <span>â†“</span></a><p><strong>æ”¾å¿ƒç‚¹</strong><small>ä¸ç”¨æ›¿ä¸»å¨çœäº‹</small></p><p><strong>æå‰ 1 å¤©</strong><small>è®©æˆ‘ä»å®¹å»ä¹°èœ</small></p></div>
-            </div>
-            <div className="hero-visual" aria-hidden="true">
-              <div className="hero-sticker">{activeInvite ? "åªä¸ºä½ " : "ä»Šæ—¥ä»½"}<br /><strong>{activeInvite ? "ç•™äº†ä½ç½®" : "å¥½å¥½åƒé¥­"}</strong></div>
-              <div className="hero-plate"><div className="plate-rim"><span className="plate-food">ğŸ²</span></div><span className="leaf leaf-one">â˜˜</span><span className="leaf leaf-two">ğŸŒ¿</span></div>
-              <div className="hero-love-note"><span>ä¸»å¨ç¢ç¢å¿µ</span><p>â€œç‚¹ä½ çœŸå¿ƒæƒ³åƒçš„ï¼Œ<br />ä¸ç”¨æ›¿æˆ‘çœäº‹ã€‚â€</p></div>
-              <span className="hero-spark spark-one">âœ¦</span><span className="hero-spark spark-two">âœ¦</span>
-            </div>
-          </section>
-
-          {orderProgressUrl && <section className="order-success-card"><span>ç‚¹å•å·²é€è¿›å¨æˆ¿</span><h2>æ¥ä¸‹æ¥ï¼Œå°±ç­‰é¦™å‘³æ…¢æ…¢é è¿‘</h2><p>è¿™å¼ è¿›åº¦å¡ä¼šå‘Šè¯‰ä½ ï¼šé˜¿å¾·ç¡®è®¤äº†æ²¡æœ‰ã€ä¹°èœåˆ°å“ªä¸€æ­¥ã€ä»€ä¹ˆæ—¶å€™å¼€ç«ã€‚</p><a href={orderProgressUrl}>æŸ¥çœ‹æˆ‘çš„å¨æˆ¿è¿›åº¦ <b>â†’</b></a></section>}
-
-          <section className="menu-section" id="weekly-menu">
-            <div className="section-heading">
-              <div><span className="eyebrow">{activeInvite ? "YOUR PRIVATE DINNER MENU" : "THIS WEEK'S LITTLE MENU"}</span><h2>{activeInvite ? "è¿™æ¡Œèœï¼Œç­‰ä½ ç¿»ç‰Œ" : "æŒ‘å‡ é“å–œæ¬¢çš„"}</h2><p>{activeInvite ? "é˜¿å¾·ç‰¹æ„ä¸ºè¿™åœºé¥­å±€ç•™å‡ºçš„èœå•ã€‚" : "ç‚¹èœä¸ç”¨å®¢æ°”ï¼Œæ´—ç¢—ä¹Ÿä¸ç”¨ä½ ã€‚"}</p></div>
-              <div className="menu-count-pill"><strong>{allDishes.length}</strong><span>é“æ‹¿æ‰‹èœ<br />ç­‰ä½ ç¿»ç‰Œ</span></div>
-            </div>
-            {inviteLoading && <div className="invite-loading">æ­£åœ¨æŠŠä½ çš„ä¸“å±èœå•ç«¯ä¸Šæ¥â€¦</div>}
-            {activeInvite && activeInvite.recommendedDishIds.length > 0 && <div className="recommended-combo"><span>ä¸»å¨æ­é…</span><strong>å¦‚æœä¸æƒ³çº ç»“ï¼Œå°±ä»è¿™å‡ é“å¼€å§‹</strong><div>{activeInvite.recommendedDishIds.map((id) => dishCatalog.find((dish) => dish.id === id)).filter(Boolean).map((dish) => <button key={dish!.id} onClick={() => updateQuantity(dish!.id, 1)}>{dish!.name}<i>ï¼‹</i></button>)}</div></div>}
-            <div className="category-tabs" role="tablist" aria-label="èœç³»åˆ†ç±»">
-              {["å…¨éƒ¨", ...menuCategories].map((category) => (
-                <button key={category} className={activeCategory === category ? "active" : ""} onClick={() => setActiveCategory(category)}><span>{categoryEmoji[category] || "â€¢"}</span>{category}</button>
-              ))}
-            </div>
-            <div className="dish-grid">
-              {filteredDishes.map((dish, index) => {
-                const quantity = cart[dish.id] || 0;
-                return (
-                  <article className={`${quantity ? "dish-card selected" : "dish-card"}${dish.soldOut ? " sold-out" : ""}`} key={dish.id}>
-                    <div className={`dish-art tone-${dish.tone}`}>
-                      {dish.imageUrl ? <img className="dish-photo" style={{ objectPosition: dish.imagePosition || "center" }} src={dish.imageUrl} alt={dish.name} /> : <span>{dish.emoji}</span>}
-                      <small>{dish.category}</small>
-                      {(dish.soldOut || dish.featured || dish.tag) && <b className="dish-art-tag">{dish.soldOut ? "ä»Šå¤©å”®ç½„" : dish.featured ? "ä¸»å¨æ¨è" : dish.tag}</b>}
-                    </div>
-                    <div className="dish-body">
-                      <div className="dish-title"><h3>{dish.name}</h3></div>
-                      <div className="dish-quip">{dishQuips[dish.id] || ["è¿™é“å¾ˆé€‚åˆä¸€èµ·åˆ†äº«", "ä»Šå¤©åƒç‚¹è®¤çœŸåšçš„", "ä¸€å£ä¸‹å»ï¼Œå¾ˆæœ‰å®¶çš„æ„Ÿè§‰"][index % 3]}</div>
-                      <p>{dish.description}</p>
-                      {dish.dietary && dish.dietary.length > 0 && <div className="dish-safety-tags">{dish.dietary.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}
-                      <div className={quantity ? "quantity-control has-quantity" : "quantity-control"}>
-                        {quantity > 0 ? <div className="quantity-stepper" aria-label={`${dish.name}å·²é€‰ ${quantity} ä»½`}>
-                          <button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`å‡å°‘${dish.name}`}><span className="control-mark minus" aria-hidden="true" /></button>
-                          <strong><small>å·²é€‰</small>{quantity} ä»½</strong>
-                          <button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`å¢åŠ ${dish.name}`}><span className="control-mark plus" aria-hidden="true" /></button>
-                        </div> : <button type="button" disabled={dish.soldOut} className="add" onClick={() => updateQuantity(dish.id, 1)} aria-label={`æ·»åŠ ${dish.name}`}>{dish.soldOut ? <span>ä¸‹æ¬¡å†çº¦</span> : <><span>æƒ³åƒè¿™é“</span><b className="plus-mark" aria-hidden="true" /></>}</button>}
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-            {!inviteLoading && initialInviteToken && !activeInvite && <div className="invite-loading"><strong>è¿™ä»½é‚€è¯·æš‚æ—¶ä¸èƒ½ç‚¹èœ</strong><p>å¯èƒ½é¥­å±€å·²ç»ç»“æŸï¼Œå¯ä»¥é—®é—®é˜¿å¾·ä¸‹ä¸€é¡¿ä»€ä¹ˆæ—¶å€™å¼€å¸­ã€‚</p></div>}
-          </section>
-
-          <section className="promise-strip">
-            <div className="promise-heading"><span>ä¸»å¨ä¿è¯ä¹¦</span><h2>æ”¾å¿ƒç‚¹ï¼Œ<br />æˆ‘è®¤çœŸåšã€‚</h2><p>ä¸€é¡¿å¥½é¥­ä¸ä¸€å®šéš†é‡ï¼Œ<br />ä½†ä¸€å®šè¦æœ‰è¯šæ„ã€‚</p></div>
-            <div className="promise-card"><span>01</span><div>ğŸ§º</div><strong>æ”¶åˆ°ç‚¹å•å†ä¹°èœ</strong><p>æ–°é²œè¿™ä»¶äº‹ï¼Œä¸æ‰“æŠ˜ã€‚</p></div>
-            <div className="promise-card playful"><span>02</span><div>ğŸ³</div><strong>æ¯ä¸€é“éƒ½ç°åš</strong><p>é”…æ°”ï¼Œæ˜¯å¨æˆ¿çš„ç­¾åã€‚</p></div>
-            <div className="promise-card"><span>03</span><div>â˜º</div><strong>æœ€é‡è¦çš„æ˜¯å¼€å¿ƒ</strong><p>åƒé¥±ä»¥åï¼Œå†æ…¢æ…¢èŠå¤©ã€‚</p></div>
-          </section>
-
-          {cartCount > 0 && (
-            <button className="floating-cart" onClick={() => setCartOpen(true)}>
-              <span className="cart-icon">{cartCount}</span><span><small>è¿™é¡¿æœ‰ç€è½äº†</small><strong>{cartItems.length} é“èœ Â· å…± {cartCount} ä»½</strong></span><b>å»ç¡®è®¤èœå• <i>â†’</i></b>
-            </button>
-          )}
-        </>
-      ) : (
-        <section className="chef-page">
-          <div className="chef-heading">
-            <div><span className="eyebrow">KITCHEN DASHBOARD</span><h1>ä¸»å¨å·¥ä½œå°</h1><p>è®¢å•ã€å¤‡èœã€é‡‡è´­å’Œèœå•ï¼Œéƒ½åœ¨è¿™é‡Œç®¡ç†ã€‚</p></div>
-            {chefView === "overview" && <button className="refresh-button" onClick={() => loadOrders()} disabled={loadingOrders}>{loadingOrders ? "åˆ·æ–°ä¸­â€¦" : "åˆ·æ–°è®¢å•"}</button>}
-          </div>
-          <div className="chef-subnav" role="tablist" aria-label="ä¸»å¨å·¥å…·">
-            <button className={chefView === "overview" ? "active" : ""} onClick={() => setChefView("overview")}>è®¢å•ä¸é‡‡è´­</button>
-            <button className={chefView === "menuManager" ? "active" : ""} onClick={() => setChefView("menuManager")}>èœå•ç®¡ç† <span>{dishCatalog.filter((dish) => dish.active !== false).length}</span></button>
-            <button className={chefView === "banquet" ? "active" : ""} onClick={() => setChefView("banquet")}>å®´å¸­èœå• <span>{banquetItems.length}</span></button>
-            <button className={chefView === "invitations" ? "active" : ""} onClick={() => setChefView("invitations")}>é¥­å±€é‚€è¯· <span>{invites.filter((invite) => invite.active).length}</span></button>
-          </div>
-
-          {chefView === "overview" ? (
-            <>
-              <div className="stats-row">
-                <div><small>æ–°è®¢å•</small><strong>{orders.filter((o) => o.status === "new").length}</strong><span>å¾…ç¡®è®¤</span></div>
-                <div><small>å¾…å‡†å¤‡èœå“</small><strong>{activeOrders.reduce((sum, o) => sum + parseItems(o).reduce((s, i) => s + i.quantity, 0), 0)}</strong><span>ä»½</span></div>
-                <div><small>é‡‡è´­é¡¹ç›®</small><strong>{shoppingList.length}</strong><span>ç§é£Ÿæ</span></div>
-              </div>
-
-              <div className="chef-grid">
-                <div className="orders-panel panel">
-                  <div className="panel-title"><div><span>è¿›è¡Œä¸­è®¢å•</span><h2>æœ‹å‹ä»¬ç‚¹äº†ä»€ä¹ˆ</h2></div><small>{activeOrders.length} ä¸ªè¿›è¡Œä¸­</small></div>
-                  <div className="order-update-tip"><span aria-hidden="true">ğŸ””</span><p><strong>è¿›åº¦æ›´æ–°ä¼šå¼ºæé†’</strong>æ¯æ¬¡ç¡®è®¤ã€ä¹°èœã€åˆ¶ä½œæˆ–å¼€é¥­ï¼Œæœ‹å‹ç«¯éƒ½ä¼šå¼¹çª—ä¸€æ¬¡ã€‚</p></div>
-                  {loadingOrders && orders.length === 0 ? <div className="empty">æ­£åœ¨ç«¯ä¸Šè®¢å•â€¦</div> : activeOrders.length === 0 ? <div className="empty compact"><span>ğŸ½ï¸</span><strong>å½“å‰æ²¡æœ‰è¿›è¡Œä¸­çš„è®¢å•</strong><p>{archivedOrders.length ? "å·²å®Œæˆçš„é¥­å±€éƒ½æ”¶è¿›ä¸‹æ–¹å½’æ¡£ã€‚" : "æŠŠé¡µé¢å‘ç»™æœ‹å‹ï¼Œç¬¬ä¸€ä»½èœå•å°±ä¼šå‡ºç°åœ¨è¿™é‡Œã€‚"}</p></div> : <div className="order-list">{activeOrders.map((order) => renderOrderCard(order))}</div>}
-                  {archivedOrders.length > 0 && <section className="order-archive"><button type="button" className="order-archive-toggle" onClick={() => setArchiveOpen((value) => !value)} aria-expanded={archiveOpen}><span><b>è®¢å•å½’æ¡£</b><small>å·²å®Œæˆå’Œå·²å–æ¶ˆçš„å†å²é¥­å±€</small></span><strong>{archivedOrders.length} ä»½ {archiveOpen ? "æ”¶èµ· â†‘" : "æŸ¥çœ‹ â†“"}</strong></button>{archiveOpen && <div className="order-list archived-list">{archivedOrders.map((order) => renderOrderCard(order, true))}</div>}</section>}
-                </div>
-
-                <aside className="shopping-panel panel">
-                  <div className="panel-title"><div><span>è‡ªåŠ¨æ±‡æ€»</span><h2>é‡‡è´­æ¸…å•</h2></div><div className="shopping-head-actions"><button className="shopping-reset" onClick={() => setPantryOpen((value) => !value)}>å®¶ä¸­åº“å­˜</button><button className="shopping-reset" onClick={shareShoppingList}>å¤åˆ¶ / åˆ†äº«</button><button className="shopping-reset" onClick={resetShoppingChecks}>é‡æ–°å¼€å§‹</button></div></div>
-                  {shoppingList.length === 0 ? <div className="empty compact"><span>ğŸ§º</span><p>æœ‰æ–°è®¢å•åï¼Œä¼šè‡ªåŠ¨æ‹†è§£å¹¶åˆå¹¶é£Ÿæç”¨é‡ã€‚</p></div> : (
-                    <div className="shopping-list">
-                      {["èœå¸‚åœº / ç”Ÿé²œåŒº", "è°ƒå‘³å“åŒº", "è¶…å¸‚å…¶ä»–åŒº"].map((location) => {
-                        const items = shoppingList.filter((item) => item.location === location);
-                        if (!items.length) return null;
-                        return <div className="shopping-group" key={location}><h3>{location}</h3>{items.map((item) => <label key={item.itemKey}><input type="checkbox" checked={Boolean(shoppingChecks[item.itemKey])} onChange={(event) => setShoppingChecked(item.itemKey, event.target.checked)} /><span>{item.name}{item.stockUsed > 0 && <small>å·²æ‰£å®¶ä¸­ {formatAmount(item.stockUsed, item.unit)}</small>}</span><strong>{formatAmount(item.amount, item.unit)}</strong></label>)}</div>;
-                      })}
-                    </div>
-                  )}
-                  <div className="shopping-tip">å·²æŒ‰æ¯ä»½èœè°±çš„åŸºç¡€äººæ•°å’Œè®¢å•äººæ•°è‡ªåŠ¨æ¢ç®—ï¼Œé‡‡è´­æ—¶å¯æŒ‰å®é™…é£Ÿé‡å¾®è°ƒã€‚</div>
-                  {pantryOpen && <div className="pantry-box"><div className="pantry-heading"><div><strong>å®¶ä¸­åº“å­˜</strong><small>ç›¸åŒåç§°å’Œå•ä½ä¼šè‡ªåŠ¨ä»é‡‡è´­é‡ä¸­æ‰£é™¤</small></div><span>{pantryItems.length} é¡¹</span></div><form onSubmit={submitPantryItem}><input name="name" required placeholder="é£Ÿæåç§°" /><input name="amount" required type="number" min="0.1" step="0.1" placeholder="æ•°é‡" /><input name="unit" required placeholder="å•ä½" /><select name="type" defaultValue="å…¶ä»–"><option>ç”Ÿé²œ</option><option>è”¬èœ</option><option>è°ƒæ–™</option><option>å…¶ä»–</option></select><button>åŠ å…¥åº“å­˜</button></form>{pantryItems.length > 0 && <div className="pantry-list">{pantryItems.map((item) => <div key={item.id}><span><strong>{item.name}</strong><small>{item.type}</small></span><b>{formatAmount(item.amount, item.unit)}</b><button onClick={() => deletePantryItem(item)} aria-label={`åˆ é™¤åº“å­˜${item.name}`}>Ã—</button></div>)}</div>}</div>}
-                </aside>
-              </div>
-            </>
-          ) : chefView === "menuManager" ? (
-            <>
-              <section className="smart-import panel" aria-labelledby="smart-import-title">
-                <div className="smart-import-heading">
-                  <div className="smart-import-icon" aria-hidden="true">è¯†</div>
-                  <div><span>SMART RECIPE IMPORT</span><h2 id="smart-import-title">æ™ºèƒ½èœè°±å½•å…¥</h2><p>ä¸Šä¼ èœè°±æˆªå›¾ï¼Œè‡ªåŠ¨æ‹†å‡ºèœåã€é£Ÿæã€ç”¨é‡å’Œçƒ¹é¥ªæ­¥éª¤ï¼Œå†ç”±ä½ ç¡®è®¤ã€‚</p></div>
-                  <em>å…ˆè¯†åˆ« Â· åä¸Šæ¶</em>
-                </div>
-                <div className="smart-import-body">
-                  <div className="smart-import-grid">
-                    <div className="screenshot-import">
-                      <label className="recipe-upload">
-                        <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" onChange={selectRecipeScreenshots} />
-                        <span>ï¼‹</span><strong>{recipeScreenshots.length ? "é‡æ–°é€‰æ‹©æˆªå›¾" : "ä¸Šä¼ èœè°±æˆªå›¾"}</strong><small>æœ€å¤š 4 å¼ ï¼Œå¯åŒæ—¶ä¸Šä¼ é£Ÿæé¡µå’Œæ­¥éª¤é¡µ</small>
-                      </label>
-                      {recipeScreenshots.length > 0 && <div className="screenshot-previews">{recipeScreenshots.map((screenshot, index) => <figure key={`${screenshot.file.name}-${index}`}><img src={screenshot.preview} alt={`èœè°±æˆªå›¾ ${index + 1}`} /><figcaption>{index + 1}</figcaption></figure>)}</div>}
-                    </div>
-                    <div className="import-or"><span>æˆ–</span></div>
-                    <label className="recipe-text-import"><span>ç²˜è´´èœè°±æ–‡å­—</span><textarea value={recipeImportText} onChange={(event) => { setRecipeImportText(event.target.value); setRecipeDraft(null); }} placeholder={'ä¾‹å¦‚ï¼š\nå¤§è™¾çƒ§ç™½èœ\né£Ÿæï¼šå¤§è™¾ 250gã€ç™½èœ 500gâ€¦â€¦\næ­¥éª¤ï¼š1. å¤„ç†å¤§è™¾â€¦â€¦'} /><small>æ²¡æœ‰æˆªå›¾æ—¶ä¹Ÿèƒ½è‡ªåŠ¨æ‹†è§£ï¼›æœ‰æˆªå›¾æ—¶å¯è¡¥å……æ¨¡ç³Šå†…å®¹</small></label>
-                  </div>
-                  <div className="smart-import-actions">
-                    <p>è¯†åˆ«ç»“æœåªä¼šå¡«å…¥ä¸‹æ–¹è‰ç¨¿ï¼Œä¸ä¼šè‡ªåŠ¨å‘å¸ƒã€‚</p>
-                    <button type="button" onClick={analyzeRecipe} disabled={recipeImporting}>{recipeImporting ? "æ­£åœ¨è¯»èœè°±â€¦" : "å¼€å§‹è¯†åˆ«å¹¶å¡«å…¥"}<span>â†’</span></button>
-                  </div>
-                  <div className="recipe-preferences"><label><span>è®©å®ƒå­¦ä¼šæˆ‘çš„åšèœä¹ æƒ¯</span><textarea value={recipePreferences} onChange={(event) => setRecipePreferences(event.target.value)} placeholder="ä¾‹å¦‚ï¼šé»˜è®¤å°‘æ²¹å°‘ç›ï¼›é¦™èœå•ç‹¬æ”¾ï¼›å®¶é‡Œå¸¸ç”¨ç”ŸæŠ½è€Œä¸æ˜¯å‘³æé²œï¼›ä¸€å‹ºæŒ‰ 15ml è®¡ç®—ã€‚" /></label><button type="button" onClick={saveRecipePreferences}>ä¿å­˜ä¹ æƒ¯</button></div>
-                  {recipeDraft && <div className="import-result" role="status"><div><strong>âœ“ å·²ç”Ÿæˆâ€œ{recipeDraft.name}â€è‰ç¨¿</strong><span>{recipeDraft.ingredients.length} ç§é£Ÿæ Â· {recipeDraft.steps.length} ä¸ªæ­¥éª¤ Â· {recipeDraft.difficulty} Â· æ¥æºï¼š{recipeDraft.source || "å¾…ç¡®è®¤"}</span></div>{recipeDraft.recipeSummary && <p>{recipeDraft.recipeSummary}</p>}{Boolean(recipeDraft.confidenceNotes.length || recipeDraft.missingChecks?.length) && <p>è¯·æ ¸å¯¹ï¼š{[...recipeDraft.confidenceNotes, ...(recipeDraft.missingChecks || [])].join("ï¼›")}</p>}{Boolean(recipeDraft.substitutions?.length) && <div className="substitution-chips">{recipeDraft.substitutions!.map((item) => <span key={item.ingredient}>{item.ingredient} å¯æ¢ {item.alternatives.join(" / ")}</span>)}</div>}</div>}
-                </div>
-              </section>
-
-              <section className="category-manager panel">
-                <div className="panel-title"><div><span>MENU TYPES</span><h2>èœå“ç±»å‹ç®¡ç†</h2></div><small>æ–°å¢ Â· æ”¹å Â· æ’åº Â· åˆå¹¶</small></div>
-                <div className="category-manager-body"><form onSubmit={addCategory}><input name="name" maxLength={30} required placeholder="æ–°å¢ç±»å‹ï¼Œä¾‹å¦‚ï¼šçƒ§çƒ¤" /><button>ï¼‹ æ·»åŠ ç±»å‹</button></form><div className="category-manager-list">{managedCategories.map((category, index) => <div key={category.id}><span>{category.name}<small>{customDishes.filter((dish) => dish.category === category.name).length} é“</small></span><div><button onClick={() => moveCategory(category, -1)} disabled={index === 0} aria-label={`ä¸Šç§»${category.name}`}>â†‘</button><button onClick={() => moveCategory(category, 1)} disabled={index === managedCategories.length - 1} aria-label={`ä¸‹ç§»${category.name}`}>â†“</button><button onClick={() => changeCategory(category, "rename")}>æ”¹å</button><button onClick={() => changeCategory(category, "merge")}>åˆå¹¶</button></div></div>)}</div></div>
-              </section>
-
-              <div className="manager-grid">
-              <form ref={dishFormRef} className="dish-form panel" onSubmit={submitDish}>
-                <div className="panel-title"><div><span>{editingDish ? "EDIT DISH" : "NEW DISH"}</span><h2>{editingDish ? `ç¼–è¾‘ï¼š${editingDish.name}` : "æ·»åŠ ä¸€é“æ–°èœ"}</h2></div>{editingDish ? <button type="button" className="cancel-edit" onClick={cancelEditingDish}>å–æ¶ˆç¼–è¾‘</button> : <small>ä¿å­˜åç«‹å³ä¸Šæ¶</small>}</div>
-                <div className="dish-form-body">
-                  <div className="field-grid">
-                    <label><span>èœå *</span><input name="name" required maxLength={40} placeholder="ä¾‹å¦‚ï¼šç³–é†‹å°æ’" /></label>
-                    <label className="category-edit-field"><span>èœå“ç±»å‹ï¼ˆå¯è‡ªå®šä¹‰ï¼‰*</span><input name="category" required maxLength={30} placeholder="ä¾‹å¦‚ï¼šå‡‰èœã€ç”œå“ã€çƒ§çƒ¤æˆ–ç²¤èœ" /><small>å¯ç›´æ¥è¾“å…¥ä»»ä½•æ–°ç±»å‹ï¼Œä¿å­˜åä¼šè‡ªåŠ¨å‡ºç°åœ¨æœ‹å‹ç«¯åˆ†ç±»ä¸­ã€‚</small></label>
-                    <label><span>å£å‘³æ ‡ç­¾</span><input name="flavor" maxLength={30} placeholder="ä¾‹å¦‚ï¼šé…¸ç”œ Â· ä¸è¾£" /></label>
-                    <label><span>é¢„è®¡çƒ¹é¥ªæ—¶é—´</span><div className="input-suffix"><input name="minutes" type="number" min="5" max="360" defaultValue="30" required /><b>åˆ†é’Ÿ</b></div></label>
-                    <label><span>è¿™ä»½èœè°±é€‚åˆå‡ äºº</span><div className="input-suffix"><input name="baseServings" type="number" min="1" max="20" defaultValue="4" required /><b>äºº</b></div><small>åªç”¨äºåå°æ¢ç®—é‡‡è´­é‡ï¼Œæœ‹å‹ç«¯ä¸ä¼šæ˜¾ç¤ºã€‚</small></label>
-                    <label><span>èœè°±æ¥æº</span><input name="source" maxLength={80} placeholder="ä¾‹å¦‚ï¼šé£Ÿé‡æ—¥è®° Â· æ‘é©´" /></label>
-                    <label><span>æ“ä½œéš¾åº¦</span><select name="difficulty" defaultValue="é€‚ä¸­"><option>ç®€å•</option><option>é€‚ä¸­</option><option>è¿›é˜¶</option></select></label>
-                  </div>
-                  <input name="substitutions" type="hidden" />
-                  <fieldset className="dish-status-fieldset"><legend>èœå•çŠ¶æ€</legend><div><label><input name="available" type="checkbox" defaultChecked /><span>æœ¬æœŸå¯åš</span></label><label><input name="featured" type="checkbox" /><span>ä¸»å¨æ¨è</span></label><label><input name="soldOut" type="checkbox" /><span>æš‚æ—¶å”®ç½„</span></label></div><small>æ¨èå’Œå”®ç½„ä¼šæ˜¾ç¤ºåœ¨æœ‹å‹ç«¯ï¼›å½’æ¡£è¯·åœ¨å³ä¾§èœå“åˆ—è¡¨æ“ä½œã€‚</small></fieldset>
-                  <div className="field-grid tag-field-grid"><label><span>é€‚åˆå­£èŠ‚</span><input name="seasons" maxLength={120} placeholder="æ˜¥å­£ã€å¤å­£ã€ç§‹å†¬" /></label><label><span>é€‚åˆåœºæ™¯</span><input name="occasions" maxLength={120} placeholder="äºŒäººæ™šé¤ã€æœ‹å‹èšä¼šã€ç”Ÿæ—¥" /></label><label><span>é¥®é£Ÿä¸è¿‡æ•æç¤º</span><input name="dietary" maxLength={160} placeholder="å«èŠ±ç”Ÿã€å«ä¹³åˆ¶å“ã€å¯åšç´ é£Ÿ" /></label></div>
-                  <label className="wide-field"><span>èœå“ä»‹ç»</span><textarea name="description" maxLength={180} placeholder="ç®€å•ä»‹ç»è¿™é“èœçš„å‘³é“å’Œç‰¹è‰²â€¦" /></label>
-                  <label className="wide-field"><span>èœè°±è¦ç‚¹</span><textarea name="recipeSummary" maxLength={240} placeholder="ä¾‹å¦‚ï¼šå…ˆç…é¦™å†ç„–ï¼Œæœ€åå¤§ç«æ”¶æ±åˆ°èƒ½æŒ‚åœ¨é£Ÿæè¡¨é¢ã€‚" /></label>
-                  <label className="wide-field"><span>çƒ¹é¥ªæ­¥éª¤</span><textarea className="steps-textarea" name="steps" maxLength={12000} placeholder={'æ¯è¡Œå¡«å†™ä¸€ä¸ªæ­¥éª¤ï¼Œä¾‹å¦‚ï¼š\n1. å¤§è™¾å‰ªå»è™¾é¡»ï¼Œå¼€èƒŒå»è™¾çº¿\n2. ç™½èœåˆ‡å—ï¼Œå°ç«ç…¸ç‚’è‡³å˜è½¯'} /></label>
-
-                  <fieldset className="photo-fieldset">
-                    <legend>èœå“ç…§ç‰‡</legend>
-                    <div className="photo-options">
-                      <label className="upload-box">
-                        <input name="image" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={previewLocalImage} />
-                        <span className="upload-icon">ï¼‹</span><strong>ä»æœ¬åœ°ä¸Šä¼ ç…§ç‰‡</strong><small>JPGã€PNGã€WebP æˆ– GIFï¼Œæœ€å¤§ 6MB</small>
-                      </label>
-                      <div className="or-divider"><span>æˆ–</span></div>
-                      <label className="network-photo"><span>ç²˜è´´ç½‘ç»œå›¾ç‰‡åœ°å€</span><input name="imageUrl" type="url" placeholder="https://example.com/dish.jpg" onChange={(event) => setImagePreview(event.target.value)} /><small>è¯·ä½¿ç”¨ä½ æœ‰æƒä½¿ç”¨çš„å›¾ç‰‡åœ°å€</small></label>
-                      <div className={`photo-preview ${imagePreview ? "has-image" : ""}`}>{imagePreview ? <img src={imagePreview} alt="èœå“å›¾ç‰‡é¢„è§ˆ" /> : <><span>ğŸ“·</span><small>ç…§ç‰‡é¢„è§ˆ</small></>}</div>
-                    </div>
-                    <div className="photo-detail-row"><label><span>å°é¢å–æ™¯ä½ç½®</span><select name="imagePosition" defaultValue="center"><option value="top">åä¸Š</option><option value="center">å±…ä¸­</option><option value="bottom">åä¸‹</option></select><small>ç”¨äºé¿å…äººç‰©ã€ç›˜å­æˆ–èœå“ä¸»ä½“è¢«è£æ‰</small></label><label className="gallery-upload"><span>åˆ¶ä½œè¿‡ç¨‹å›¾</span><input name="galleryImages" type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" /><small>æœ€å¤š 4 å¼ ï¼›ç¼–è¾‘æ—¶é‡æ–°ä¸Šä¼ ä¼šæ›¿æ¢åŸè¿‡ç¨‹å›¾</small></label></div>
-                    {editingDish?.gallery && editingDish.gallery.length > 0 && <div className="gallery-strip">{editingDish.gallery.map((photo, index) => <img key={photo} src={photo} alt={`${editingDish.name}åˆ¶ä½œè¿‡ç¨‹ ${index + 1}`} />)}</div>}
-                  </fieldset>
-
-                  <fieldset className="ingredient-fieldset">
-                    <div className="fieldset-heading"><div><legend>é£Ÿæä¸è°ƒæ–™ *</legend><small>æŒ‰æ¯é“èœçº¦ 3â€“4 äººä»½å¡«å†™ï¼Œé‡‡è´­æ¸…å•ä¼šè‡ªåŠ¨åˆå¹¶</small></div><button type="button" onClick={() => setIngredientRows((current) => [...current, newIngredientRow()])}>ï¼‹ æ·»åŠ ä¸€è¡Œ</button></div>
-                    <div className="ingredient-labels"><span>åç§°</span><span>æ•°é‡</span><span>å•ä½</span><span>åˆ†ç±»</span><span></span></div>
-                    {ingredientRows.map((row) => (
-                      <div className="ingredient-row" key={row.rowId}>
-                        <input value={row.name} onChange={(event) => updateIngredient(row.rowId, "name", event.target.value)} required placeholder="é¸¡ä¸­ç¿…" aria-label="é£Ÿæåç§°" />
-                        <input value={row.amount} onChange={(event) => updateIngredient(row.rowId, "amount", event.target.value)} required type="number" min="0.1" step="0.1" aria-label="é£Ÿææ•°é‡" />
-                        <input value={row.unit} onChange={(event) => updateIngredient(row.rowId, "unit", event.target.value)} required placeholder="g" aria-label="é£Ÿæå•ä½" />
-                        <select value={row.type} onChange={(event) => updateIngredient(row.rowId, "type", event.target.value)} aria-label="é£Ÿæåˆ†ç±»"><option>ç”Ÿé²œ</option><option>è”¬èœ</option><option>è°ƒæ–™</option><option>å…¶ä»–</option></select>
-                        <button type="button" aria-label="åˆ é™¤è¿™ä¸€è¡Œ" disabled={ingredientRows.length === 1} onClick={() => setIngredientRows((current) => current.filter((item) => item.rowId !== row.rowId))}>Ã—</button>
-                      </div>
-                    ))}
-                  </fieldset>
-                  <button className="primary-button save-dish" disabled={dishSubmitting}>{dishSubmitting ? "æ­£åœ¨ä¿å­˜èœå“â€¦" : editingDish ? "ä¿å­˜ä¿®æ”¹" : "ä¿å­˜å¹¶ä¸Šæ¶"}<span>â†’</span></button>
-                </div>
-              </form>
-
-              <aside className="managed-menu panel">
-                <div className="panel-title"><div><span>YOUR RECIPE LIBRARY</span><h2>æˆ‘çš„å®Œæ•´èœè°±åº“</h2></div><small>{customDishes.length} é“</small></div>
-                <div className="built-in-note"><span>ç»Ÿä¸€ç®¡ç†</span><strong>ç»å…¸èœå’Œæ–°èœéƒ½å¯ç¼–è¾‘</strong><p>å¯æ¨èã€å”®ç½„ã€æš‚åœæœ¬æœŸã€å¤åˆ¶æˆ–å½’æ¡£ï¼›å†å²è®¢å•ä¸ä¼šè¢«æ”¹åã€‚</p></div>
-                {customDishes.length === 0 ? <div className="empty compact"><span>ğŸ¥¢</span><strong>è¿˜æ²¡æœ‰è‡ªå®šä¹‰èœå¼</strong><p>å¡«å†™å·¦ä¾§è¡¨å•ï¼Œç¬¬ä¸€é“æ–°èœå°±ä¼šå‡ºç°åœ¨æœ‹å‹çš„èœå•ä¸Šã€‚</p></div> : (
-                  <div className="managed-dish-list">
-                    {customDishes.map((dish) => (
-                      <article className={`${!dish.active ? "managed-dish inactive" : "managed-dish"}${dish.soldOut ? " sold-out" : ""}`} key={dish.id}>
-                        <div className="managed-thumb">{dish.imageUrl ? <img src={dish.imageUrl} alt="" /> : <span>ğŸ½ï¸</span>}</div>
-                        <div className="managed-copy"><div><strong>{dish.name}</strong><em>{!dish.active ? "å·²å½’æ¡£" : dish.soldOut ? "å·²å”®ç½„" : dish.available === false ? "æœ¬æœŸæš‚åœ" : dish.featured ? "ä¸»å¨æ¨è" : "å·²ä¸Šæ¶"}</em></div><p>{dish.category} Â· {dish.flavor}</p><small>{dish.ingredients.length} ç§é£Ÿæ Â· {dish.steps?.length || 0} ä¸ªæ­¥éª¤ Â· {dish.baseServings || 4} äººåŸºç¡€ä»½</small>{Boolean(dish.seasons?.length || dish.occasions?.length || dish.dietary?.length) && <small>{[...(dish.seasons || []), ...(dish.occasions || []), ...(dish.dietary || [])].join(" Â· ")}</small>}</div>
-                        <div className="managed-actions"><button onClick={() => startEditingDish(dish)}>ç¼–è¾‘</button><button onClick={() => duplicateDish(dish)}>å¤åˆ¶</button><button className={dish.featured ? "active" : ""} onClick={() => setDishFlag(dish, "featured", !dish.featured)}>{dish.featured ? "å–æ¶ˆæ¨è" : "æ¨è"}</button><button onClick={() => setDishFlag(dish, "soldOut", !dish.soldOut)}>{dish.soldOut ? "æ¢å¤ä¾›åº”" : "å”®ç½„"}</button><button onClick={() => setDishFlag(dish, "available", dish.available === false)}>{dish.available === false ? "åŠ å…¥æœ¬æœŸ" : "æš‚åœæœ¬æœŸ"}</button><button onClick={() => toggleDish(dish)}>{dish.active ? "å½’æ¡£" : "æ¢å¤"}</button><button className="danger" onClick={() => deleteDish(dish)}>æ°¸ä¹…åˆ é™¤</button></div>
-                      </article>
-                    ))}
-                  </div>
-                )}
-              </aside>
-              </div>
-            </>
-          ) : chefView === "banquet" ? (
-            <section className="banquet-builder" aria-labelledby="banquet-builder-title">
-              <div className="banquet-tools panel">
-                <div className="panel-title"><div><span>MENU COMPOSER</span><h2 id="banquet-builder-title">å®´å¸­èœå•ç¼–æ’å™¨</h2></div><small>ç‚¹å• â†’ ç¼–æ’ â†’ å¯¼å‡º</small></div>
-                <div className="banquet-tool-body">
-                  <div className="banquet-step">
-                    <div className="banquet-step-title"><b>1</b><div><strong>ä»æœ‹å‹çš„ç‚¹å•å¼€å§‹</strong><small>è‡ªåŠ¨æŠŠå·²ç‚¹èœå“æ’å…¥åˆé€‚æ ç›®</small></div></div>
-                    <select value={banquetOrderId} onChange={(event) => composeFromOrder(event.target.value)} aria-label="é€‰æ‹©æœ‹å‹çš„è®¢å•">
-                      <option value="">é€‰æ‹©ä¸€ä¸ªè®¢å•â€¦</option>
-                      {orders.map((order) => <option value={order.id} key={order.id}>{order.customerName} Â· {order.mealDate} Â· {parseItems(order).length} é“èœ</option>)}
-                    </select>
-                    {orders.length === 0 && <p className="banquet-hint">è¿˜æ²¡æœ‰è®¢å•ï¼Œä¹Ÿå¯ä»¥ç›´æ¥ä»ä¸‹æ–¹èœè°±åº“æ·»åŠ èœå“ã€‚</p>}
-                  </div>
-
-                  <div className="banquet-step">
-                    <div className="banquet-step-title"><b>2</b><div><strong>é€‰æ‹©åœºæ™¯æ¨¡æ¿</strong><small>å†…å®¹ä¸å˜ï¼Œé£æ ¼éšåœºåˆåˆ‡æ¢</small></div></div>
-                    <div className="template-picker">
-                      {banquetTemplates.map((template) => <button type="button" className={banquetTemplate === template.id ? `template-choice ${template.id} active` : `template-choice ${template.id}`} key={template.id} onClick={() => setBanquetTemplate(template.id)}><span>{template.mark}</span><strong>{template.name}</strong><small>{template.occasion}</small></button>)}
-                    </div>
-                  </div>
-
-                  <div className="banquet-step">
-                    <div className="banquet-step-title"><b>3</b><div><strong>å¡«å†™è¿™åœºå®´å¸­</strong><small>æ ‡é¢˜å’Œå¿ƒæ„ä¼šæ˜¾ç¤ºåœ¨èœå•å¡ä¸Š</small></div></div>
-                    <div className="banquet-fields">
-                      <label><span>èœå•æ ‡é¢˜</span><input value={banquetTitle} onChange={(event) => setBanquetTitle(event.target.value)} maxLength={32} /></label>
-                      <label><span>ç”¨é¤æ—¥æœŸ</span><input type="date" value={banquetDate} onChange={(event) => setBanquetDate(event.target.value)} /></label>
-                      <label className="wide"><span>å†™ç»™å®¢äººçš„è¯</span><input value={banquetMessage} onChange={(event) => setBanquetMessage(event.target.value)} maxLength={70} /></label>
-                    </div>
-                  </div>
-
-                  <div className="banquet-step">
-                    <div className="banquet-step-title"><b>4</b><div><strong>è°ƒæ•´èœå“é¡ºåº</strong><small>å¯ä»èœè°±åº“è¡¥èœï¼Œæˆ–æ›´æ¢æ‰€å±æ ç›®</small></div></div>
-                    <div className="banquet-add-row"><select value={banquetDishId} onChange={(event) => setBanquetDishId(event.target.value)} aria-label="ä»èœè°±åº“é€‰æ‹©èœå“"><option value="">ä»æˆ‘çš„èœè°±åº“æ·»åŠ â€¦</option>{dishCatalog.filter((dish) => !banquetItems.some((item) => item.dishId === dish.id)).map((dish) => <option value={dish.id} key={dish.id}>{dish.name} Â· {dish.category}</option>)}</select><button type="button" onClick={addBanquetDish}>ï¼‹ åŠ å…¥</button></div>
-                    {banquetDishes.length === 0 ? <div className="banquet-empty"><span>å®´</span><p>é€‰æ‹©ä¸€ä¸ªè®¢å•ï¼Œæˆ–ä»èœè°±åº“åŠ å…¥ç¬¬ä¸€é“èœã€‚</p></div> : <div className="banquet-arrangement">{banquetDishes.map(({ dish, course }, index) => <article key={dish.id}><span className="arrange-number">{String(index + 1).padStart(2, "0")}</span><div><strong>{dish.name}</strong><small>{dish.flavor} Â· çº¦ {dish.minutes} åˆ†é’Ÿ</small></div><select value={course} onChange={(event) => updateBanquetCourse(dish.id, event.target.value as BanquetCourse)} aria-label={`${dish.name}æ‰€å±æ ç›®`}>{banquetCourses.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select><div className="arrange-actions"><button type="button" onClick={() => moveBanquetDish(dish.id, -1)} disabled={index === 0} aria-label={`ä¸Šç§»${dish.name}`}>â†‘</button><button type="button" onClick={() => moveBanquetDish(dish.id, 1)} disabled={index === banquetDishes.length - 1} aria-label={`ä¸‹ç§»${dish.name}`}>â†“</button><button type="button" className="remove" onClick={() => setBanquetItems((current) => current.filter((item) => item.dishId !== dish.id))} aria-label={`ç§»é™¤${dish.name}`}>Ã—</button></div></article>)}</div>}
-                  </div>
-                </div>
-              </div>
-
-              <aside className="banquet-preview-wrap">
-                <div className={`banquet-preview template-${banquetTemplate}`}>
-                  <div className="menu-card-ornament" aria-hidden="true"><span>{activeBanquetTemplate.mark}</span></div>
-                  <div className="menu-card-header">
-                    <small>é˜¿å¾·å°å¨æˆ¿ Â· PRIVATE KITCHEN</small>
-                    <h2>{banquetTitle || "ä»Šæ™šå®¶å®´"}</h2>
-                    <p>{activeBanquetTemplate.subtitle}</p>
-                    <div><span>{banquetDate || "æ‹©æ—¥ç›¸èš"}</span>{selectedBanquetOrder && <span>{selectedBanquetOrder.guestCount} ä½å®¾å®¢</span>}</div>
-                  </div>
-                  <div className="menu-card-courses">
-                    {banquetCourses.map((course) => {
-                      const courseDishes = banquetDishes.filter((item) => item.course === course.id);
-                      if (!courseDishes.length) return null;
-                      return <section key={course.id}><h3><span>{course.label}</span><small>{course.english}</small></h3><div>{courseDishes.map(({ dish }) => <article key={dish.id}><strong>{dish.name}</strong><span>{dish.description || dish.flavor}</span></article>)}</div></section>;
-                    })}
-                    {banquetDishes.length === 0 && <div className="menu-card-placeholder"><span>MENU</span><p>åŠ å…¥èœå“åï¼Œè¿™é‡Œä¼šç”Ÿæˆå®Œæ•´çš„å®´å¸­èœå•ã€‚</p></div>}
-                  </div>
-                  <div className="menu-card-footer"><span>â€”</span><p>{banquetMessage || "æ„¿ä»Šæ™šæœ‰å¥½å‘³ï¼Œä¹Ÿæœ‰å¥½å¿ƒæƒ…"}</p><small>CHEF&apos;S TABLE Â· ç§æˆ¿å‘ˆçŒ®</small></div>
-                </div>
-                <div className="preview-actions"><button type="button" className="quiet" onClick={() => { setBanquetItems([]); setBanquetOrderId(""); }}>æ¸…ç©ºé‡æ’</button><button type="button" className="export" onClick={printBanquetMenu}>å¯¼å‡º / æ‰“å°èœå• <span>â†—</span></button></div>
-                <p className="preview-tip">å¯¼å‡ºåå¯ä¿å­˜ä¸º PDFï¼Œä¹Ÿå¯ä»¥ç›´æ¥æ‰“å°æˆæ¡Œé¢èœå•ã€‚</p>
-              </aside>
-            </section>
-          ) : (
-            <section className="invitation-workspace">
-              <form className="invite-creator panel" onSubmit={createInvite}>
-                <div className="panel-title"><div><span>PRIVATE DINNER LINK</span><h2>ç”Ÿæˆä¸€åœºä¸“å±é¥­å±€</h2></div><small>é€‰èœ Â· å†™è¯ Â· åˆ†äº«</small></div>
-                <div className="invite-fields">
-                  <label><span>é¥­å±€åå­—</span><input name="title" required maxLength={48} placeholder="ä¾‹å¦‚ï¼šå‘¨å…­æ¥æˆ‘å®¶åƒé¥­" /></label>
-                  <label><span>æ—¥æœŸ</span><input name="mealDate" type="date" min={today} defaultValue={today} required /></label>
-                  <label><span>é‚€è¯·é£æ ¼</span><select name="theme" defaultValue="warm"><option value="warm">æ¸©é¦¨å®¶å¸¸</option><option value="romance">äºŒäººä¸–ç•Œ</option><option value="fine">Fine Dinner</option><option value="festival">èŠ‚æ—¥å›¢åœ†</option></select></label>
-                  <label className="wide"><span>å†™ç»™æœ‹å‹çš„è¯</span><textarea name="message" maxLength={180} placeholder="ä¾‹å¦‚ï¼šèœæˆ‘æ¥åšï¼Œä½ åªç®¡å¸¦ç€å¥½èƒƒå£æ¥ã€‚" /></label>
-                </div>
-                <fieldset className="invite-dish-picker"><legend>è¿™æ¬¡å¼€æ”¾å“ªäº›èœ</legend><p>å‹¾é€‰â€œå¯ç‚¹â€ä¼šè¿›å…¥ä¸“å±èœå•ï¼›å†å‹¾â€œæ¨èâ€ä¼šç»„æˆä¸»å¨æ­é…ã€‚</p><div>{dishCatalog.filter((dish) => dish.active !== false && dish.available !== false).map((dish) => <article key={dish.id}><label><input type="checkbox" name="dishIds" value={dish.id} /><span>{dish.imageUrl ? <img src={dish.imageUrl} alt="" /> : "ğŸ½ï¸"}<b>{dish.name}</b><small>{dish.category}</small></span></label><label className="recommend-check"><input type="checkbox" name="recommendedDishIds" value={dish.id} />æ¨è</label></article>)}</div></fieldset>
-                <button className="primary-button">ç”Ÿæˆä¸“å±é‚€è¯· <span>â†’</span></button>
-              </form>
-
-              <div className="invite-list panel">
-                <div className="panel-title"><div><span>DINNER ARCHIVE</span><h2>æˆ‘çš„é¥­å±€ä¸é¤æ¡Œæ—¥è®°</h2></div><small>{invites.length} åœº</small></div>
-                {invites.length === 0 ? <div className="empty"><span>ğŸ’Œ</span><strong>è¿˜æ²¡æœ‰ä¸“å±é¥­å±€</strong><p>ä»å·¦è¾¹æŒ‘å‡ é“èœï¼Œç”Ÿæˆç¬¬ä¸€å¼ åªå±äºæœ‹å‹çš„é‚€è¯·ã€‚</p></div> : <div className="invite-cards">{invites.map((invite) => {
-                  const journal = journals.find((item) => item.inviteId === invite.id);
-                  return <article className={`invite-card theme-${invite.theme}${invite.active ? "" : " inactive"}`} key={invite.id}>
-                    <div className="invite-card-head"><span>{invite.mealDate}</span><em>{invite.active ? "é‚€è¯·ä¸­" : "å·²ç»“æŸ"}</em></div>
-                    <h3>{invite.title}</h3><p>{invite.message || "èœæˆ‘æ¥åšï¼Œä½ åªç®¡æ¥ã€‚"}</p>
-                    <div className="invite-menu-preview">{invite.dishIds.map((id) => dishCatalog.find((dish) => dish.id === id)?.name).filter(Boolean).join(" Â· ")}</div>
-                    <div className="invite-actions"><button onClick={() => shareInvite(invite)}>åˆ†äº«é‚€è¯·</button><a href={`/invite/${invite.token}`} target="_blank">é¢„è§ˆ</a><button className="quiet" onClick={() => toggleInvite(invite)}>{invite.active ? "ç»“æŸé‚€è¯·" : "é‡æ–°å¼€æ”¾"}</button></div>
-                    <form className="journal-form" onSubmit={(event) => saveJournal(event, invite)}><strong>é¥­åç•™ä¸€é¡µ</strong><input name="title" defaultValue={journal?.title || "ä»Šæ™šçš„é¤æ¡Œæ—¥è®°"} maxLength={60} /><textarea name="note" defaultValue={journal?.note || ""} maxLength={800} placeholder="è®°ä¸‹ä»Šæ™šæœ€å¥½åƒçš„ä¸€é“èœã€æœ€å¥½ç¬‘çš„ä¸€å¥è¯â€¦" /><label><span>ä¸Šä¼ é¤æ¡Œç…§ç‰‡ï¼ˆæœ€å¤š 6 å¼ ï¼‰</span><input name="images" type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" /></label>{journal?.imageUrls.length ? <div className="journal-thumbs">{journal.imageUrls.map((url) => <img src={url} alt="é¥­å±€è®°å½•" key={url} />)}</div> : null}<button>ä¿å­˜é¤æ¡Œæ—¥è®°</button></form>
-                  </article>;
-                })}</div>}
-              </div>
-            </section>
-          )}
-        </section>
-      )}
-
-      {cartOpen && (
-        <div className="overlay" onMouseDown={(event) => event.target === event.currentTarget && setCartOpen(false)}>
-          <aside className="cart-drawer" role="dialog" aria-modal="true" aria-label="å·²é€‰èœå•">
-            <button className="close" onClick={() => setCartOpen(false)} aria-label="å…³é—­">Ã—</button>
-            <span className="eyebrow">YOUR HAPPY LITTLE MENU</span><h2>è¿™é¡¿æƒ³åƒè¿™äº›</h2>
-            <div className="cart-lines">{cartItems.map((item) => <div key={item.id}><span className="mini-emoji">{item.imageUrl ? <img src={item.imageUrl} alt="" /> : item.emoji}</span><span><strong>{item.name}</strong></span><div><button type="button" onClick={() => updateQuantity(item.id, -1)} aria-label={`å‡å°‘${item.name}`}><span className="control-mark minus" aria-hidden="true" /></button><b>{item.quantity}</b><button type="button" onClick={() => updateQuantity(item.id, 1)} aria-label={`å¢åŠ ${item.name}`}><span className="control-mark plus" aria-hidden="true" /></button></div></div>)}</div>
-            <p className="cart-hint">çœ¼å…‰ä¸é”™å‘€ã€‚æäº¤åæˆ‘ä¼šå’Œä½ ç¡®è®¤æ—¶é—´ï¼Œå†è®¤çœŸå»ä¹°èœã€‚</p>
-            <button className="primary-button" onClick={() => setCheckoutOpen(true)}>æŠŠè¿™é¡¿é¥­çº¦èµ·æ¥ <span>â†’</span></button>
-          </aside>
-        </div>
-      )}
-
-      {checkoutOpen && (
-        <div className="overlay checkout-overlay">
-          <form className="checkout-card" onSubmit={submitOrder}>
-            <button type="button" className="close" onClick={() => setCheckoutOpen(false)} aria-label="å…³é—­">Ã—</button>
-            <span className="eyebrow">ALMOST DINNER TIME</span><h2>æœ€åï¼ŒæŠŠé¥­å±€çº¦èµ·æ¥</h2><p>å‘Šè¯‰æˆ‘è°æ¥ã€å“ªå¤©æ¥ã€‚ä½ è´Ÿè´£æœŸå¾…ï¼Œæˆ‘è´Ÿè´£å¥½åƒã€‚</p>
-            <label><span>ä½ çš„ç§°å‘¼</span><input name="customerName" required maxLength={30} placeholder="ä¾‹å¦‚ï¼šå°æ—" /></label>
-            <div className="form-row"><label><span>æƒ³å“ªå¤©åƒ</span><input name="mealDate" type="date" min={today} defaultValue={activeInvite?.mealDate || today} readOnly={Boolean(activeInvite)} required /></label><label><span>å‡ ä¸ªäºº</span><input name="guestCount" type="number" min="1" max="20" defaultValue="2" required /></label></div>
-            <label><span>å£å‘³æˆ–å¿Œå£</span><textarea name="note" maxLength={200} placeholder="ä¾‹å¦‚ï¼šå°‘è¾£ã€ä¸åƒé¦™èœï¼Œæˆ–è€…ä»»ä½•æƒ³è¯´çš„è¯â€¦" /></label>
-            <button className="primary-button" disabled={submitting}>{submitting ? "æ­£åœ¨æäº¤â€¦" : `ç¡®è®¤ç‚¹èœ Â· ${cartItems.length} é“ / ${cartCount} ä»½`}<span>â†’</span></button>
-          </form>
-        </div>
-      )}
-
-      {orderSuccessOpen && orderProgressUrl && (
-        <div className="overlay checkout-overlay">
-          <section className="checkout-card order-success-dialog" role="dialog" aria-modal="true" aria-label="ç‚¹èœæˆåŠŸ">
-            <button type="button" className="close" onClick={() => setOrderSuccessOpen(false)} aria-label="å…³é—­">Ã—</button>
-            <div className="order-success-mark" aria-hidden="true">âœ“</div>
-            <span className="eyebrow">ORDER RECEIVED</span>
-            <h2>ç‚¹å•å·²ç»é€è¿›å¨æˆ¿</h2>
-            <p>è¿›åº¦å¡ä¼šè‡ªåŠ¨æ›´æ–°ä¸»å¨ç¡®è®¤ã€ä¹°èœå’Œå¼€ç«çŠ¶æ€ã€‚å»ºè®®ç°åœ¨æ‰“å¼€ï¼Œå¹¶æŠŠé¡µé¢ç•™åœ¨å¾®ä¿¡é‡Œã€‚</p>
-            <a className="primary-button" href={orderProgressUrl}>æŸ¥çœ‹å®æ—¶å¨æˆ¿è¿›åº¦ <span>â†’</span></a>
-            <button type="button" className="order-success-secondary" onClick={() => setOrderSuccessOpen(false)}>ç»§ç»­çœ‹çœ‹èœå•</button>
-          </section>
-        </div>
-      )}
-
-      {notice && <div className="toast" role="status">{notice}</div>}
-      <footer><span>é˜¿å¾·å°å¨æˆ¿ Â· ç§æˆ¿èœå•</span><p>æ„¿æ¯é¡¿é¥­éƒ½æœ‰çƒ­æ°”ï¼Œä¹Ÿæœ‰æƒ¦è®°ã€‚</p></footer>
-    </main>
-  );
-}
+  const [banquetDate, setBanquetDaß]»ÒÚ$z{-®éÜj×Ç7ãîXÙ^KØÓÂ÷7ããÇ7ãîXˆn{³Â÷7ããÇ7ããÂ÷7ããÂöF—cà¢¶–æw&VF–VçE&÷w2æÖ‚‡&÷r’Óâ€¢ÆF—b6Æ74æÖSÒ&–æw&VF–VçB×&÷r"¶W“×·&÷rç&÷t–GÓà¢Æ–çWBfÇVS×·&÷rææÖWÒöä6†ævS×²†WfVçB’ÓâWFFT–æw&VF–VçB‡&÷rç&÷t–BÂ&æÖR"ÂWfVçBçF&vWBçfÇVR—Ò&WV—&VBÆ6V†öÆFW#Ò.›ŠKŠŞ{øR"&–ÖÆ&VÃÒ.š9şiÙYŞz{"óà¢Æ–çWBfÇVS×·&÷ræÖ÷VçGÒöä6†ævS×²†WfVçB’ÓâWFFT–æw&VF–VçB‡&÷rç&÷t–BÂ&Ö÷VçB"ÂWfVçBçF&vWBçfÇVR—Ò&WV—&VBG—SÒ&çVÖ&W""Ö–ãÒ#ã"7FWÒ#ã"&–ÖÆ&VÃÒ.š9şiÙi[˜xò"óà¢Æ–çWBfÇVS×·&÷rçVæ—GÒöä6†ævS×²†WfVçB’ÓâWFFT–æw&VF–VçB‡&÷rç&÷t–BÂ'Væ—B"ÂWfVçBçF&vWBçfÇVR—Ò&WV—&VBÆ6V†öÆFW#Ò&r"&–ÖÆ&VÃÒ.š9şiÙXÙ^KØÒ"óà¢Ç6VÆV7BfÇVS×·&÷rçG—WÒöä6†ævS×²†WfVçB’ÓâWFFT–æw&VF–VçB‡&÷rç&÷t–BÂ'G—R"ÂWfVçBçF&vWBçfÇVR—Ò&–ÖÆ&VÃÒ.š9şiÙXˆn{²#ãÆ÷F–öãîyIş›)ÃÂö÷F–öããÆ÷F–öãî‰JÎˆùÃÂö÷F–öããÆ÷F–öãî‹>ii“Âö÷F–öããÆ÷F–öãîX[nK¹cÂö÷F–öããÂ÷6VÆV7Cà¢Æ'WGFöâG—SÒ&'WGFöâ"&–ÖÆ&VÃÒ.XŠ™šN‹ùKˆŠÂ"F—6&ÆVC×¶–æw&VF–VçE&÷w2æÆVæwF‚ÓÓÒÒöä6Æ–6³×²‚’Óâ6WD–æw&VF–VçE&÷w2‚†7W'&VçB’Óâ7W'&VçBæf–ÇFW"‚†—FVÒ’Óâ—FVÒç&÷t–BÓÒ&÷rç&÷t–B’—Óì9sÂö'WGFöãà¢ÂöF—cà¢’—Ğ¢Âöf–VÆG6WCà¢Æ'WGFöâ6Æ74æÖSÒ'&–Ö'’Ö'WGFöâ6fRÖF—6‚"F—6&ÆVC×¶F—6…7V&Ö—GF–æwÓç¶F—6…7V&Ö—GF–ærò.jÚ>YÊKùŞZÙˆùÎY8(
+b"¢VF—F–ætF—6‚ò.KùŞZÙKúîiK’"¢.KùŞZÙ[›nKˆ®iëb'ÓÇ7ãî(i#Â÷7ããÂö'WGFöãà¢ÂöF—cà¢Âöf÷&Óà ¢Æ6–FR6Æ74æÖSÒ&ÖævVBÖÖVçRæVÂ#à¢ÆF—b6Æ74æÖSÒ'æVÂ×F—FÆR#ãÆF—cãÇ7ãå”õU"$T4•RÄ”%$%“Â÷7ããÆƒ#îh‰y¨NZèÎi[NˆùÎ‹[©3Âöƒ#ãÂöF—cãÇ6ÖÆÃç¶7W7FöÔF—6†W2æÆVæwF‡Ò˜3Â÷6ÖÆÃãÂöF—cà¢ÆF—b6Æ74æÖSÒ&'V–ÇBÖ–âÖæ÷FR#ãÇ7ãî{¹şKˆzêycÂ÷7ããÇ7G&öæsî{¸şX[ˆùÎY(ÎikˆùÎ˜;ŞXúş{Én‹éÂ÷7G&öæsãÇîXúşhêˆÙ8YJî{ØN8i¨.XÎiÊÎiÉş8ZHŞX‹nh‰n[Ù.j>ûÉ¾XènXû.Šê.XÙ^KˆŞKÉ®Š*¾iKYØş8#Â÷ãÂöF—cà¢¶7W7FöÔF—6†W2æÆVæwF‚ÓÓÒòÆF—b6Æ74æÖSÒ&V×G’6ö×7B#ãÇ7ãï	úZ#Â÷7ããÇ7G&öæsî‹ùk*iÈˆz®Zé®K˜ˆùÎ[ÈóÂ÷7G&öæsãÇîZ¾Xi[znKê~ŠXÙ^ûÈÎzÊÎKˆ˜>ikˆùÎ[KÉ®X{®xëYÊiÈ¾Xø¾y¨NˆùÎXÙ^Kˆ®8#Â÷ãÂöF—câ¢€¢ÆF—b6Æ74æÖSÒ&ÖævVBÖF—6‚ÖÆ—7B#à¢¶7W7FöÔF—6†W2æÖ‚†F—6‚’Óâ€¢Æ'F–6ÆR6Æ74æÖS×¶G²F—6‚æ7F—fRò&ÖævVBÖF—6‚–æ7F—fR"¢&ÖævVBÖF—6‚'ÒG¶F—6‚ç6öÆD÷WBò"6öÆBÖ÷WB"¢"'ÖÒ¶W“×¶F—6‚æ–GÓà¢ÆF—b6Æ74æÖSÒ&ÖævVB×F‡VÖ"#ç¶F—6‚æ–ÖvUW&ÂòÆ–Ör7&3×¶F—6‚æ–ÖvUW&ÇÒ7G–ÆS×¶F—6„–ÖvU7G–ÆR†F—6‚æ–ÖvU÷6—F–öâ—ÒÇCÒ""óâ¢Ç7ãï	øÛŞûˆóÂ÷7ãçÓÂöF—cà¢ÆF—b6Æ74æÖSÒ&ÖævVBÖ6÷’#ãÆF—cãÇ7G&öæsç¶F—6‚ææÖWÓÂ÷7G&öæsãÆVÓç²F—6‚æ7F—fRò.[{.[Ù.j2"¢F—6‚ç6öÆD÷WBò.[{.YJî{ØB"¢F—6‚æf–Æ&ÆRÓÓÒfÇ6Rò.iÊÎiÉşi¨.XÂ"¢F—6‚æfVGW&VBò.K‹¾XêhêˆÙ"¢.[{.Kˆ®iëb'ÓÂöVÓãÂöF—cãÇç¶F—6‚æ6FVv÷'—Ò+r¶F—6‚æfÆf÷'ÓÂ÷ç¶F—6‚ç6ÆövâbbÇ6ÖÆÂ6Æ74æÖSÒ&ÖævVB×6Æövâ#î(	Ç¶F—6‚ç6ÆövçŞ(	ÓÂ÷6ÖÆÃçÓÇ6ÖÆÃç¶F—6‚æ–æw&VF–VçG2æÆVæwF‡ÒzxŞš9şiÙ+r¶F—6‚ç7FW3òæÆVæwF‚ÇÂÒKŠ®jÚ^šªB+r¶F—6‚æ&6U6W'f–æw2ÇÂGÒK«®Yû®zK»ÓÂ÷6ÖÆÃç´&ööÆVâ†F—6‚ç6V6öç3òæÆVæwF‚ÇÂF—6‚æö666–öç3òæÆVæwF‚ÇÂF—6‚æF–WF'“òæÆVæwF‚’bbÇ6ÖÆÃçµ²âââ†F—6‚ç6V6öç2ÇÂµÒ’Ââââ†F—6‚æö666–öç2ÇÂµÒ’Ââââ†F—6‚æF–WF'’ÇÂµÒ•Òæ¦ö–â‚"+r"—ÓÂ÷6ÖÆÃçÓÆFWF–Ç26Æ74æÖSÒ&ÖævVB×&V6—RÖFWF–Ç2#ãÇ7VÖÖ'“îiú^yÈ¾X[~KÙ>X®k9SÂ÷7VÖÖ'“ãÆF—cç¶F—6‚ç&V6—U7VÖÖ'’bbÇç¶F—6‚ç&V6—U7VÖÖ'—ÓÂ÷çÓÆ#îyJii“Âö#ãÇVÃç¶F—6‚æ–æw&VF–VçG2æÖ‚†—FVÒ’ÓâÆÆ’¶W“×¶G¶F—6‚æ–GÒÒG¶—FVÒææÖWÒÒG¶—FVÒçVæ—GÖÓãÇ7ãç¶—FVÒææÖWÓÂ÷7ããÇ7G&öæsç¶—FVÒæÖ÷VçGÒ¶—FVÒçVæ—GÓÂ÷7G&öæsãÂöÆ“â—ÓÂ÷VÃãÆ#îjÚ^šªCÂö#ç¶F—6‚ç7FW3òæÆVæwF‚òÆöÃç¶F—6‚ç7FW2æÖ‚‡7FWÂ–æFW‚’ÓâÆÆ’¶W“×¶G¶F—6‚æ–GÒ×7FWÒG¶–æFW‡ÖÓç·7FWÓÂöÆ“â—ÓÂööÃâ¢Çî‹ù˜>ˆùÎi¨.i{n‹ùk*iÈŠë[Ù^jÚ^šªN8#Â÷ç×¶F—6‚ç6÷W&6RbbÇ6ÖÆÃîiÚ^k©ûÉ§¶F—6‚ç6÷W&6WÓÂ÷6ÖÆÃçÓÂöF—cãÂöFWF–Ç3ãÂöF—cà¢ÆF—b6Æ74æÖSÒ&ÖævVBÖ7F–öç2#ãÆ'WGFöâöä6Æ–6³×²‚’Óâ7F'DVF—F–ætF—6‚†F—6‚—Óî{Én‹éÂö'WGFöããÆ'WGFöâöä6Æ–6³×²‚’ÓâGWÆ–6FTF—6‚†F—6‚—ÓîZHŞX‹cÂö'WGFöããÆ'WGFöâ6Æ74æÖS×¶F—6‚æfVGW&VBò&7F—fR"¢"'Òöä6Æ–6³×²‚’Óâ6WDF—6„fÆr†F—6‚Â&fVGW&VB"ÂF—6‚æfVGW&VB—Óç¶F—6‚æfVGW&VBò.XùnkhhêˆÙ"¢.hêˆÙ'ÓÂö'WGFöããÆ'WGFöâöä6Æ–6³×²‚’Óâ6WDF—6„fÆr†F—6‚Â'6öÆD÷WB"ÂF—6‚ç6öÆD÷WB—Óç¶F—6‚ç6öÆD÷WBò.h.ZHŞKé¾[©B"¢.YJî{ØB'ÓÂö'WGFöããÆ'WGFöâöä6Æ–6³×²‚’Óâ6WDF—6„fÆr†F—6‚Â&f–Æ&ÆR"ÂF—6‚æf–Æ&ÆRÓÓÒfÇ6R—Óç¶F—6‚æf–Æ&ÆRÓÓÒfÇ6Rò.XªXZ^iÊÎiÉò"¢.i¨.XÎiÊÎiÉò'ÓÂö'WGFöããÆ'WGFöâöä6Æ–6³×²‚’ÓâFövvÆTF—6‚†F—6‚—Óç¶F—6‚æ7F—fRò.[Ù.j2"¢.h.ZHÒ'ÓÂö'WGFöããÆ'WGFöâ6Æ74æÖSÒ&FævW""öä6Æ–6³×²‚’ÓâFVÆWFTF—6‚†F—6‚—ÓîkK˜^XŠ™šCÂö'WGFöããÂöF—cà¢Âö'F–6ÆSà¢’—Ğ¢ÂöF—cà¢—Ğ¢Âö6–FSà¢ÂöF—cà¢Âóà¢’¢6†Vef–WrÓÓÒ'6W'f–ær"ò€¢Ç6V7F–öâ6Æ74æÖSÒ'6W'f–ær×v÷&·76R"&–ÖÆ&VÆÆVF'“Ò'6W'f–ær×F—FÆR#à¢Ç6V7F–öâ6Æ74æÖSÒ'6W'f–ærÖ†W&òæVÂ#ãÆF—cãÇ7ãå5DUB+r$TE’Dò4U%dSÂ÷7ããÆƒ"–CÒ'6W'f–ær×F—FÆR#îiÈYîzîŠêNûÈÎxKnYî˜	®yú^[ÈšZÓÂöƒ#ãÇî‹ù˜xÎXú®KùŞyY[{.{¸ş[Èx¾y¨NšZŞ[8.j8iú^jÚ^šªNZèÎh‰h8^Xk^YîXù˜[Ë®hù˜i.ûÈÎŠê.XÙ^KÉ®ˆz®Xª‹ù¾XZ^Kˆ¾ik[Ù.j>8#Â÷ãÂöF—cãÆF—cãÇ7G&öæsç·6W'f–æt÷&FW'2æÆVæwF‡ÓÂ÷7G&öæsãÇ6ÖÆÃîYË®zØ[è^[ÈšZÓÂ÷6ÖÆÃãÂöF—cãÂ÷6V7F–öãà¢ÆF—b6Æ74æÖSÒ'6W'f–ærÖw&–B#à¢Ç6V7F–öâ6Æ74æÖSÒ'æVÂ#ãÆF—b6Æ74æÖSÒ'æVÂ×F—FÆR#ãÆF—cãÇ7ãå$TE’TUTSÂ÷7ããÆƒ#îzØ[è^˜	®yú^y¨NšZŞ[Âöƒ#ãÂöF—cãÇ6ÖÆÃç·6W'f–æt÷&FW'2æÆVæwF‡ÒYË£Â÷6ÖÆÃãÂöF—cç·6W'f–æt÷&FW'2æÆVæwF‚ÓÓÒòÆF—b6Æ74æÖSÒ&V×G’#ãÇ7ãï	ùICÂ÷7ããÇ7G&öæsîi¨.i{nk*iÈzØ[è^[ÈšZŞy¨NšZŞ[Â÷7G&öæsãÇîX‹nKÙÎš^x+X{¾(	Î[ÈZx¾X‹nKÙÎ(	ŞYîûÈÎŠê.XÙ^KÉ®X{®xëYÊ‹ù˜xÎ8#Â÷ãÂöF—câ¢ÆF—b6Æ74æÖSÒ&÷&FW"ÖÆ—7B6W'f–ærÖÆ—7B#ç·6W'f–æt÷&FW'2æÖ‚†÷&FW"’Óâ&VæFW$÷&FW$6&B†÷&FW"’—ÓÂöF—cçÓÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ74æÖSÒ'æVÂ#ãÆF—b6Æ74æÖSÒ'æVÂ×F—FÆR#ãÆF—cãÇ7ãå$T4TåDÅ’4U%dTCÂ÷7ããÆƒ#îiÈ‹ùZèÎh‰Âöƒ#ãÂöF—cãÇ6ÖÆÃç·&V6VçDFöæT÷&FW'2æÆVæwF‡ÒYË£Â÷6ÖÆÃãÂöF—cç·&V6VçDFöæT÷&FW'2æÆVæwF‚ÓÓÒòÆF—b6Æ74æÖSÒ&V×G’6ö×7B#ãÇ7ãï	øÛŞûˆóÂ÷7ããÇîZèÎh‰y¨NšZŞ[KÉ®ˆz®Xª[Ù.j>X‹‹ù˜xÎ8#Â÷ãÂöF—câ¢ÆF—b6Æ74æÖSÒ&÷&FW"ÖÆ—7B&6†—fVBÖÆ—7B#ç·&V6VçDFöæT÷&FW'2æÖ‚†÷&FW"’Óâ&VæFW$÷&FW$6&B†÷&FW"ÂG'VR’—ÓÂöF—cç×¶&6†—fVD÷&FW'2æÆVæwF‚â&V6VçDFöæT÷&FW'2æÆVæwF‚bbÇ6V7F–öâ6Æ74æÖSÒ&÷&FW"Ö&6†—fR#ãÆ'WGFöâG—SÒ&'WGFöâ"6Æ74æÖSÒ&÷&FW"Ö&6†—fR×FövvÆR"öä6Æ–6³×²‚’Óâ6WD&6†—fT÷Vâ‚‡fÇVR’ÓâfÇVR—Ò&–ÖW‡æFVC×¶&6†—fT÷VçÓãÇ7ããÆ#îXZ˜:Šê.XÙ^[Ù.j3Âö#ãÇ6ÖÆÃîXÈ^Y
+¾[{.ZèÎh‰Y(Î[{.Xùnkhy¨NXènXû.šZŞ[Â÷6ÖÆÃãÂ÷7ããÇ7G&öæsç¶&6†—fVD÷&FW'2æÆVæwF‡ÒK»Ò¶&6†—fT÷Vâò.iKn‹[r(i"¢.iú^yÈ²(i2'ÓÂ÷7G&öæsãÂö'WGFöãç¶&6†—fT÷VâbbÆF—b6Æ74æÖSÒ&÷&FW"ÖÆ—7B&6†—fVBÖÆ—7B#ç¶&6†—fVD÷&FW'2æÖ‚†÷&FW"’Óâ&VæFW$÷&FW$6&B†÷&FW"ÂG'VR’—ÓÂöF—cçÓÂ÷6V7F–öãçÓÂ÷6V7F–öãà¢ÂöF—cà¢Â÷6V7F–öãà¢’¢€¢Ç6V7F–öâ6Æ74æÖSÒ&–çf—FF–öâ×v÷&·76R#à¢Æf÷&Ò6Æ74æÖSÒ&–çf—FRÖ7&VF÷"æVÂ"öå7V&Ö—C×¶7&VFT–çf—FWÓà¢ÆF—b6Æ74æÖSÒ'æVÂ×F—FÆR#ãÆF—cãÇ7ãå$•dDRD”ääU"Ä”ä³Â÷7ããÆƒ#îyIşh‰KˆYË®K‰>[îšZŞ[Âöƒ#ãÂöF—cãÇ6ÖÆÃî˜ˆùÂ+rXiŠùÒ+rXˆnKª³Â÷6ÖÆÃãÂöF—cà¢ÆF—b6Æ74æÖSÒ&–çf—FRÖf–VÆG2#à¢ÆÆ&VÃãÇ7ãîšZŞ[YŞZÙsÂ÷7ããÆ–çWBæÖSÒ'F—FÆR"&WV—&VBÖ„ÆVæwFƒ×³C‡ÒÆ6V†öÆFW#Ò.Kè¾Zh.ûÉ®YXZŞiÚ^h‰ZënY>šZÒ"óãÂöÆ&VÃà¢ÆÆ&VÃãÇ7ãîiz^iÉóÂ÷7ããÆ–çWBæÖSÒ&ÖVÄFFR"G—SÒ&FFR"Ö–ã×·FöF—ÒFVfVÇEfÇVS×·FöF—Ò&WV—&VBóãÂöÆ&VÃà¢ÆÆ&VÃãÇ7ãî˜(Šû~š8îjÃÂ÷7ããÇ6VÆV7BæÖSÒ'F†VÖR"FVfVÇEfÇVSÒ'v&Ò#ãÆ÷F–öâfÇVSÒ'v&Ò#îkŠšjZën[‹ƒÂö÷F–öããÆ÷F–öâfÇVSÒ'&öÖæ6R#îK¨ÎK«®K‰nyXÃÂö÷F–öããÆ÷F–öâfÇVSÒ&f–æR#äf–æRF–ææW#Âö÷F–öããÆ÷F–öâfÇVSÒ&fW7F—fÂ#îˆ¨.iz^Yº.YÈcÂö÷F–öããÂ÷6VÆV7CãÂöÆ&VÃà¢ÆÆ&VÂ6Æ74æÖSÒ'v–FR#ãÇ7ãîXi{¹iÈ¾Xø¾y¨NŠùÓÂ÷7ããÇFW‡F&VæÖSÒ&ÖW76vR"Ö„ÆVæwFƒ×³ƒÒÆ6V†öÆFW#Ò.Kè¾Zh.ûÉ®ˆùÎh‰iÚ^X®ûÈÎKÚXú®zê[ŠnyØZ[Şˆ8>Xú>iÚ^8""óãÂöÆ&VÃà¢ÂöF—cà¢Æf–VÆG6WB6Æ74æÖSÒ&–çf—FRÖF—6‚×–6¶W"#ãÆÆVvVæCî‹ùjÊ[ÈiKîY:®K©¾ˆùÃÂöÆVvVæCãÇîX»î˜(	ÎXúşx+(	ŞKÉ®‹ù¾XZ^K‰>[îˆùÎXÙ^ûÉ¾XhŞX»î(	ÎhêˆÙ(	ŞKÉ®{¸Nh‰K‹¾Xêi
+Ş˜XŞ8#Â÷ãÆF—cç¶F—6„6FÆöræf–ÇFW"‚†F—6‚’ÓâF—6‚æ7F—fRÓÒfÇ6RbbF—6‚æf–Æ&ÆRÓÒfÇ6R’æÖ‚†F—6‚’ÓâÆ'F–6ÆR¶W“×¶F—6‚æ–GÓãÆÆ&VÃãÆ–çWBG—SÒ&6†V6¶&÷‚"æÖSÒ&F—6„–G2"fÇVS×¶F—6‚æ–GÒóãÇ7ãç¶F—6‚æ–ÖvUW&ÂòÆ–Ör7&3×¶F—6‚æ–ÖvUW&ÇÒÇCÒ""óâ¢/	øÛŞûˆò'ÓÆ#ç¶F—6‚ææÖWÓÂö#ãÇ6ÖÆÃç¶F—6‚æ6FVv÷'—ÓÂ÷6ÖÆÃãÂ÷7ããÂöÆ&VÃãÆÆ&VÂ6Æ74æÖSÒ'&V6öÖÖVæBÖ6†V6²#ãÆ–çWBG—SÒ&6†V6¶&÷‚"æÖSÒ'&V6öÖÖVæFVDF—6„–G2"fÇVS×¶F—6‚æ–GÒóîhêˆÙÂöÆ&VÃãÂö'F–6ÆSâ—ÓÂöF—cãÂöf–VÆG6WCà¢Æ'WGFöâ6Æ74æÖSÒ'&–Ö'’Ö'WGFöâ#îyIşh‰K‰>[î˜(ŠûrÇ7ãî(i#Â÷7ããÂö'WGFöãà¢Âöf÷&Óà ¢ÆF—b6Æ74æÖSÒ&–çf—FRÖÆ—7BæVÂ#à¢ÆF—b6Æ74æÖSÒ'æVÂ×F—FÆR#ãÆF—cãÇ7ãäD”ääU"$4„•dSÂ÷7ããÆƒ#îh‰y¨NšZŞ[KˆîšIjÎiz^ŠëÂöƒ#ãÂöF—cãÇ6ÖÆÃç¶–çf—FW2æÆVæwF‡ÒYË£Â÷6ÖÆÃãÂöF—cà¢¶–çf—FW2æÆVæwF‚ÓÓÒòÆF—b6Æ74æÖSÒ&V×G’#ãÇ7ãï	ù(ÃÂ÷7ããÇ7G&öæsî‹ùk*iÈK‰>[îšZŞ[Â÷7G&öæsãÇîK¸î[zn‹ëhÉXz˜>ˆùÎûÈÎyIşh‰zÊÎKˆ[ÊXú®[îK¨îiÈ¾Xø¾y¨N˜(Šû~8#Â÷ãÂöF—câ¢ÆF—b6Æ74æÖSÒ&–çf—FRÖ6&G2#ç¶–çf—FW2æÖ‚†–çf—FR’Óâ°¢6öç7B¦÷W&æÂÒ¦÷W&æÇ2æf–æB‚†—FVÒ’Óâ—FVÒæ–çf—FT–BÓÓÒ–çf—FRæ–B“°¢&WGW&âÆ'F–6ÆR6Æ74æÖS×¶–çf—FRÖ6&BF†VÖRÒG¶–çf—FRçF†VÖWÒG¶–çf—FRæ7F—fRò""¢"–æ7F—fR'ÖÒ¶W“×¶–çf—FRæ–GÓà¢ÆF—b6Æ74æÖSÒ&–çf—FRÖ6&BÖ†VB#ãÇ7ãç¶–çf—FRæÖVÄFFWÓÂ÷7ããÆVÓç¶–çf—FRæ7F—fRò.˜(Šû~KŠÒ"¢.[{.{¹>iÙò'ÓÂöVÓãÂöF—cà¢Æƒ3ç¶–çf—FRçF—FÆWÓÂöƒ3ãÇç¶–çf—FRæÖW76vRÇÂ.ˆùÎh‰iÚ^X®ûÈÎKÚXú®zêiÚ^8"'ÓÂ÷à¢ÆF—b6Æ74æÖSÒ&–çf—FRÖÖVçR×&Wf–Wr#ç¶–çf—FRæF—6„–G2æÖ‚†–B’ÓâF—6„6FÆöræf–æB‚†F—6‚’ÓâF—6‚æ–BÓÓÒ–B“òææÖR’æf–ÇFW"„&ööÆVâ’æ¦ö–â‚"+r"—ÓÂöF—cà¢ÆF—b6Æ74æÖSÒ&–çf—FRÖ7F–öç2#ãÆ'WGFöâöä6Æ–6³×²‚’Óâ6†&T–çf—FR†–çf—FR—ÓîXˆnKª¾˜(ŠûsÂö'WGFöããÆ‡&Vc×¶ö–çf—FRòG¶–çf—FRçFö¶VçÖÒF&vWCÒ%ö&Ææ²#îš(NŠxƒÂöãÆ'WGFöâ6Æ74æÖSÒ'V–WB"öä6Æ–6³×²‚’ÓâFövvÆT–çf—FR†–çf—FR—Óç¶–çf—FRæ7F—fRò.{¹>iÙş˜(Šûr"¢.˜xŞik[ÈiKâ'ÓÂö'WGFöããÂöF—cà¢Æf÷&Ò6Æ74æÖSÒ&¦÷W&æÂÖf÷&Ò"öå7V&Ö—C×²†WfVçB’Óâ6fT¦÷W&æÂ†WfVçBÂ–çf—FR—ÓãÇ7G&öæsîšZŞYîyYKˆšSÂ÷7G&öæsãÆ–çWBæÖSÒ'F—FÆR"FVfVÇEfÇVS×¶¦÷W&æÃòçF—FÆRÇÂ.K¸®i™®y¨NšIjÎiz^Šë'ÒÖ„ÆVæwFƒ×³cÒóãÇFW‡F&VæÖSÒ&æ÷FR"FVfVÇEfÇVS×¶¦÷W&æÃòææ÷FRÇÂ"'ÒÖ„ÆVæwFƒ×³ƒÒÆ6V†öÆFW#Ò.ŠëKˆ¾K¸®i™®iÈZ[ŞY>y¨NKˆ˜>ˆùÎ8iÈZ[ŞzÉy¨NKˆXú^ŠùŞ(
+b"óãÆÆ&VÃãÇ7ãîKˆ®KÊšIjÎxZ~x˜~ûÈiÈZI¢b[ÊûÈ“Â÷7ããÆ–çWBæÖSÒ&–ÖvW2"G—SÒ&f–ÆR"×VÇF—ÆR66WCÒ&–ÖvRö§VrÆ–ÖvR÷ærÆ–ÖvR÷vV'Æ–ÖvRöv–b"óãÂöÆ&VÃç¶¦÷W&æÃòæ–ÖvUW&Ç2æÆVæwF‚òÆF—b6Æ74æÖSÒ&¦÷W&æÂ×F‡VÖ'2#ç¶¦÷W&æÂæ–ÖvUW&Ç2æÖ‚‡W&Â’ÓâÆ–Ör7&3×·W&ÇÒÇCÒ.šZŞ[Šë[ÙR"¶W“×·W&ÇÒóâ—ÓÂöF—câ¢çVÆÇÓÆ'WGFöãîKùŞZÙšIjÎiz^ŠëÂö'WGFöããÂöf÷&Óà¢Âö'F–6ÆSã°¢Ò—ÓÂöF—cçĞ¢ÂöF—cà¢Â÷6V7F–öãà¢—Ğ¢Â÷6V7F–öãà¢—Ğ ¢¶6'D÷Vâbb€¢ÆF—b6Æ74æÖSÒ&÷fW&Æ’"öäÖ÷W6TF÷vã×²†WfVçB’ÓâWfVçBçF&vWBÓÓÒWfVçBæ7W'&VçEF&vWBbb6WD6'D÷Vâ†fÇ6R—Óà¢Æ6–FR6Æ74æÖSÒ&6'BÖG&vW""&öÆSÒ&F–Æör"&–ÖÖöFÃÒ'G'VR"&–ÖÆ&VÃÒ.[{.˜ˆùÎXÙR#à¢Æ'WGFöâ6Æ74æÖSÒ&6Æ÷6R"öä6Æ–6³×²‚’Óâ6WD6'D÷Vâ†fÇ6R—Ò&–ÖÆ&VÃÒ.X[>™zÒ#ì9sÂö'WGFöãà¢Ç7â6Æ74æÖSÒ&W–V'&÷r#å”õU"„’Ä•EDÄRÔTåSÂ÷7ããÆƒ#î‹ùšşh;>Y>‹ùK©³Âöƒ#à¢ÆF—b6Æ74æÖSÒ&6'BÖÆ–æW2#ç¶6'D—FV×2æÖ‚†—FVÒ’ÓâÆF—b¶W“×¶—FVÒæ–GÓãÇ7â6Æ74æÖSÒ&Ö–æ’ÖVÖö¦’#ç¶—FVÒæ–ÖvUW&ÂòÆ–Ör7&3×¶—FVÒæ–ÖvUW&ÇÒÇCÒ""óâ¢—FVÒæVÖö¦—ÓÂ÷7ããÇ7ããÇ7G&öæsç¶—FVÒææÖWÓÂ÷7G&öæsãÂ÷7ããÆF—cãÆ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’ÓâWFFUVçF—G’†—FVÒæ–BÂÓ—Ò&–ÖÆ&VÃ×¶Xxş[	G¶—FVÒææÖWÖÓãÇ7â6Æ74æÖSÒ&6öçG&öÂÖÖ&²Ö–çW2"&–Ö†–FFVãÒ'G'VR"óãÂö'WGFöããÆ#ç¶—FVÒçVçF—G—ÓÂö#ãÆ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’ÓâWFFUVçF—G’†—FVÒæ–BÂ—Ò&–ÖÆ&VÃ×¶Z)îXªG¶—FVÒææÖWÖÓãÇ7â6Æ74æÖSÒ&6öçG&öÂÖÖ&²ÇW2"&–Ö†–FFVãÒ'G'VR"óãÂö'WGFöããÂöF—cãÂöF—câ—ÓÂöF—cà¢Ç6Æ74æÖSÒ&6'BÖ†–çB#îyËÎXXKˆŞ™IY8.hùKªNYîh‰KÉ®Y(ÎKÚzîŠêNi{n™{NûÈÎXhŞŠêNyÉşXë¾K›ˆùÎ8#Â÷à¢Æ'WGFöâ6Æ74æÖSÒ'&–Ö'’Ö'WGFöâ"öä6Æ–6³×²‚’Óâ6WD6†V6¶÷WD÷Vâ‡G'VR—Óîh¨®‹ùšşšZŞ{ªn‹[~iÚRÇ7ãî(i#Â÷7ããÂö'WGFöãà¢Âö6–FSà¢ÂöF—cà¢—Ğ ¢¶6†V6¶÷WD÷Vâbb€¢ÆF—b6Æ74æÖSÒ&÷fW&Æ’6†V6¶÷WBÖ÷fW&Æ’#à¢Æf÷&Ò6Æ74æÖSÒ&6†V6¶÷WBÖ6&B"öå7V&Ö—C×·7V&Ö—D÷&FW'Óà¢Æ'WGFöâG—SÒ&'WGFöâ"6Æ74æÖSÒ&6Æ÷6R"öä6Æ–6³×²‚’Óâ6WD6†V6¶÷WD÷Vâ†fÇ6R—Ò&–ÖÆ&VÃÒ.X[>™zÒ#ì9sÂö'WGFöãà¢Ç7â6Æ74æÖSÒ&W–V'&÷r#äÄÔõ5BD”ääU"D”ÔSÂ÷7ããÆƒ#îiÈYîûÈÎh¨®šZŞ[{ªn‹[~iÚSÂöƒ#ãÇîY®Šøh‰‹iÚ^8Y:®ZJiÚ^8.KÚ‹Iş‹J>iÉş[è^ûÈÎh‰‹Iş‹J>Z[ŞY>8#Â÷à¢ÆÆ&VÃãÇ7ãîKÚy¨Nz{YÃÂ÷7ããÆ–çWBæÖSÒ&7W7FöÖW$æÖR"&WV—&VBÖ„ÆVæwFƒ×³3ÒÆ6V†öÆFW#Ò.Kè¾Zh.ûÉ®[şiér"óãÂöÆ&VÃà¢ÆF—b6Æ74æÖSÒ&f÷&Ò×&÷r#ãÆÆ&VÃãÇ7ãîh;>Y:®ZJY3Â÷7ããÆ–çWBæÖSÒ&ÖVÄFFR"G—SÒ&FFR"Ö–ã×·FöF—ÒFVfVÇEfÇVS×¶7F—fT–çf—FSòæÖVÄFFRÇÂFöF—Ò&VDöæÇ“×´&ööÆVâ†7F—fT–çf—FR—Ò&WV—&VBóãÂöÆ&VÃãÆÆ&VÃãÇ7ãîXzKŠ®K«£Â÷7ããÆ–çWBæÖSÒ&wVW7D6÷VçB"G—SÒ&çVÖ&W""Ö–ãÒ#"ÖƒÒ##"FVfVÇEfÇVSÒ#""&WV—&VBóãÂöÆ&VÃãÂöF—cà¢ÆÆ&VÃãÇ7ãîXú>Y>h‰n[øÎXú3Â÷7ããÇFW‡F&VæÖSÒ&æ÷FR"Ö„ÆVæwFƒ×³#ÒÆ6V†öÆFW#Ò.Kè¾Zh.ûÉ®[	‹ê>8KˆŞY>šiˆùÎûÈÎh‰nˆ^K»¾KÙ^h;>ŠûNy¨NŠùŞ(
+b"óãÂöÆ&VÃà¢Æ'WGFöâ6Æ74æÖSÒ'&–Ö'’Ö'WGFöâ"F—6&ÆVC×·7V&Ö—GF–æwÓç·7V&Ö—GF–ærò.jÚ>YÊhùKªN(
+b"¢zîŠêNx+ˆùÂ+rG¶6'D—FV×2æÆVæwF‡Ò˜2òG¶6'D6÷VçGÒK»ÖÓÇ7ãî(i#Â÷7ããÂö'WGFöãà¢Âöf÷&Óà¢ÂöF—cà¢—Ğ ¢¶÷&FW%7V66W74÷Vâbb÷&FW%&öw&W75W&Âbb€¢ÆF—b6Æ74æÖSÒ&÷fW&Æ’6†V6¶÷WBÖ÷fW&Æ’#à¢Ç6V7F–öâ6Æ74æÖSÒ&6†V6¶÷WBÖ6&B÷&FW"×7V66W72ÖF–Æör"&öÆSÒ&F–Æör"&–ÖÖöFÃÒ'G'VR"&–ÖÆ&VÃÒ.x+ˆùÎh‰X©ò#à¢Æ'WGFöâG—SÒ&'WGFöâ"6Æ74æÖSÒ&6Æ÷6R"öä6Æ–6³×²‚’Óâ6WD÷&FW%7V66W74÷Vâ†fÇ6R—Ò&–ÖÆ&VÃÒ.X[>™zÒ#ì9sÂö'WGFöãà¢ÆF—b6Æ74æÖSÒ&÷&FW"×7V66W72ÖÖ&²"&–Ö†–FFVãÒ'G'VR#î)É3ÂöF—cà¢Ç7â6Æ74æÖSÒ&W–V'&÷r#äõ$DU"$T4T•dTCÂ÷7ãà¢Æƒ#îx+XÙ^[{.{¸ş˜‹ù¾Xêh‹óÂöƒ#à¢Çî‹ù¾[ªnXÚKÉ®ˆz®Xªi»NikK‹¾XêzîŠêN8K›ˆùÎY(Î[Èx¾x«nh8.[»®ŠêîxëYÊh™>[ÈûÈÎ[›nh¨®š^™Ú.yYYÊ[êîKú˜xÎ8#Â÷à¢Æ6Æ74æÖSÒ'&–Ö'’Ö'WGFöâ"‡&Vc×¶÷&FW%&öw&W75W&ÇÓîiú^yÈ¾Zéîi{nXêh‹ş‹ù¾[ªbÇ7ãî(i#Â÷7ããÂöà¢Æ'WGFöâG—SÒ&'WGFöâ"6Æ74æÖSÒ&÷&FW"×7V66W72×6V6öæF'’"öä6Æ–6³×²‚’Óâ6WD÷&FW%7V66W74÷Vâ†fÇ6R—Óî{º~{ºŞyÈ¾yÈ¾ˆùÎXÙSÂö'WGFöãà¢Â÷6V7F–öãà¢ÂöF—cà¢—Ğ ¢¶æ÷F–6RbbÆF—b6Æ74æÖSÒ'Fö7B"&öÆSÒ'7FGW2#ç¶æ÷F–6WÓÂöF—cçĞ¢Æfö÷FW#ãÇ7ãî™‹ş[ë~[şXêh‹ò+rzxh‹şˆùÎXÙSÂ÷7ããÇîhKşjøşšşšZŞ˜;ŞiÈx:Şk	NûÈÎK™şiÈh:nŠë8#Â÷ãÂöfö÷FW#à¢ÂöÖ–ãà¢“°§Ğ

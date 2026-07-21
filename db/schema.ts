@@ -22,6 +22,7 @@ export const customDishes = sqliteTable("custom_dishes", {
   name: text("name").notNull(),
   category: text("category").notNull(),
   description: text("description").notNull().default(""),
+  slogan: text("slogan").notNull().default(""),
   flavor: text("flavor").notNull().default("家常风味"),
   minutes: integer("minutes").notNull().default(30),
   baseServings: integer("base_servings").notNull().default(4),
