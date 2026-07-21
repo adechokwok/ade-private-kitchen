@@ -140,6 +140,12 @@ pnpm dev
 - `docker compose up -d --build`：从当前源码构建开发版
 - `docker compose -f compose.nas.yaml up -d`：使用 GitHub 镜像启动极空间正式版
 
+## Mac 与 Windows 双端继续开发
+
+仓库根目录的 `AGENTS.md` 是项目的跨设备长期记忆，记录产品目标、现有功能、NAS 架构、发布流程与安全边界。新电脑或新对话开始开发前，应先同步 GitHub 最新版本，并让 Codex 完整阅读 `AGENTS.md` 和本文档。
+
+两端共享代码和项目记忆，但不共享 `.env`、密码、Token 或 API Key；这些配置应分别安全保存在对应电脑或 NAS 上。不要用压缩包来回覆盖项目，统一通过同一个 GitHub 仓库同步，避免丢失另一端的修改。
+
 ## 从旧云端版本迁移
 
 旧版使用 Cloudflare D1 和 R2，不能直接复制数据库文件到 NAS。正式切换前，需要从旧版导出菜谱、订单与照片，再导入 NAS 版本。迁移完成并核对数据后，再停止旧站点，避免两边产生不同订单。
