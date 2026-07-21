@@ -74,6 +74,7 @@
 
 - GitHub 工作流：`.github/workflows/publish-nas-image.yml`。
 - Windows 端发布优先使用已限定到本仓库的 ChatGPT Codex GitHub Connector：在远端创建 `agent/...` 分支，组成原子提交并打开草稿 PR，确认后合并到 `main`，再检查 Actions 与 GHCR。若本机 `gh auth`、Git Credential Manager 或 OAuth 令牌接口超时，不再要求项目主人反复登录，直接复用这条已授权连接器路径。
+- 通过 Connector 上传大文件时，必须把本地文件按小块读取后在内存中拼成完整 Base64，再创建 Git blob；不得直接使用可能被输出上限截断的整文件命令结果。提交后必须对远端文件大小或 SHA-256 做完整性核验，再允许合并和发布镜像。
 - 每次成功发布同时生成 `latest` 和 `sha-完整提交编号` 两种标签。
 - NAS 默认保留人工确认更新，避免饭局期间被自动重启。
 - 程序更新前确认最近备份正常；出现问题时使用上一个 `sha-...` 镜像回退。
