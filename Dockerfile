@@ -1,17 +1,19 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-bookworm-slim AS dependencies
+FROM node:22-bookworm-slim AS base
+RUN npm install --global pnpm@11.9.0
+
+FROM base AS dependencies
 WORKDIR /app
-RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
-FROM node:22-bookworm-slim AS builder
+FROM base AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
-RUN corepack enable && pnpm run build
+RUN pnpm run build
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app

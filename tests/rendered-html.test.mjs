@@ -75,6 +75,7 @@ test("includes a reproducible amd64 Docker deployment, updates, and backups", as
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
   assert.match(dockerfile, /node:22-bookworm-slim/);
+  assert.match(dockerfile, /pnpm@11\.9\.0/);
   assert.match(dockerfile, /\.next\/standalone/);
   assert.match(dockerfile, /HEALTHCHECK/);
   assert.match(compose, /platform: linux\/amd64/);
