@@ -12,6 +12,7 @@ export const orders = sqliteTable("orders", {
   inviteId: text("invite_id").notNull().default(""),
   guestToken: text("guest_token").notNull().default(""),
   progressNote: text("progress_note").notNull().default(""),
+  statusUpdatedAt: text("status_updated_at").notNull().default(""),
   status: text("status", { enum: ["new", "confirmed", "shopping", "preparing", "done", "cancelled"] }).notNull().default("new"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

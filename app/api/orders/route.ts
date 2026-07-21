@@ -84,7 +84,8 @@ export async function PATCH(request: Request) {
     if (!payload.id || !payload.status || !validStatuses.includes(payload.status)) return Response.json({ error: "无效的订单状态" }, { status: 400 });
     await ensureOrdersSchema();
     const progressNote = typeof payload.progressNote === "string" ? payload.progressNote.trim().slice(0, 160) : "";
-    const [order] = await getDb().update(orders).set({ status: payload.status, progressNote }).where(eq(orders.id, payload.id)).returning();
+    const statusUpdatedAt = new Date().toISOString();
+    const [order] = await getDb().update(orders).set({ status: payload.status, progressNote, statusUpdatedAt }).where(eq(orders.id, payload.id)).returning();
     if (!order) return Response.json({ error: "没有找到这份订单" }, { status: 404 });
     return Response.json({ order });
   } catch (error) {
