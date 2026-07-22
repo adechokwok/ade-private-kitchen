@@ -192,8 +192,9 @@ export async function ensureMenuLibrary() {
 
   const dishCategories = getSqlite().prepare("SELECT DISTINCT category AS name FROM custom_dishes WHERE category <> ''").all() as Array<{ name: string }>;
   const names = Array.from(new Set(dishCategories.map((item) => item.name)));
+  const nextCategoryOrder = Number((getSqlite().prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM menu_categories").get() as { value: number }).value);
   for (const [index, name] of names.entries()) {
-    await getDb().insert(schema.menuCategories).values({ id: crypto.randomUUID(), name, sortOrder: index }).onConflictDoNothing();
+    await getDb().insert(schema.menuCategories).values({ id: crypto.randomUUID(), name, sortOrder: nextCategoryOrder + index }).onConflictDoNothing();
   }
 }
 

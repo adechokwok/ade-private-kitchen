@@ -1,4 +1,5 @@
 import { chefApiGuard } from "../../chef-auth";
+import { conciseDescriptionRule, playfulSloganRule, privateKitchenCopyStyle } from "../recipe-copy-style";
 
 type CopyField = "description" | "slogan";
 type ChatCompletionPayload = {
@@ -56,18 +57,18 @@ export async function POST(request: Request) {
     const currentSlogan = typeof payload.currentSlogan === "string" ? payload.currentSlogan.trim().slice(0, 60) : "";
     const preferences = typeof payload.preferences === "string" ? payload.preferences.trim().slice(0, 800) : "";
     const targetRule = field === "description"
-      ? "生成 description：40–80 个中文字符，具体描述口感、香气、做法亮点和下饭/分享场景，不要堆砌形容词。"
-      : "生成 slogan：8–18 个中文字符，像朋友点菜时看到的一句俏皮推荐语，顺口、有记忆点，不使用引号和句号。";
-    const prompt = `你是私房菜单文案编辑。请根据真实菜谱重新创作指定字段，只返回 JSON，不要 Markdown。\n${targetRule}\n菜名：${name}\n口味：${flavor || "未填写"}\n食材：${JSON.stringify(ingredients)}\n步骤：${JSON.stringify(steps)}\n当前菜品介绍：${currentDescription || "无"}\n当前 slogan：${currentSlogan || "无"}\n${preferences ? `主厨习惯：${preferences}\n` : ""}不要照抄当前文案；内容必须与菜谱一致。返回格式：{\"${field}\":\"...\"}`;
+      ? conciseDescriptionRule
+      : playfulSloganRule;
+    const prompt = `请根据真实菜谱重新创作指定字段，只返回 JSON，不要 Markdown。\n${targetRule}\n菜名：${name}\n口味：${flavor || "未填写"}\n食材：${JSON.stringify(ingredients)}\n步骤：${JSON.stringify(steps)}\n当前菜品介绍：${currentDescription || "无"}\n当前 slogan：${currentSlogan || "无"}\n${preferences ? `主厨习惯：${preferences}\n` : ""}当前文案只用于了解信息，不要仅替换几个形容词；内容必须与菜谱一致，并严格贴近“阿德小厨房”的样例语气。返回格式：{\"${field}\":\"...\"}`;
 
     const response = await fetch(`${baseUrl()}/chat/completions`, {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({
         model,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "system", content: privateKitchenCopyStyle }, { role: "user", content: prompt }],
         response_format: { type: "json_object" },
-        temperature: 0.65,
+        temperature: field === "slogan" ? 0.82 : 0.52,
         max_tokens: 500,
         enable_thinking: false,
       }),

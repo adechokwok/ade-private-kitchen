@@ -19,8 +19,8 @@ export async function POST(request: Request) {
   await ensureMenuLibrary();
   const existing = await getDb().select().from(menuCategories).where(eq(menuCategories.name, name)).limit(1);
   if (existing.length) return Response.json({ category: existing[0] });
-  const [count] = await getDb().select({ value: sql<number>`count(*)` }).from(menuCategories);
-  const [category] = await getDb().insert(menuCategories).values({ id: crypto.randomUUID(), name, emoji, sortOrder: Number(count?.value || 0) }).returning();
+  const [order] = await getDb().select({ value: sql<number>`coalesce(max(${menuCategories.sortOrder}), -1) + 1` }).from(menuCategories);
+  const [category] = await getDb().insert(menuCategories).values({ id: crypto.randomUUID(), name, emoji, sortOrder: Number(order?.value || 0) }).returning();
   return Response.json({ category }, { status: 201 });
 }
 
@@ -36,10 +36,15 @@ export async function PATCH(request: Request) {
   if (payload.direction === -1 || payload.direction === 1) {
     const rows = await getDb().select().from(menuCategories).orderBy(asc(menuCategories.sortOrder), asc(menuCategories.createdAt));
     const index = rows.findIndex((item) => item.id === id);
-    const target = rows[index + payload.direction];
-    if (target) {
-      await getDb().update(menuCategories).set({ sortOrder: target.sortOrder }).where(eq(menuCategories.id, current.id));
-      await getDb().update(menuCategories).set({ sortOrder: current.sortOrder }).where(eq(menuCategories.id, target.id));
+    const targetIndex = index + payload.direction;
+    if (index >= 0 && targetIndex >= 0 && targetIndex < rows.length) {
+      const [moved] = rows.splice(index, 1);
+      rows.splice(targetIndex, 0, moved);
+      const sqlite = getSqlite();
+      sqlite.transaction(() => {
+        const updateOrder = sqlite.prepare("UPDATE menu_categories SET sort_order = ? WHERE id = ?");
+        rows.forEach((item, nextIndex) => updateOrder.run(nextIndex, item.id));
+      })();
     }
   }
 
@@ -74,6 +79,9 @@ export async function DELETE(request: Request) {
     sqlite.prepare("INSERT OR IGNORE INTO menu_categories (id, name, emoji, sort_order) VALUES (?, '未分类', '📥', ?)").run(crypto.randomUUID(), nextOrder);
     const moved = sqlite.prepare("UPDATE custom_dishes SET category = '未分类' WHERE category = ?").run(current.name).changes;
     sqlite.prepare("DELETE FROM menu_categories WHERE id = ?").run(current.id);
+    const remaining = sqlite.prepare("SELECT id FROM menu_categories ORDER BY sort_order ASC, created_at ASC").all() as Array<{ id: string }>;
+    const updateOrder = sqlite.prepare("UPDATE menu_categories SET sort_order = ? WHERE id = ?");
+    remaining.forEach((item, index) => updateOrder.run(index, item.id));
     return moved;
   })();
 

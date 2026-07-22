@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the private menu and chef workflow", async () => {
-  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, importRoute, bulkImportRoute, copyRoute, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute, kitchenStatusRoute, schema, database] = await Promise.all([
+  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute, kitchenStatusRoute, schema, database] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
@@ -13,6 +13,7 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../app/api/recipe-import/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-bulk-import/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-copy/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/recipe-copy-style.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/shopping/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/categories/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pantry/route.ts", import.meta.url), "utf8"),
@@ -114,6 +115,13 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(copyRoute, /qwen3-vl-plus/);
   assert.match(copyRoute, /description/);
   assert.match(copyRoute, /slogan/);
+  assert.match(copyRoute, /privateKitchenCopyStyle/);
+  assert.match(importRoute, /privateKitchenCopyStyle/);
+  assert.match(copyStyle, /22–42 个中文字符/);
+  assert.match(copyStyle, /7–14 个中文字符/);
+  assert.match(copyStyle, /汤汁请务必留给米饭/);
+  assert.match(copyStyle, /软乎乎的一口鲜/);
+  assert.match(copyStyle, /简单，但会让人想念/);
   assert.match(schema, /slogan: text\("slogan"\)/);
   assert.match(database, /addColumn\("custom_dishes", columns, "slogan"/);
   assert.match(ordersRoute, /steps: dish\.steps/);
@@ -121,6 +129,9 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(categoryRoute, /export async function DELETE/);
   assert.match(categoryRoute, /SET category = '未分类'/);
   assert.match(categoryRoute, /sqlite\.transaction/);
+  assert.match(categoryRoute, /rows\.splice\(targetIndex, 0, moved\)/);
+  assert.match(categoryRoute, /UPDATE menu_categories SET sort_order = \?/);
+  assert.match(categoryRoute, /remaining\.forEach\(\(item, index\) => updateOrder\.run\(index, item\.id\)\)/);
   assert.doesNotMatch(categoryRoute, /mergeInto/);
   assert.doesNotMatch(database, /seedCategories/);
   assert.match(dishRoute, /inArray\(customDishes\.id, ids\)/);
@@ -128,6 +139,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /dishCategorySelection === "__custom__"/);
   assert.doesNotMatch(page, /duplicateDish/);
   assert.doesNotMatch(page, />复制<\/button>/);
+  assert.match(page, /managed-card-actions\$\{dish\.active \? "" : " archived"\}/);
+  assert.match(page, /恢复菜品/);
   assert.match(pantryRoute, /pantryItems/);
   assert.match(inviteRoute, /recommendedDishIds/);
   assert.match(orderStatusRoute, /progressNote/);

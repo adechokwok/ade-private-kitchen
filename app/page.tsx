@@ -1381,6 +1381,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         delete next[dish.id];
         return next;
       });
+      setNotice(data.dish.active ? `“${dish.name}”已恢复，可以继续编辑和上架` : `“${dish.name}”已归档`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "菜品状态更新失败");
     }
@@ -1821,7 +1822,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                             <small>{dish.ingredients.length} 种食材 · {dish.steps?.length || 0} 个步骤 · {dish.baseServings || 4} 人基础份</small>
                             <details className="managed-recipe-details"><summary>查看具体做法</summary><div>{dish.recipeSummary && <p>{dish.recipeSummary}</p>}<b>用料</b><ul>{dish.ingredients.map((item, index) => <li key={`${dish.id}-${item.name}-${item.unit}-${index}`}><span>{item.name}</span><strong>{item.amount} {item.unit}</strong></li>)}</ul><b>步骤</b>{dish.steps?.length ? <ol>{dish.steps.map((step, index) => <li key={`${dish.id}-step-${index}`}>{step}</li>)}</ol> : <p>这道菜暂时还没有记录步骤。</p>}{dish.source && <small>来源：{dish.source}</small>}</div></details>
                           </div>
-                          <div className="managed-card-actions"><button type="button" className="edit" onClick={() => startEditingDish(dish)}>编辑菜谱</button><details className="managed-actions-menu"><summary>状态与归档</summary><div className="managed-actions"><button type="button" className={dish.featured ? "active" : ""} onClick={() => setDishFlag(dish, "featured", !dish.featured)}>{dish.featured ? "取消推荐" : "设为推荐"}</button><button type="button" onClick={() => setDishFlag(dish, "soldOut", !dish.soldOut)}>{dish.soldOut ? "恢复供应" : "设为售罄"}</button><button type="button" onClick={() => setDishFlag(dish, "available", dish.available === false)}>{dish.available === false ? "加入本期" : "暂停本期"}</button><button type="button" onClick={() => toggleDish(dish)}>{dish.active ? "归档菜品" : "恢复菜品"}</button><button type="button" className="danger" onClick={() => deleteDish(dish)}>永久删除</button></div></details></div>
+                          <div className={`managed-card-actions${dish.active ? "" : " archived"}`}><button type="button" className="edit" onClick={() => startEditingDish(dish)}>编辑菜谱</button>{dish.active ? <details className="managed-actions-menu"><summary>状态与归档</summary><div className="managed-actions"><button type="button" className={dish.featured ? "active" : ""} onClick={() => setDishFlag(dish, "featured", !dish.featured)}>{dish.featured ? "取消推荐" : "设为推荐"}</button><button type="button" onClick={() => setDishFlag(dish, "soldOut", !dish.soldOut)}>{dish.soldOut ? "恢复供应" : "设为售罄"}</button><button type="button" onClick={() => setDishFlag(dish, "available", dish.available === false)}>{dish.available === false ? "加入本期" : "暂停本期"}</button><button type="button" onClick={() => toggleDish(dish)}>归档菜品</button><button type="button" className="danger" onClick={() => deleteDish(dish)}>永久删除</button></div></details> : <><button type="button" className="restore" onClick={() => toggleDish(dish)}>恢复菜品</button><button type="button" className="danger" onClick={() => deleteDish(dish)}>永久删除</button></>}</div>
                         </article>
                         ))}
                       </div>
