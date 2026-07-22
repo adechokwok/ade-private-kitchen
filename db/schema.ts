@@ -55,6 +55,7 @@ export const shoppingChecks = sqliteTable("shopping_checks", {
 export const menuCategories = sqliteTable("menu_categories", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
+  emoji: text("emoji").notNull().default(""),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
