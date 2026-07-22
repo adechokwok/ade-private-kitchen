@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the private menu and chef workflow", async () => {
-  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute, kitchenStatusRoute, schema, database] = await Promise.all([
+  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute, kitchenStatusRoute, schema, database, layout, shareImageAsset] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
@@ -24,6 +24,8 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../app/api/kitchen-status/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../db/index.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../public/wechat-share.jpg", import.meta.url)),
   ]);
 
   for (const phrase of [
@@ -43,6 +45,10 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /kitchen-status-toggle/);
   assert.match(page, /menuReadOnly/);
   assert.match(page, /今天先看菜单，不接新点单/);
+  assert.match(layout, /\/wechat-share\.jpg/);
+  assert.match(layout, /width: 800, height: 800/);
+  assert.match(layout, /const protocol = localHost \? forwardedProtocol \|\| "http" : "https"/);
+  assert.ok(shareImageAsset.byteLength < 400 * 1024, "微信分享图应保持轻量");
   assert.match(ordersRoute, /kitchenSetting\?\.value === "closed"/);
   assert.doesNotMatch(page, /window\.print/);
   assert.match(page, /html-to-image/);
