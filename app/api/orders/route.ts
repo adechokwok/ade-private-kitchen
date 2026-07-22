@@ -97,3 +97,22 @@ export async function PATCH(request: Request) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  const denied = chefApiGuard(request);
+  if (denied) return denied;
+  try {
+    const id = new URL(request.url).searchParams.get("id")?.trim();
+    if (!id) return Response.json({ error: "缺少要删除的饭局编号" }, { status: 400 });
+    await ensureOrdersSchema();
+    const [order] = await getDb().select().from(orders).where(eq(orders.id, id)).limit(1);
+    if (!order) return Response.json({ error: "没有找到这场饭局" }, { status: 404 });
+    if (order.status !== "done" && order.status !== "cancelled") {
+      return Response.json({ error: "只有已完成或已取消的饭局可以删除" }, { status: 409 });
+    }
+    await getDb().delete(orders).where(eq(orders.id, id));
+    return Response.json({ ok: true, id });
+  } catch (error) {
+    return Response.json({ error: errorMessage(error) }, { status: 500 });
+  }
+}

@@ -25,7 +25,7 @@ type Order = {
 };
 type ManagedDish = Dish & { active: boolean; isCustom: true; createdAt?: string };
 type IngredientRow = Ingredient & { rowId: string };
-type MenuCategory = { id: string; name: string; sortOrder: number };
+type MenuCategory = { id: string; name: string; emoji: string; sortOrder: number };
 type PantryItem = { id: string; name: string; amount: number; unit: string; type: Ingredient["type"]; location: string };
 type RecipeDraft = {
   name: string;
@@ -237,12 +237,16 @@ function findSmartImageCrop(image: HTMLImageElement): ImageCrop {
 
 export default function Home({ initialMode = "menu", chefUser = "", initialInviteToken = "" }: { initialMode?: "menu" | "chef"; chefUser?: string; initialInviteToken?: string }) {
   const dishFormRef = useRef<HTMLFormElement>(null);
+  const dishGridRef = useRef<HTMLDivElement>(null);
+  const mobileMenuSectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const banquetPreviewRef = useRef<HTMLDivElement>(null);
   const coverImageRef = useRef<HTMLImageElement>(null);
   const coverDragRef = useRef<{ pointerId: number; clientX: number; clientY: number; crop: ImageCrop } | null>(null);
   const recipeScreenshotUrlsRef = useRef<string[]>([]);
   const mode = initialMode;
   const [chefView, setChefView] = useState<ChefView>("accepting");
   const [activeCategory, setActiveCategory] = useState("全部");
+  const [activeMobileCategory, setActiveMobileCategory] = useState("");
   const [cart, setCart] = useState<Cart>({});
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -272,6 +276,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [bulkRecipePreview, setBulkRecipePreview] = useState<BulkRecipePreview | null>(null);
   const [bulkRecipeResult, setBulkRecipeResult] = useState<BulkRecipeResult | null>(null);
   const [bulkRecipeLoading, setBulkRecipeLoading] = useState<"preview" | "import" | null>(null);
+  const [recipeLibraryQuery, setRecipeLibraryQuery] = useState("");
+  const [recipeLibraryCategory, setRecipeLibraryCategory] = useState("全部分类");
+  const [recipeLibraryStatus, setRecipeLibraryStatus] = useState("全部状态");
   const [invites, setInvites] = useState<DinnerInvite[]>([]);
   const [journals, setJournals] = useState<DinnerJournal[]>([]);
   const [activeInvite, setActiveInvite] = useState<DinnerInvite | null>(null);
@@ -279,6 +286,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [orderProgressUrl, setOrderProgressUrl] = useState("");
   const [orderSuccessOpen, setOrderSuccessOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [orderPendingDelete, setOrderPendingDelete] = useState<Order | null>(null);
+  const [orderDeleting, setOrderDeleting] = useState(false);
   const [cookingChecks, setCookingChecks] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {};
     try { return JSON.parse(window.localStorage.getItem("ade-kitchen-cooking-checks") || "{}"); } catch { return {}; }
@@ -291,6 +300,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [banquetDate, setBanquetDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [banquetMessage, setBanquetMessage] = useState("为喜欢的人认真做一桌饭");
   const [serviceTime, setServiceTime] = useState("18:30");
+  const [menuExporting, setMenuExporting] = useState<"png" | "jpeg" | "pdf" | null>(null);
   const [dishTimers, setDishTimers] = useState<Record<string, number>>({});
   const [timerNow, setTimerNow] = useState(() => Date.now());
   const [notice, setNotice] = useState("");
@@ -305,6 +315,33 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const filteredDishes = activeCategory === "全部"
     ? allDishes
     : allDishes.filter((dish) => dish.category === activeCategory);
+  const recommendedDishes = useMemo(() => allDishes.filter((dish) => dish.featured), [allDishes]);
+  const managedCategoryEmoji = useMemo(() => Object.fromEntries(managedCategories.map((category) => [category.name, category.emoji || categoryEmoji[category.name] || "•"])), [managedCategories]);
+  const mobileMenuGroups = useMemo(() => {
+    const groups: Array<{ name: string; dishes: Dish[] }> = [];
+    menuCategories.forEach((category) => {
+      const categoryDishes = allDishes.filter((dish) => dish.category === category);
+      if (categoryDishes.length) groups.push({ name: category, dishes: categoryDishes });
+    });
+    return groups;
+  }, [allDishes, menuCategories]);
+  const recipeLibraryCategories = useMemo(() => Array.from(new Set(customDishes.map((dish) => dish.category))).sort((left, right) => left.localeCompare(right, "zh-CN")), [customDishes]);
+  const filteredRecipeLibrary = useMemo(() => {
+    const query = recipeLibraryQuery.trim().toLocaleLowerCase("zh-CN");
+    return customDishes.filter((dish) => {
+      const matchesQuery = !query || [dish.name, dish.category, dish.flavor, dish.slogan, dish.source].some((value) => value?.toLocaleLowerCase("zh-CN").includes(query));
+      const matchesCategory = recipeLibraryCategory === "全部分类" || dish.category === recipeLibraryCategory;
+      const matchesStatus = recipeLibraryStatus === "全部状态"
+        || (recipeLibraryStatus === "正常供应" && dish.active !== false && dish.available !== false && !dish.soldOut)
+        || (recipeLibraryStatus === "主厨推荐" && dish.featured)
+        || (recipeLibraryStatus === "本期暂停" && dish.available === false)
+        || (recipeLibraryStatus === "已售罄" && dish.soldOut)
+        || (recipeLibraryStatus === "已归档" && dish.active === false);
+      return matchesQuery && matchesCategory && matchesStatus;
+    });
+  }, [customDishes, recipeLibraryCategory, recipeLibraryQuery, recipeLibraryStatus]);
+  const activeRecipeCount = customDishes.filter((dish) => dish.active !== false && dish.available !== false && !dish.soldOut).length;
+  const featuredRecipeCount = customDishes.filter((dish) => dish.featured).length;
 
   const cartCount = Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
   const cartItems = allDishes
@@ -341,6 +378,18 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       if (next === 0) delete updated[dishId];
       return updated;
     });
+  };
+
+  const selectMenuCategory = (category: string) => {
+    setActiveCategory(category);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => dishGridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    });
+  };
+
+  const selectMobileMenuCategory = (category: string) => {
+    setActiveMobileCategory(category);
+    mobileMenuSectionRefs.current[category]?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const composeFromOrder = (orderId: string) => {
@@ -390,16 +439,54 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     });
   };
 
-  const printBanquetMenu = () => {
+  const exportBanquetMenu = async (format: "png" | "jpeg" | "pdf") => {
     if (!banquetItems.length) {
       setNotice("请先从订单或菜谱库中加入菜品");
       return;
     }
-    document.body.classList.add("printing-menu");
-    const cleanup = () => document.body.classList.remove("printing-menu");
-    window.addEventListener("afterprint", cleanup, { once: true });
-    window.setTimeout(() => window.print(), 80);
-    window.setTimeout(cleanup, 3000);
+    const node = banquetPreviewRef.current;
+    if (!node) return setNotice("菜单预览还没有准备好，请稍后再试");
+    setMenuExporting(format);
+    try {
+      await document.fonts.ready;
+      const { toJpeg, toPng } = await import("html-to-image");
+      const fileTitle = (banquetTitle || activeBanquetTemplate.defaultTitle || "阿德私房菜单").replace(/[\\/:*?"<>|]/g, "-").slice(0, 48);
+      const imageOptions = { cacheBust: true, pixelRatio: 2, width: node.scrollWidth, height: node.scrollHeight };
+      if (format === "jpeg") {
+        const dataUrl = await toJpeg(node, { ...imageOptions, quality: .94, backgroundColor: "#f4ecdc" });
+        const link = document.createElement("a");
+        link.download = `${fileTitle}.jpg`;
+        link.href = dataUrl;
+        link.click();
+      } else {
+        const dataUrl = await toPng(node, imageOptions);
+        if (format === "png") {
+          const link = document.createElement("a");
+          link.download = `${fileTitle}.png`;
+          link.href = dataUrl;
+          link.click();
+        } else {
+          const { jsPDF } = await import("jspdf");
+          const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
+          const imageRatio = node.scrollWidth / node.scrollHeight;
+          let imageWidth = pageWidth;
+          let imageHeight = imageWidth / imageRatio;
+          if (imageHeight > pageHeight) {
+            imageHeight = pageHeight;
+            imageWidth = imageHeight * imageRatio;
+          }
+          pdf.addImage(dataUrl, "PNG", (pageWidth - imageWidth) / 2, (pageHeight - imageHeight) / 2, imageWidth, imageHeight, undefined, "FAST");
+          pdf.save(`${fileTitle}.pdf`);
+        }
+      }
+      setNotice(`菜单已导出为 ${format === "jpeg" ? "JPG" : format.toUpperCase()}`);
+    } catch (error) {
+      setNotice(error instanceof Error ? `菜单导出失败：${error.message}` : "菜单导出失败，请稍后再试");
+    } finally {
+      setMenuExporting(null);
+    }
   };
 
   const loadOrders = async (silent = false) => {
@@ -536,6 +623,31 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     const timer = window.setInterval(() => setTimerNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [dishTimers]);
+
+  useEffect(() => {
+    if (mode !== "menu" || !mobileMenuGroups.length) return;
+    let animationFrame = 0;
+    const syncMobileCategory = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        if (window.innerWidth > 720) return;
+        let current = mobileMenuGroups[0].name;
+        mobileMenuGroups.forEach((group) => {
+          const section = mobileMenuSectionRefs.current[group.name];
+          if (section && section.getBoundingClientRect().top <= 128) current = group.name;
+        });
+        setActiveMobileCategory((value) => value === current ? value : current);
+      });
+    };
+    syncMobileCategory();
+    window.addEventListener("scroll", syncMobileCategory, { passive: true });
+    window.addEventListener("resize", syncMobileCategory);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("scroll", syncMobileCategory);
+      window.removeEventListener("resize", syncMobileCategory);
+    };
+  }, [mobileMenuGroups, mode]);
 
   useEffect(() => () => {
     recipeScreenshotUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
@@ -692,7 +804,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
-    const response = await fetch("/api/categories", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: form.get("name") }) });
+    const response = await fetch("/api/categories", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: form.get("name"), emoji: form.get("emoji") }) });
     const data = await response.json() as { category?: MenuCategory; error?: string };
     if (!response.ok || !data.category) return setNotice(data.error || "分类添加失败");
     setManagedCategories((current) => current.some((item) => item.id === data.category!.id) ? current : [...current, data.category!]);
@@ -713,6 +825,16 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     const response = await fetch("/api/categories", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: category.id, direction }) });
     const data = await response.json() as { categories?: MenuCategory[] };
     if (response.ok) setManagedCategories(data.categories || []);
+  };
+
+  const updateCategoryEmoji = async (category: MenuCategory, value: string) => {
+    const emoji = value.trim().slice(0, 16);
+    if (emoji === (category.emoji || "")) return;
+    const response = await fetch("/api/categories", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: category.id, emoji }) });
+    const data = await response.json() as { categories?: MenuCategory[]; error?: string };
+    if (!response.ok) return setNotice(data.error || "分类图标保存失败");
+    setManagedCategories(data.categories || []);
+    setNotice(emoji ? `“${category.name}”的图标已改为 ${emoji}` : `已恢复“${category.name}”的默认图标`);
   };
 
   const submitOrder = async (event: FormEvent<HTMLFormElement>) => {
@@ -775,6 +897,24 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     }
   };
 
+  const deleteArchivedOrder = async (order: Order) => {
+    if (!isArchivedOrder(order)) return;
+    setOrderDeleting(true);
+    try {
+      const response = await fetch(`/api/orders?id=${encodeURIComponent(order.id)}`, { method: "DELETE" });
+      const data = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error || "删除失败");
+      setOrders((current) => current.filter((item) => item.id !== order.id));
+      if (banquetOrderId === order.id) setBanquetOrderId("");
+      setOrderPendingDelete(null);
+      setNotice(`“${order.customerName}”的饭局已永久删除`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "饭局删除失败，请稍后重试");
+    } finally {
+      setOrderDeleting(false);
+    }
+  };
+
   const setCookingStepChecked = (key: string, checked: boolean) => {
     setCookingChecks((current) => {
       const next = { ...current, [key]: checked };
@@ -799,6 +939,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         {!archived && order.status === "shopping" && <button onClick={() => updateOrderStatus(order.id, "preparing")}>开始制作</button>}
         {!archived && order.status === "preparing" && <button className="ready-alert" onClick={() => updateOrderStatus(order.id, "done")}><span aria-hidden="true">🔔</span> 通知开饭 · 强提醒</button>}
         {archived && <button className="quiet" onClick={() => updateOrderStatus(order.id, "confirmed")}>重新打开订单</button>}
+        {archived && <button className="delete-order" onClick={() => setOrderPendingDelete(order)}>删除饭局</button>}
         {!archived && <button className="quiet" onClick={() => updateOrderStatus(order.id, "cancelled")}>取消饭局</button>}
       </div>
     </article>
@@ -955,6 +1096,11 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     setImageCrop(defaultImageCrop);
     setCropMode("");
     setAutoCropPending(false);
+  };
+
+  const startNewDish = () => {
+    cancelEditingDish();
+    window.setTimeout(() => dishFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   };
 
   const analyzeRecipe = async () => {
@@ -1247,7 +1393,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       </div>
 
       <aside className="banquet-preview-wrap">
-        <div className={`banquet-preview template-${banquetTemplate}`}>
+        <div ref={banquetPreviewRef} className={`banquet-preview template-${banquetTemplate}`}>
           <div className="menu-card-ornament" aria-hidden="true"><span>{activeBanquetTemplate.mark}</span></div>
           <div className="menu-card-header">
             <small>阿德小厨房 · PRIVATE KITCHEN</small>
@@ -1265,8 +1411,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
           </div>
           <div className="menu-card-footer"><span>—</span><p>{banquetMessage || activeBanquetTemplate.defaultMessage}</p><small>CHEF&apos;S TABLE · 私房呈献</small></div>
         </div>
-        <div className="preview-actions"><button type="button" className="quiet" onClick={() => { setBanquetItems([]); setBanquetOrderId(""); }}>清空重排</button><button type="button" className="export" onClick={printBanquetMenu}>导出 / 打印菜单 <span>↗</span></button></div>
-        <p className="preview-tip">装饰只位于页边，菜名与介绍始终保持高对比；导出后可保存为 PDF。</p>
+        <div className="preview-actions"><button type="button" className="quiet" onClick={() => { setBanquetItems([]); setBanquetOrderId(""); }}>清空重排</button><div className="export-options" aria-label="导出菜单格式"><button type="button" className="export" disabled={menuExporting !== null} onClick={() => exportBanquetMenu("png")}>{menuExporting === "png" ? "生成中…" : "PNG 图片"}</button><button type="button" className="export" disabled={menuExporting !== null} onClick={() => exportBanquetMenu("jpeg")}>{menuExporting === "jpeg" ? "生成中…" : "JPG 图片"}</button><button type="button" className="export" disabled={menuExporting !== null} onClick={() => exportBanquetMenu("pdf")}>{menuExporting === "pdf" ? "生成中…" : "PDF 文件"}</button></div></div>
+        <p className="preview-tip">只导出上方正式菜单卡片；PNG、JPG 适合发微信，PDF 适合留存。</p>
       </aside>
     </section>
   );
@@ -1317,12 +1463,46 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             </div>
             {inviteLoading && <div className="invite-loading">正在把你的专属菜单端上来…</div>}
             {activeInvite && activeInvite.recommendedDishIds.length > 0 && <div className="recommended-combo"><span>主厨搭配</span><strong>如果不想纠结，就从这几道开始</strong><div>{activeInvite.recommendedDishIds.map((id) => dishCatalog.find((dish) => dish.id === id)).filter(Boolean).map((dish) => <button key={dish!.id} onClick={() => updateQuantity(dish!.id, 1)}>{dish!.name}<i>＋</i></button>)}</div></div>}
-            <div className="category-tabs" role="tablist" aria-label="菜系分类">
-              {["全部", ...menuCategories].map((category) => (
-                <button key={category} className={activeCategory === category ? "active" : ""} onClick={() => setActiveCategory(category)}><span>{categoryEmoji[category] || "•"}</span>{category}</button>
-              ))}
+            <div className="category-tabs-shell">
+              <div className="category-tabs-heading"><div><span>MENU CATEGORIES</span><strong>想吃哪一类？</strong></div><small>{activeCategory === "全部" ? `全部 ${allDishes.length} 道` : `${activeCategory} · ${filteredDishes.length} 道`}</small></div>
+              <div className="category-tabs" role="tablist" aria-label="菜品大类">
+                {["全部", ...menuCategories].map((category) => {
+                  const count = category === "全部" ? allDishes.length : allDishes.filter((dish) => dish.category === category).length;
+                  return <button type="button" role="tab" aria-selected={activeCategory === category} key={category} className={activeCategory === category ? "active" : ""} onClick={() => selectMenuCategory(category)}><span>{category === "全部" ? "◎" : managedCategoryEmoji[category] || categoryEmoji[category] || "•"}</span><b>{category}</b><small>{count}</small></button>;
+                })}
+              </div>
             </div>
-            <div className="dish-grid">
+            {recommendedDishes.length > 0 && <section className="mobile-ade-picks" aria-labelledby="mobile-ade-picks-title">
+              <header><div><span>ADE&apos;S PICKS</span><h3 id="mobile-ade-picks-title">阿德推荐</h3><p>这几道，是我今天特别想做给你吃的。</p></div><small>横滑看看 →</small></header>
+              <div className="mobile-ade-picks-track">
+                {recommendedDishes.map((dish) => {
+                  const quantity = cart[dish.id] || 0;
+                  return <article className={`${quantity ? "mobile-ade-pick-card selected" : "mobile-ade-pick-card"}${dish.soldOut ? " sold-out" : ""}`} key={`ade-pick-${dish.id}`}>
+                    <div className={`mobile-ade-pick-photo tone-${dish.tone}`}>{dish.imageUrl ? <img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /> : <span>{dish.emoji}</span>}<b>阿德推荐</b></div>
+                    <div className="mobile-ade-pick-body"><small>{dish.category}</small><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p><div className="mobile-dish-control">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? "下次" : "想吃"}<b>＋</b></button>}</div></div>
+                  </article>;
+                })}
+              </div>
+            </section>}
+            <div className="mobile-menu-browser">
+              <nav className="mobile-category-rail" aria-label="手机端菜品大类">
+                {mobileMenuGroups.map((group) => <button type="button" key={group.name} className={activeMobileCategory === group.name ? "active" : ""} aria-current={activeMobileCategory === group.name ? "true" : undefined} onClick={() => selectMobileMenuCategory(group.name)}><span>{managedCategoryEmoji[group.name] || categoryEmoji[group.name] || "•"}</span><b>{group.name}</b><small>{group.dishes.length}</small></button>)}
+              </nav>
+              <div className="mobile-menu-groups">
+                {mobileMenuGroups.map((group) => <section className="mobile-menu-group" key={group.name} ref={(node) => { mobileMenuSectionRefs.current[group.name] = node; }} data-menu-category={group.name}>
+                  <header><div><span>MENU CATEGORY</span><h3>{group.name}</h3></div><small>{group.dishes.length} 道</small></header>
+                  <div>{group.dishes.map((dish) => {
+                    const quantity = cart[dish.id] || 0;
+                    return <article className={`${quantity ? "mobile-dish-row selected" : "mobile-dish-row"}${dish.soldOut ? " sold-out" : ""}`} key={`${group.name}-${dish.id}`}>
+                      <div className={`mobile-dish-photo tone-${dish.tone}`}>{dish.imageUrl ? <img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /> : <span>{dish.emoji}</span>}{(dish.featured || dish.soldOut) && <b>{dish.soldOut ? "售罄" : "推荐"}</b>}</div>
+                      <div className="mobile-dish-copy"><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p><small>{dish.category}</small></div>
+                      <div className="mobile-dish-control">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? "下次" : "想吃"}<b>＋</b></button>}</div>
+                    </article>;
+                  })}</div>
+                </section>)}
+              </div>
+            </div>
+            <div className="dish-grid" ref={dishGridRef}>
               {filteredDishes.map((dish, index) => {
                 const quantity = cart[dish.id] || 0;
                 return (
@@ -1330,7 +1510,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                     <div className={`dish-art tone-${dish.tone}`}>
                       {dish.imageUrl ? <img className="dish-photo" style={dishImageStyle(dish.imagePosition)} src={dish.imageUrl} alt={dish.name} /> : <span>{dish.emoji}</span>}
                       <small>{dish.category}</small>
-                      {(dish.soldOut || dish.featured || dish.tag) && <b className="dish-art-tag">{dish.soldOut ? "今天售罄" : dish.featured ? "主厨推荐" : dish.tag}</b>}
+                      {(dish.soldOut || dish.featured || dish.tag) && <b className="dish-art-tag">{dish.soldOut ? "今天售罄" : dish.featured ? "阿德推荐" : dish.tag}</b>}
                     </div>
                     <div className="dish-body">
                       <div className="dish-title"><h3>{dish.name}</h3></div>
@@ -1526,10 +1706,49 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
               <section className="category-manager panel">
                 <div className="panel-title"><div><span>MENU TYPES</span><h2>菜品类型管理</h2></div><small>新增 · 改名 · 排序 · 合并</small></div>
-                <div className="category-manager-body"><form onSubmit={addCategory}><input name="name" maxLength={30} required placeholder="新增类型，例如：烧烤" /><button>＋ 添加类型</button></form><div className="category-manager-list">{managedCategories.map((category, index) => <div key={category.id}><span>{category.name}<small>{customDishes.filter((dish) => dish.category === category.name).length} 道</small></span><div><button onClick={() => moveCategory(category, -1)} disabled={index === 0} aria-label={`上移${category.name}`}>↑</button><button onClick={() => moveCategory(category, 1)} disabled={index === managedCategories.length - 1} aria-label={`下移${category.name}`}>↓</button><button onClick={() => changeCategory(category, "rename")}>改名</button><button onClick={() => changeCategory(category, "merge")}>合并</button></div></div>)}</div></div>
+                <div className="category-manager-body"><form onSubmit={addCategory}><input className="category-new-emoji" name="emoji" maxLength={16} placeholder="Emoji" aria-label="新分类 Emoji" /><input name="name" maxLength={30} required placeholder="新增类型，例如：烧烤" /><button>＋ 添加类型</button></form><p className="category-emoji-help">每个大类都可以填一个 Emoji；留空会继续使用系统默认图标。</p><div className="category-manager-list">{managedCategories.map((category, index) => <div key={category.id}><label className="category-emoji-editor"><span>图标</span><input key={`${category.id}-${category.emoji}`} defaultValue={category.emoji || ""} maxLength={16} placeholder={categoryEmoji[category.name] || "•"} aria-label={`${category.name}的 Emoji 图标`} onBlur={(event) => updateCategoryEmoji(category, event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label><span>{category.name}<small>{customDishes.filter((dish) => dish.category === category.name).length} 道</small></span><div><button type="button" onClick={() => moveCategory(category, -1)} disabled={index === 0} aria-label={`上移${category.name}`}>↑</button><button type="button" onClick={() => moveCategory(category, 1)} disabled={index === managedCategories.length - 1} aria-label={`下移${category.name}`}>↓</button><button type="button" onClick={() => changeCategory(category, "rename")}>改名</button><button type="button" onClick={() => changeCategory(category, "merge")}>合并</button></div></div>)}</div></div>
               </section>
 
               <div className="manager-grid">
+              <section className="managed-menu panel" aria-labelledby="recipe-library-title">
+                <div className="recipe-library-head">
+                  <div><span>YOUR RECIPE LIBRARY</span><h2 id="recipe-library-title">我的完整菜谱库</h2><p>搜索或筛选后直接上下滑动，全部菜谱会以瀑布流连续展开。</p></div>
+                  <button type="button" onClick={startNewDish}>＋ 新建菜品</button>
+                </div>
+                <div className="recipe-library-overview">
+                  <article><small>全部菜谱</small><strong>{customDishes.length}</strong></article>
+                  <article><small>正常供应</small><strong>{activeRecipeCount}</strong></article>
+                  <article><small>主厨推荐</small><strong>{featuredRecipeCount}</strong></article>
+                  <p>推荐、售罄、暂停和归档都能在每张卡片的“状态与归档”中调整。</p>
+                </div>
+                <div className="recipe-library-toolbar">
+                  <label className="recipe-library-search"><span aria-hidden="true">⌕</span><input type="search" value={recipeLibraryQuery} onChange={(event) => setRecipeLibraryQuery(event.target.value)} placeholder="搜索菜名、口味、来源…" aria-label="搜索菜谱库" /></label>
+                  <select value={recipeLibraryCategory} onChange={(event) => setRecipeLibraryCategory(event.target.value)} aria-label="按菜品分类筛选"><option>全部分类</option>{recipeLibraryCategories.map((category) => <option key={category}>{category}</option>)}</select>
+                  <select value={recipeLibraryStatus} onChange={(event) => setRecipeLibraryStatus(event.target.value)} aria-label="按菜品状态筛选"><option>全部状态</option><option>正常供应</option><option>主厨推荐</option><option>本期暂停</option><option>已售罄</option><option>已归档</option></select>
+                  <span>找到 <strong>{filteredRecipeLibrary.length}</strong> 道<small>上下滑动浏览全部</small></span>
+                </div>
+                {customDishes.length === 0 ? <div className="empty compact"><span>🥢</span><strong>还没有自定义菜式</strong><p>点击“新建菜品”，第一道菜就会出现在朋友的菜单上。</p></div> : filteredRecipeLibrary.length === 0 ? <div className="empty compact library-empty"><span>⌕</span><strong>没有符合条件的菜</strong><p>换一个关键词或筛选条件再找找。</p><button type="button" onClick={() => { setRecipeLibraryQuery(""); setRecipeLibraryCategory("全部分类"); setRecipeLibraryStatus("全部状态"); }}>清除筛选</button></div> : (
+                  <>
+                    <div className="managed-dish-scroll" aria-label="连续滚动菜谱瀑布流">
+                      <div className="managed-dish-list managed-dish-waterfall">
+                        {filteredRecipeLibrary.map((dish) => (
+                        <article className={`${!dish.active ? "managed-dish inactive" : "managed-dish"}${dish.soldOut ? " sold-out" : ""}`} key={dish.id}>
+                          <div className="managed-thumb">{dish.imageUrl ? <img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt="" /> : <span>🍽️</span>}</div>
+                          <div className="managed-copy">
+                            <div><strong>{dish.name}</strong><em>{!dish.active ? "已归档" : dish.soldOut ? "已售罄" : dish.available === false ? "本期暂停" : dish.featured ? "主厨推荐" : "已上架"}</em></div>
+                            <p>{dish.category} · {dish.flavor}</p>
+                            {dish.slogan && <small className="managed-slogan">“{dish.slogan}”</small>}
+                            <small>{dish.ingredients.length} 种食材 · {dish.steps?.length || 0} 个步骤 · {dish.baseServings || 4} 人基础份</small>
+                            <details className="managed-recipe-details"><summary>查看具体做法</summary><div>{dish.recipeSummary && <p>{dish.recipeSummary}</p>}<b>用料</b><ul>{dish.ingredients.map((item, index) => <li key={`${dish.id}-${item.name}-${item.unit}-${index}`}><span>{item.name}</span><strong>{item.amount} {item.unit}</strong></li>)}</ul><b>步骤</b>{dish.steps?.length ? <ol>{dish.steps.map((step, index) => <li key={`${dish.id}-step-${index}`}>{step}</li>)}</ol> : <p>这道菜暂时还没有记录步骤。</p>}{dish.source && <small>来源：{dish.source}</small>}</div></details>
+                          </div>
+                          <div className="managed-card-actions"><button type="button" className="edit" onClick={() => startEditingDish(dish)}>编辑菜谱</button><button type="button" onClick={() => duplicateDish(dish)}>复制</button><details className="managed-actions-menu"><summary>状态与归档</summary><div className="managed-actions"><button type="button" className={dish.featured ? "active" : ""} onClick={() => setDishFlag(dish, "featured", !dish.featured)}>{dish.featured ? "取消推荐" : "设为推荐"}</button><button type="button" onClick={() => setDishFlag(dish, "soldOut", !dish.soldOut)}>{dish.soldOut ? "恢复供应" : "设为售罄"}</button><button type="button" onClick={() => setDishFlag(dish, "available", dish.available === false)}>{dish.available === false ? "加入本期" : "暂停本期"}</button><button type="button" onClick={() => toggleDish(dish)}>{dish.active ? "归档菜品" : "恢复菜品"}</button><button type="button" className="danger" onClick={() => deleteDish(dish)}>永久删除</button></div></details></div>
+                        </article>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </section>
               <form ref={dishFormRef} className="dish-form panel" onSubmit={submitDish}>
                 <div className="panel-title"><div><span>{editingDish ? "EDIT DISH" : "NEW DISH"}</span><h2>{editingDish ? `编辑：${editingDish.name}` : "添加一道新菜"}</h2></div>{editingDish ? <button type="button" className="cancel-edit" onClick={cancelEditingDish}>取消编辑</button> : <small>保存后立即上架</small>}</div>
                 <div className="dish-form-body">
@@ -1543,7 +1762,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                     <label><span>操作难度</span><select name="difficulty" defaultValue="适中"><option>简单</option><option>适中</option><option>进阶</option></select></label>
                   </div>
                   <input name="substitutions" type="hidden" />
-                  <fieldset className="dish-status-fieldset"><legend>菜单状态</legend><div><label><input name="available" type="checkbox" defaultChecked /><span>本期可做</span></label><label><input name="featured" type="checkbox" /><span>主厨推荐</span></label><label><input name="soldOut" type="checkbox" /><span>暂时售罄</span></label></div><small>推荐和售罄会显示在朋友端；归档请在右侧菜品列表操作。</small></fieldset>
+                  <fieldset className="dish-status-fieldset"><legend>菜单状态</legend><div><label><input name="available" type="checkbox" defaultChecked /><span>本期可做</span></label><label><input name="featured" type="checkbox" /><span>主厨推荐</span></label><label><input name="soldOut" type="checkbox" /><span>暂时售罄</span></label></div><small>推荐和售罄会显示在朋友端；归档请在上方菜谱库的“状态与归档”中操作。</small></fieldset>
                   <div className="field-grid tag-field-grid"><label><span>适合季节</span><input name="seasons" maxLength={120} placeholder="春季、夏季、秋冬" /></label><label><span>适合场景</span><input name="occasions" maxLength={120} placeholder="二人晚餐、朋友聚会、生日" /></label><label><span>饮食与过敏提示</span><input name="dietary" maxLength={160} placeholder="含花生、含乳制品、可做素食" /></label></div>
                   <div className="ai-copy-field wide-field"><label><span>菜品介绍</span><textarea name="description" maxLength={180} placeholder="简单介绍这道菜的味道、口感和特色…" /></label><button type="button" onClick={() => regenerateDishCopy("description")} disabled={copyGenerating !== null}>{copyGenerating === "description" ? "千问生成中…" : "千问再生成"}</button></div>
                   <div className="ai-copy-field wide-field"><label><span>点菜端 slogan</span><input name="slogan" maxLength={60} placeholder="例如：大人小孩都很难拒绝" /><small>显示在朋友点菜页菜名下方，可以随时改成自己的语气。</small></label><button type="button" onClick={() => regenerateDishCopy("slogan")} disabled={copyGenerating !== null}>{copyGenerating === "slogan" ? "千问生成中…" : "千问再生成"}</button></div>
@@ -1594,21 +1813,6 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 </div>
               </form>
 
-              <aside className="managed-menu panel">
-                <div className="panel-title"><div><span>YOUR RECIPE LIBRARY</span><h2>我的完整菜谱库</h2></div><small>{customDishes.length} 道</small></div>
-                <div className="built-in-note"><span>统一管理</span><strong>经典菜和新菜都可编辑</strong><p>可推荐、售罄、暂停本期、复制或归档；历史订单不会被改坏。</p></div>
-                {customDishes.length === 0 ? <div className="empty compact"><span>🥢</span><strong>还没有自定义菜式</strong><p>填写左侧表单，第一道新菜就会出现在朋友的菜单上。</p></div> : (
-                  <div className="managed-dish-list">
-                    {customDishes.map((dish) => (
-                      <article className={`${!dish.active ? "managed-dish inactive" : "managed-dish"}${dish.soldOut ? " sold-out" : ""}`} key={dish.id}>
-                        <div className="managed-thumb">{dish.imageUrl ? <img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt="" /> : <span>🍽️</span>}</div>
-                        <div className="managed-copy"><div><strong>{dish.name}</strong><em>{!dish.active ? "已归档" : dish.soldOut ? "已售罄" : dish.available === false ? "本期暂停" : dish.featured ? "主厨推荐" : "已上架"}</em></div><p>{dish.category} · {dish.flavor}</p>{dish.slogan && <small className="managed-slogan">“{dish.slogan}”</small>}<small>{dish.ingredients.length} 种食材 · {dish.steps?.length || 0} 个步骤 · {dish.baseServings || 4} 人基础份</small>{Boolean(dish.seasons?.length || dish.occasions?.length || dish.dietary?.length) && <small>{[...(dish.seasons || []), ...(dish.occasions || []), ...(dish.dietary || [])].join(" · ")}</small>}<details className="managed-recipe-details"><summary>查看具体做法</summary><div>{dish.recipeSummary && <p>{dish.recipeSummary}</p>}<b>用料</b><ul>{dish.ingredients.map((item) => <li key={`${dish.id}-${item.name}-${item.unit}`}><span>{item.name}</span><strong>{item.amount} {item.unit}</strong></li>)}</ul><b>步骤</b>{dish.steps?.length ? <ol>{dish.steps.map((step, index) => <li key={`${dish.id}-step-${index}`}>{step}</li>)}</ol> : <p>这道菜暂时还没有记录步骤。</p>}{dish.source && <small>来源：{dish.source}</small>}</div></details></div>
-                        <div className="managed-actions"><button onClick={() => startEditingDish(dish)}>编辑</button><button onClick={() => duplicateDish(dish)}>复制</button><button className={dish.featured ? "active" : ""} onClick={() => setDishFlag(dish, "featured", !dish.featured)}>{dish.featured ? "取消推荐" : "推荐"}</button><button onClick={() => setDishFlag(dish, "soldOut", !dish.soldOut)}>{dish.soldOut ? "恢复供应" : "售罄"}</button><button onClick={() => setDishFlag(dish, "available", dish.available === false)}>{dish.available === false ? "加入本期" : "暂停本期"}</button><button onClick={() => toggleDish(dish)}>{dish.active ? "归档" : "恢复"}</button><button className="danger" onClick={() => deleteDish(dish)}>永久删除</button></div>
-                      </article>
-                    ))}
-                  </div>
-                )}
-              </aside>
               </div>
             </>
           ) : chefView === "serving" ? (
@@ -1686,6 +1890,23 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             <p>进度卡会自动更新主厨确认、买菜和开火状态。建议现在打开，并把页面留在微信里。</p>
             <a className="primary-button" href={orderProgressUrl}>查看实时厨房进度 <span>→</span></a>
             <button type="button" className="order-success-secondary" onClick={() => setOrderSuccessOpen(false)}>继续看看菜单</button>
+          </section>
+        </div>
+      )}
+
+      {orderPendingDelete && (
+        <div className="overlay checkout-overlay" onMouseDown={(event) => event.target === event.currentTarget && !orderDeleting && setOrderPendingDelete(null)}>
+          <section className="checkout-card delete-order-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-order-title">
+            <button type="button" className="close" disabled={orderDeleting} onClick={() => setOrderPendingDelete(null)} aria-label="关闭删除确认">×</button>
+            <div className="delete-order-mark" aria-hidden="true">!</div>
+            <span className="eyebrow">DELETE DINNER</span>
+            <h2 id="delete-order-title">确定永久删除这场饭局？</h2>
+            <p>“{orderPendingDelete.customerName}” · {orderPendingDelete.mealDate} · {statusLabel[orderPendingDelete.status]}</p>
+            <div className="delete-order-warning">删除后，朋友原来的进度链接也会失效，饭局记录无法恢复。</div>
+            <div className="delete-order-confirm-actions">
+              <button type="button" className="order-delete-cancel" disabled={orderDeleting} onClick={() => setOrderPendingDelete(null)}>先保留</button>
+              <button type="button" className="order-delete-confirm" disabled={orderDeleting} onClick={() => void deleteArchivedOrder(orderPendingDelete)}>{orderDeleting ? "正在删除…" : "永久删除"}</button>
+            </div>
           </section>
         </div>
       )}

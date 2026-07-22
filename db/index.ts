@@ -160,9 +160,12 @@ export async function ensureMenuLibrary() {
   getSqlite().exec(`CREATE TABLE IF NOT EXISTS menu_categories (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL UNIQUE,
+    emoji TEXT NOT NULL DEFAULT '',
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+  const categoryColumns = tableColumns("menu_categories");
+  addColumn("menu_categories", categoryColumns, "emoji", "TEXT NOT NULL DEFAULT ''");
 
   const seeded = await getDb().select().from(schema.appSettings).where(eq(schema.appSettings.key, "classic_menu_v1")).limit(1);
   if (!seeded.length) {

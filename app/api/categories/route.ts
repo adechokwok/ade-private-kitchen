@@ -12,21 +12,22 @@ export async function GET() {
 export async function POST(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
-  const payload = await request.json() as { name?: unknown };
+  const payload = await request.json() as { name?: unknown; emoji?: unknown };
   const name = typeof payload.name === "string" ? payload.name.trim().slice(0, 30) : "";
+  const emoji = typeof payload.emoji === "string" ? payload.emoji.trim().slice(0, 16) : "";
   if (!name) return Response.json({ error: "请填写分类名称" }, { status: 400 });
   await ensureMenuLibrary();
   const existing = await getDb().select().from(menuCategories).where(eq(menuCategories.name, name)).limit(1);
   if (existing.length) return Response.json({ category: existing[0] });
   const [count] = await getDb().select({ value: sql<number>`count(*)` }).from(menuCategories);
-  const [category] = await getDb().insert(menuCategories).values({ id: crypto.randomUUID(), name, sortOrder: Number(count?.value || 0) }).returning();
+  const [category] = await getDb().insert(menuCategories).values({ id: crypto.randomUUID(), name, emoji, sortOrder: Number(count?.value || 0) }).returning();
   return Response.json({ category }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
-  const payload = await request.json() as { id?: unknown; name?: unknown; direction?: unknown; mergeInto?: unknown };
+  const payload = await request.json() as { id?: unknown; name?: unknown; emoji?: unknown; direction?: unknown; mergeInto?: unknown };
   const id = typeof payload.id === "string" ? payload.id : "";
   await ensureMenuLibrary();
   const [current] = await getDb().select().from(menuCategories).where(eq(menuCategories.id, id)).limit(1);
@@ -40,6 +41,10 @@ export async function PATCH(request: Request) {
       await getDb().update(menuCategories).set({ sortOrder: target.sortOrder }).where(eq(menuCategories.id, current.id));
       await getDb().update(menuCategories).set({ sortOrder: current.sortOrder }).where(eq(menuCategories.id, target.id));
     }
+  }
+
+  if (typeof payload.emoji === "string") {
+    await getDb().update(menuCategories).set({ emoji: payload.emoji.trim().slice(0, 16) }).where(eq(menuCategories.id, current.id));
   }
 
   const mergeInto = typeof payload.mergeInto === "string" ? payload.mergeInto.trim().slice(0, 30) : "";
