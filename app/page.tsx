@@ -95,7 +95,7 @@ const cookingStages: Array<{ id: Order["status"]; label: string }> = [{ id: "con
 const statusProgressIndex: Record<Order["status"], number> = { new: -1, confirmed: 0, shopping: 1, preparing: 2, done: 3, cancelled: -1 };
 const isArchivedOrder = (order: Order) => order.status === "done" || order.status === "cancelled";
 const categoryEmoji: Record<string, string> = {
-  全部: "✦", 家常热炒: "🍳", 江浙风味: "🌿", 川湘小馆: "🌶", 汤羹主食: "🥣", 海鲜: "🦐", 家常菜: "🥢",
+  全部: "✦", 未分类: "📥", 家常热炒: "🍳", 江浙风味: "🌿", 川湘小馆: "🌶", 汤羹主食: "🥣", 海鲜: "🦐", 家常菜: "🥢",
 };
 function parseItems(order: Order): OrderItem[] {
   try {
@@ -279,6 +279,11 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [recipeLibraryQuery, setRecipeLibraryQuery] = useState("");
   const [recipeLibraryCategory, setRecipeLibraryCategory] = useState("全部分类");
   const [recipeLibraryStatus, setRecipeLibraryStatus] = useState("全部状态");
+  const [selectedRecipeIds, setSelectedRecipeIds] = useState<string[]>([]);
+  const [bulkCategoryTarget, setBulkCategoryTarget] = useState("");
+  const [bulkCategorySaving, setBulkCategorySaving] = useState(false);
+  const [dishCategorySelection, setDishCategorySelection] = useState("");
+  const [customDishCategory, setCustomDishCategory] = useState("");
   const [invites, setInvites] = useState<DinnerInvite[]>([]);
   const [journals, setJournals] = useState<DinnerJournal[]>([]);
   const [activeInvite, setActiveInvite] = useState<DinnerInvite | null>(null);
@@ -340,6 +345,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       return matchesQuery && matchesCategory && matchesStatus;
     });
   }, [customDishes, recipeLibraryCategory, recipeLibraryQuery, recipeLibraryStatus]);
+  const selectedRecipeIdSet = useMemo(() => new Set(selectedRecipeIds), [selectedRecipeIds]);
+  const allFilteredRecipesSelected = filteredRecipeLibrary.length > 0 && filteredRecipeLibrary.every((dish) => selectedRecipeIdSet.has(dish.id));
   const activeRecipeCount = customDishes.filter((dish) => dish.active !== false && dish.available !== false && !dish.soldOut).length;
   const featuredRecipeCount = customDishes.filter((dish) => dish.featured).length;
 
@@ -811,14 +818,31 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     formElement.reset();
   };
 
-  const changeCategory = async (category: MenuCategory, mode: "rename" | "merge") => {
-    const value = window.prompt(mode === "rename" ? `把“${category.name}”改成：` : `把“${category.name}”合并到哪个分类？`, "");
+  const renameCategory = async (category: MenuCategory) => {
+    const value = window.prompt(`把“${category.name}”改成：`, category.name);
     if (!value?.trim()) return;
-    const response = await fetch("/api/categories", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: category.id, [mode === "rename" ? "name" : "mergeInto"]: value.trim() }) });
+    const response = await fetch("/api/categories", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: category.id, name: value.trim() }) });
     const data = await response.json() as { categories?: MenuCategory[]; error?: string };
     if (!response.ok) return setNotice(data.error || "分类更新失败");
     setManagedCategories(data.categories || []);
     await loadDishes();
+    setNotice(`“${category.name}”已改名为“${value.trim()}”`);
+  };
+
+  const deleteCategory = async (category: MenuCategory) => {
+    const dishCount = customDishes.filter((dish) => dish.category === category.name).length;
+    const message = dishCount > 0
+      ? `确定删除“${category.name}”吗？其中 ${dishCount} 道菜会全部移到“未分类”，菜谱本身不会删除。`
+      : `确定删除空分类“${category.name}”吗？`;
+    if (!window.confirm(message)) return;
+    const response = await fetch(`/api/categories?id=${encodeURIComponent(category.id)}`, { method: "DELETE" });
+    const data = await response.json() as { categories?: MenuCategory[]; movedCount?: number; error?: string };
+    if (!response.ok) return setNotice(data.error || "分类删除失败");
+    setManagedCategories(data.categories || []);
+    if (recipeLibraryCategory === category.name) setRecipeLibraryCategory("未分类");
+    if (bulkCategoryTarget === category.name) setBulkCategoryTarget("");
+    await loadDishes();
+    setNotice(dishCount > 0 ? `已删除“${category.name}”，${data.movedCount || dishCount} 道菜已移到“未分类”` : `已删除空分类“${category.name}”`);
   };
 
   const moveCategory = async (category: MenuCategory, direction: -1 | 1) => {
@@ -835,6 +859,40 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     if (!response.ok) return setNotice(data.error || "分类图标保存失败");
     setManagedCategories(data.categories || []);
     setNotice(emoji ? `“${category.name}”的图标已改为 ${emoji}` : `已恢复“${category.name}”的默认图标`);
+  };
+
+  const toggleRecipeSelection = (dishId: string) => {
+    setSelectedRecipeIds((current) => current.includes(dishId) ? current.filter((id) => id !== dishId) : [...current, dishId]);
+  };
+
+  const toggleAllFilteredRecipes = () => {
+    const visibleIds = filteredRecipeLibrary.map((dish) => dish.id);
+    setSelectedRecipeIds((current) => allFilteredRecipesSelected
+      ? current.filter((id) => !visibleIds.includes(id))
+      : Array.from(new Set([...current, ...visibleIds])));
+  };
+
+  const moveSelectedRecipesToCategory = async () => {
+    if (!selectedRecipeIds.length) return setNotice("请先勾选要整理的菜谱");
+    if (!bulkCategoryTarget) return setNotice("请选择要加入的大类");
+    setBulkCategorySaving(true);
+    try {
+      const response = await fetch("/api/dishes", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids: selectedRecipeIds, category: bulkCategoryTarget }),
+      });
+      const data = await response.json() as { updated?: number; error?: string };
+      if (!response.ok) throw new Error(data.error || "批量分类失败");
+      await loadDishes();
+      setNotice(`已把 ${data.updated || selectedRecipeIds.length} 道菜加入“${bulkCategoryTarget}”`);
+      setSelectedRecipeIds([]);
+      setBulkCategoryTarget("");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "批量分类失败");
+    } finally {
+      setBulkCategorySaving(false);
+    }
   };
 
   const submitOrder = async (event: FormEvent<HTMLFormElement>) => {
@@ -1047,7 +1105,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       if (field instanceof HTMLInputElement) field.checked = checked;
     };
     setValue("name", draft.name);
-    setValue("category", draft.category);
+    const usesManagedCategory = managedCategories.some((category) => category.name === draft.category);
+    setDishCategorySelection(usesManagedCategory ? draft.category : "__custom__");
+    setCustomDishCategory(usesManagedCategory ? "" : draft.category);
     setValue("flavor", draft.flavor);
     setValue("minutes", String(draft.minutes));
     setValue("baseServings", String(draft.baseServings || 4));
@@ -1096,6 +1156,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     setImageCrop(defaultImageCrop);
     setCropMode("");
     setAutoCropPending(false);
+    setDishCategorySelection("");
+    setCustomDishCategory("");
   };
 
   const startNewDish = () => {
@@ -1224,6 +1286,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     const formElement = event.currentTarget;
     setDishSubmitting(true);
     const form = new FormData(formElement);
+    const resolvedCategory = dishCategorySelection === "__custom__" ? customDishCategory.trim() : dishCategorySelection;
+    form.set("category", resolvedCategory);
     form.set("ingredients", JSON.stringify(ingredientRows.map(({ name, amount, unit, type }) => ({ name, amount, unit, type }))));
     if (!form.get("substitutions")) form.set("substitutions", JSON.stringify(recipeDraft?.substitutions || editingDish?.substitutions || []));
     if (editingDish) form.set("id", editingDish.id);
@@ -1241,6 +1305,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       setCropMode("");
       setAutoCropPending(false);
       setIngredientRows([newIngredientRow()]);
+      setDishCategorySelection("");
+      setCustomDishCategory("");
       setRecipeDraft(null);
       setRecipeImportText("");
       clearRecipeScreenshots();
@@ -1328,14 +1394,6 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     if (field === "soldOut" && value) setCart((current) => { const next = { ...current }; delete next[dish.id]; return next; });
   };
 
-  const duplicateDish = async (dish: ManagedDish) => {
-    const response = await fetch("/api/dishes/duplicate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: dish.id }) });
-    const data = await response.json() as { dish?: ManagedDish; error?: string };
-    if (!response.ok || !data.dish) return setNotice(data.error || "复制失败");
-    setCustomDishes((current) => [...current, data.dish!]);
-    setNotice(`已复制“${dish.name}”，副本暂未上架`);
-  };
-
   const deleteDish = async (dish: ManagedDish) => {
     if (!window.confirm(`确定永久删除“${dish.name}”吗？一般建议先归档，历史订单仍会保留菜名。`)) return;
     try {
@@ -1343,6 +1401,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       const data = await response.json() as { error?: string };
       if (!response.ok) throw new Error(data.error || "删除失败");
       setCustomDishes((current) => current.filter((item) => item.id !== dish.id));
+      setSelectedRecipeIds((current) => current.filter((id) => id !== dish.id));
       setCart((current) => {
         const next = { ...current };
         delete next[dish.id];
@@ -1472,6 +1531,19 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 })}
               </div>
             </div>
+            {recommendedDishes.length > 0 && <section className="desktop-ade-picks" aria-labelledby="desktop-ade-picks-title">
+              <header><div><span>ADE&apos;S PICKS · TODAY</span><h3 id="desktop-ade-picks-title">主厨今天特别推荐</h3><p>要是拿不定主意，就从这几道开始。都是阿德今天很想端上桌的味道。</p></div><small>{recommendedDishes.length} 道心选</small></header>
+              <div className="desktop-ade-picks-grid">
+                {recommendedDishes.map((dish) => {
+                  const quantity = cart[dish.id] || 0;
+                  return <article className={`${quantity ? "desktop-ade-pick-card selected" : "desktop-ade-pick-card"}${dish.soldOut ? " sold-out" : ""}`} key={`desktop-ade-pick-${dish.id}`}>
+                    <div className={`desktop-ade-pick-photo tone-${dish.tone}`}>{dish.imageUrl ? <img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /> : <span>{dish.emoji}</span>}<b>阿德推荐</b></div>
+                    <div className="desktop-ade-pick-copy"><small>{dish.category}</small><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p></div>
+                    <div className="desktop-ade-pick-action">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut} onClick={() => updateQuantity(dish.id, 1)}>{dish.soldOut ? "今天已售罄" : "就想吃这道"}<b>＋</b></button>}</div>
+                  </article>;
+                })}
+              </div>
+            </section>}
             {recommendedDishes.length > 0 && <section className="mobile-ade-picks" aria-labelledby="mobile-ade-picks-title">
               <header><div><span>ADE&apos;S PICKS</span><h3 id="mobile-ade-picks-title">阿德推荐</h3><p>这几道，是我今天特别想做给你吃的。</p></div><small>横滑看看 →</small></header>
               <div className="mobile-ade-picks-track">
@@ -1705,8 +1777,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               </section>
 
               <section className="category-manager panel">
-                <div className="panel-title"><div><span>MENU TYPES</span><h2>菜品类型管理</h2></div><small>新增 · 改名 · 排序 · 合并</small></div>
-                <div className="category-manager-body"><form onSubmit={addCategory}><input className="category-new-emoji" name="emoji" maxLength={16} placeholder="Emoji" aria-label="新分类 Emoji" /><input name="name" maxLength={30} required placeholder="新增类型，例如：烧烤" /><button>＋ 添加类型</button></form><p className="category-emoji-help">每个大类都可以填一个 Emoji；留空会继续使用系统默认图标。</p><div className="category-manager-list">{managedCategories.map((category, index) => <div key={category.id}><label className="category-emoji-editor"><span>图标</span><input key={`${category.id}-${category.emoji}`} defaultValue={category.emoji || ""} maxLength={16} placeholder={categoryEmoji[category.name] || "•"} aria-label={`${category.name}的 Emoji 图标`} onBlur={(event) => updateCategoryEmoji(category, event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label><span>{category.name}<small>{customDishes.filter((dish) => dish.category === category.name).length} 道</small></span><div><button type="button" onClick={() => moveCategory(category, -1)} disabled={index === 0} aria-label={`上移${category.name}`}>↑</button><button type="button" onClick={() => moveCategory(category, 1)} disabled={index === managedCategories.length - 1} aria-label={`下移${category.name}`}>↓</button><button type="button" onClick={() => changeCategory(category, "rename")}>改名</button><button type="button" onClick={() => changeCategory(category, "merge")}>合并</button></div></div>)}</div></div>
+                <div className="panel-title"><div><span>MENU TYPES</span><h2>菜品类型管理</h2></div><small>新增 · 改名 · 排序 · 删除</small></div>
+                <div className="category-manager-body"><form onSubmit={addCategory}><input className="category-new-emoji" name="emoji" maxLength={16} placeholder="Emoji" aria-label="新分类 Emoji" /><input name="name" maxLength={30} required placeholder="新增类型，例如：烧烤" /><button>＋ 添加类型</button></form><p className="category-emoji-help">每个大类都可以填一个 Emoji；删除大类只会把其中菜品移到“未分类”，不会删除菜谱。</p><div className="category-manager-list">{managedCategories.map((category, index) => <div key={category.id}><label className="category-emoji-editor"><span>图标</span><input key={`${category.id}-${category.emoji}`} defaultValue={category.emoji || ""} maxLength={16} placeholder={categoryEmoji[category.name] || "•"} aria-label={`${category.name}的 Emoji 图标`} onBlur={(event) => updateCategoryEmoji(category, event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label><span>{category.name}<small>{customDishes.filter((dish) => dish.category === category.name).length} 道</small></span><div><button type="button" onClick={() => moveCategory(category, -1)} disabled={index === 0} aria-label={`上移${category.name}`}>↑</button><button type="button" onClick={() => moveCategory(category, 1)} disabled={index === managedCategories.length - 1} aria-label={`下移${category.name}`}>↓</button><button type="button" onClick={() => renameCategory(category)}>改名</button><button type="button" className="danger" onClick={() => deleteCategory(category)} disabled={category.name === "未分类"}>{category.name === "未分类" ? "保留" : "删除"}</button></div></div>)}</div></div>
               </section>
 
               <div className="manager-grid">
@@ -1727,12 +1799,20 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   <select value={recipeLibraryStatus} onChange={(event) => setRecipeLibraryStatus(event.target.value)} aria-label="按菜品状态筛选"><option>全部状态</option><option>正常供应</option><option>主厨推荐</option><option>本期暂停</option><option>已售罄</option><option>已归档</option></select>
                   <span>找到 <strong>{filteredRecipeLibrary.length}</strong> 道<small>上下滑动浏览全部</small></span>
                 </div>
+                <div className="recipe-bulk-category-bar">
+                  <label><input type="checkbox" checked={allFilteredRecipesSelected} onChange={toggleAllFilteredRecipes} disabled={filteredRecipeLibrary.length === 0} /><span>选择当前筛选的 {filteredRecipeLibrary.length} 道</span></label>
+                  <strong>已选 {selectedRecipeIds.length} 道</strong>
+                  <select value={bulkCategoryTarget} onChange={(event) => setBulkCategoryTarget(event.target.value)} aria-label="批量加入菜品大类"><option value="">选择目标大类…</option>{managedCategories.map((category) => <option value={category.name} key={`bulk-${category.id}`}>{category.name}</option>)}</select>
+                  <button type="button" onClick={moveSelectedRecipesToCategory} disabled={!selectedRecipeIds.length || !bulkCategoryTarget || bulkCategorySaving}>{bulkCategorySaving ? "正在整理…" : "批量加入大类"}</button>
+                  {selectedRecipeIds.length > 0 && <button type="button" className="clear" onClick={() => setSelectedRecipeIds([])}>取消选择</button>}
+                </div>
                 {customDishes.length === 0 ? <div className="empty compact"><span>🥢</span><strong>还没有自定义菜式</strong><p>点击“新建菜品”，第一道菜就会出现在朋友的菜单上。</p></div> : filteredRecipeLibrary.length === 0 ? <div className="empty compact library-empty"><span>⌕</span><strong>没有符合条件的菜</strong><p>换一个关键词或筛选条件再找找。</p><button type="button" onClick={() => { setRecipeLibraryQuery(""); setRecipeLibraryCategory("全部分类"); setRecipeLibraryStatus("全部状态"); }}>清除筛选</button></div> : (
                   <>
                     <div className="managed-dish-scroll" aria-label="连续滚动菜谱瀑布流">
                       <div className="managed-dish-list managed-dish-waterfall">
                         {filteredRecipeLibrary.map((dish) => (
-                        <article className={`${!dish.active ? "managed-dish inactive" : "managed-dish"}${dish.soldOut ? " sold-out" : ""}`} key={dish.id}>
+                        <article className={`${!dish.active ? "managed-dish inactive" : "managed-dish"}${dish.soldOut ? " sold-out" : ""}${selectedRecipeIdSet.has(dish.id) ? " selected" : ""}`} key={dish.id}>
+                          <label className="managed-select"><input type="checkbox" checked={selectedRecipeIdSet.has(dish.id)} onChange={() => toggleRecipeSelection(dish.id)} aria-label={`选择${dish.name}`} /><span>选择</span></label>
                           <div className="managed-thumb">{dish.imageUrl ? <img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt="" /> : <span>🍽️</span>}</div>
                           <div className="managed-copy">
                             <div><strong>{dish.name}</strong><em>{!dish.active ? "已归档" : dish.soldOut ? "已售罄" : dish.available === false ? "本期暂停" : dish.featured ? "主厨推荐" : "已上架"}</em></div>
@@ -1741,7 +1821,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                             <small>{dish.ingredients.length} 种食材 · {dish.steps?.length || 0} 个步骤 · {dish.baseServings || 4} 人基础份</small>
                             <details className="managed-recipe-details"><summary>查看具体做法</summary><div>{dish.recipeSummary && <p>{dish.recipeSummary}</p>}<b>用料</b><ul>{dish.ingredients.map((item, index) => <li key={`${dish.id}-${item.name}-${item.unit}-${index}`}><span>{item.name}</span><strong>{item.amount} {item.unit}</strong></li>)}</ul><b>步骤</b>{dish.steps?.length ? <ol>{dish.steps.map((step, index) => <li key={`${dish.id}-step-${index}`}>{step}</li>)}</ol> : <p>这道菜暂时还没有记录步骤。</p>}{dish.source && <small>来源：{dish.source}</small>}</div></details>
                           </div>
-                          <div className="managed-card-actions"><button type="button" className="edit" onClick={() => startEditingDish(dish)}>编辑菜谱</button><button type="button" onClick={() => duplicateDish(dish)}>复制</button><details className="managed-actions-menu"><summary>状态与归档</summary><div className="managed-actions"><button type="button" className={dish.featured ? "active" : ""} onClick={() => setDishFlag(dish, "featured", !dish.featured)}>{dish.featured ? "取消推荐" : "设为推荐"}</button><button type="button" onClick={() => setDishFlag(dish, "soldOut", !dish.soldOut)}>{dish.soldOut ? "恢复供应" : "设为售罄"}</button><button type="button" onClick={() => setDishFlag(dish, "available", dish.available === false)}>{dish.available === false ? "加入本期" : "暂停本期"}</button><button type="button" onClick={() => toggleDish(dish)}>{dish.active ? "归档菜品" : "恢复菜品"}</button><button type="button" className="danger" onClick={() => deleteDish(dish)}>永久删除</button></div></details></div>
+                          <div className="managed-card-actions"><button type="button" className="edit" onClick={() => startEditingDish(dish)}>编辑菜谱</button><details className="managed-actions-menu"><summary>状态与归档</summary><div className="managed-actions"><button type="button" className={dish.featured ? "active" : ""} onClick={() => setDishFlag(dish, "featured", !dish.featured)}>{dish.featured ? "取消推荐" : "设为推荐"}</button><button type="button" onClick={() => setDishFlag(dish, "soldOut", !dish.soldOut)}>{dish.soldOut ? "恢复供应" : "设为售罄"}</button><button type="button" onClick={() => setDishFlag(dish, "available", dish.available === false)}>{dish.available === false ? "加入本期" : "暂停本期"}</button><button type="button" onClick={() => toggleDish(dish)}>{dish.active ? "归档菜品" : "恢复菜品"}</button><button type="button" className="danger" onClick={() => deleteDish(dish)}>永久删除</button></div></details></div>
                         </article>
                         ))}
                       </div>
@@ -1754,7 +1834,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 <div className="dish-form-body">
                   <div className="field-grid">
                     <label><span>菜名 *</span><input name="name" required maxLength={40} placeholder="例如：糖醋小排" /></label>
-                    <label className="category-edit-field"><span>菜品类型（可自定义）*</span><input name="category" required maxLength={30} placeholder="例如：凉菜、甜品、烧烤或粤菜" /><small>可直接输入任何新类型，保存后会自动出现在朋友端分类中。</small></label>
+                    <label className="category-edit-field"><span>菜品类型 *</span><select value={dishCategorySelection} onChange={(event) => { setDishCategorySelection(event.target.value); if (event.target.value !== "__custom__") setCustomDishCategory(""); }} required><option value="">请从已有类型中选择</option>{managedCategories.map((category) => <option value={category.name} key={`dish-form-${category.id}`}>{category.emoji || categoryEmoji[category.name] || "•"} {category.name}</option>)}<option value="__custom__">＋ 自定义新类型</option></select>{dishCategorySelection === "__custom__" && <input value={customDishCategory} onChange={(event) => setCustomDishCategory(event.target.value)} required maxLength={30} placeholder="输入新类型，例如：烧烤" aria-label="自定义菜品类型" />}<input type="hidden" name="category" value={dishCategorySelection === "__custom__" ? customDishCategory : dishCategorySelection} /><small>{dishCategorySelection === "__custom__" ? "保存后，这个新类型会自动加入上方类型管理。" : "只有选择“自定义新类型”后，才可以输入新的类型。"}</small></label>
                     <label><span>口味标签</span><input name="flavor" maxLength={30} placeholder="例如：酸甜 · 不辣" /></label>
                     <label><span>预计烹饪时间</span><div className="input-suffix"><input name="minutes" type="number" min="5" max="360" defaultValue="30" required /><b>分钟</b></div></label>
                     <label><span>这份菜谱适合几人</span><div className="input-suffix"><input name="baseServings" type="number" min="1" max="20" defaultValue="4" required /><b>人</b></div><small>只用于后台换算采购量，朋友端不会显示。</small></label>

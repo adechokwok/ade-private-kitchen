@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { eq } from "drizzle-orm";
 import * as schema from "./schema";
-import { categories as seedCategories, dishes as seedDishes } from "../app/menu";
+import { dishes as seedDishes } from "../app/menu";
 import { ensureDataDirectories, getDatabasePath } from "../storage/paths";
 import { getUploads as getLocalUploads } from "../storage/uploads";
 
@@ -191,7 +191,7 @@ export async function ensureMenuLibrary() {
   }
 
   const dishCategories = getSqlite().prepare("SELECT DISTINCT category AS name FROM custom_dishes WHERE category <> ''").all() as Array<{ name: string }>;
-  const names = Array.from(new Set([...seedCategories, ...dishCategories.map((item) => item.name)]));
+  const names = Array.from(new Set(dishCategories.map((item) => item.name)));
   for (const [index, name] of names.entries()) {
     await getDb().insert(schema.menuCategories).values({ id: crypto.randomUUID(), name, sortOrder: index }).onConflictDoNothing();
   }

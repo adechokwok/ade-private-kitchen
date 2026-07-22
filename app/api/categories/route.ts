@@ -1,6 +1,6 @@
 import { asc, eq, sql } from "drizzle-orm";
 import { chefApiGuard } from "../../chef-auth";
-import { ensureMenuLibrary, getDb } from "../../../db";
+import { ensureMenuLibrary, getDb, getSqlite } from "../../../db";
 import { customDishes, menuCategories } from "../../../db/schema";
 
 export async function GET() {
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
-  const payload = await request.json() as { id?: unknown; name?: unknown; emoji?: unknown; direction?: unknown; mergeInto?: unknown };
+  const payload = await request.json() as { id?: unknown; name?: unknown; emoji?: unknown; direction?: unknown };
   const id = typeof payload.id === "string" ? payload.id : "";
   await ensureMenuLibrary();
   const [current] = await getDb().select().from(menuCategories).where(eq(menuCategories.id, id)).limit(1);
@@ -47,17 +47,36 @@ export async function PATCH(request: Request) {
     await getDb().update(menuCategories).set({ emoji: payload.emoji.trim().slice(0, 16) }).where(eq(menuCategories.id, current.id));
   }
 
-  const mergeInto = typeof payload.mergeInto === "string" ? payload.mergeInto.trim().slice(0, 30) : "";
   const name = typeof payload.name === "string" ? payload.name.trim().slice(0, 30) : "";
-  const nextName = mergeInto || name;
-  if (nextName && nextName !== current.name) {
-    const target = await getDb().select().from(menuCategories).where(eq(menuCategories.name, nextName)).limit(1);
-    if (target.length && !mergeInto) return Response.json({ error: "已经有同名分类，可使用合并功能" }, { status: 409 });
-    await getDb().update(customDishes).set({ category: nextName }).where(eq(customDishes.category, current.name));
-    if (target.length) await getDb().delete(menuCategories).where(eq(menuCategories.id, current.id));
-    else await getDb().update(menuCategories).set({ name: nextName }).where(eq(menuCategories.id, current.id));
+  if (name && name !== current.name) {
+    const target = await getDb().select().from(menuCategories).where(eq(menuCategories.name, name)).limit(1);
+    if (target.length) return Response.json({ error: "已经有同名分类，请换一个名称" }, { status: 409 });
+    await getDb().update(customDishes).set({ category: name }).where(eq(customDishes.category, current.name));
+    await getDb().update(menuCategories).set({ name }).where(eq(menuCategories.id, current.id));
   }
 
   const rows = await getDb().select().from(menuCategories).orderBy(asc(menuCategories.sortOrder), asc(menuCategories.createdAt));
   return Response.json({ categories: rows });
+}
+
+export async function DELETE(request: Request) {
+  const denied = chefApiGuard(request);
+  if (denied) return denied;
+  const id = new URL(request.url).searchParams.get("id") || "";
+  await ensureMenuLibrary();
+  const [current] = await getDb().select().from(menuCategories).where(eq(menuCategories.id, id)).limit(1);
+  if (!current) return Response.json({ error: "没有找到这个分类" }, { status: 404 });
+  if (current.name === "未分类") return Response.json({ error: "“未分类”用于接收待整理菜品，不能删除" }, { status: 409 });
+
+  const sqlite = getSqlite();
+  const movedCount = sqlite.transaction(() => {
+    const nextOrder = Number((sqlite.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM menu_categories").get() as { value: number }).value);
+    sqlite.prepare("INSERT OR IGNORE INTO menu_categories (id, name, emoji, sort_order) VALUES (?, '未分类', '📥', ?)").run(crypto.randomUUID(), nextOrder);
+    const moved = sqlite.prepare("UPDATE custom_dishes SET category = '未分类' WHERE category = ?").run(current.name).changes;
+    sqlite.prepare("DELETE FROM menu_categories WHERE id = ?").run(current.id);
+    return moved;
+  })();
+
+  const rows = await getDb().select().from(menuCategories).orderBy(asc(menuCategories.sortOrder), asc(menuCategories.createdAt));
+  return Response.json({ categories: rows, movedCount });
 }

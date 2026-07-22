@@ -1,6 +1,6 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 import { ensureCustomDishesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb, getUploads } from "../../../db";
-import { customDishes, orders } from "../../../db/schema";
+import { customDishes, menuCategories, orders } from "../../../db/schema";
 import { chefApiGuard, isChefRequest } from "../../chef-auth";
 
 type IngredientInput = {
@@ -255,7 +255,19 @@ export async function PATCH(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   try {
-    const payload = await request.json() as { id?: unknown; active?: unknown; featured?: unknown; available?: unknown; soldOut?: unknown; sortOrder?: unknown };
+    const payload = await request.json() as { id?: unknown; ids?: unknown; category?: unknown; active?: unknown; featured?: unknown; available?: unknown; soldOut?: unknown; sortOrder?: unknown };
+    const ids = Array.isArray(payload.ids)
+      ? Array.from(new Set(payload.ids.filter((value): value is string => typeof value === "string" && value.length > 0))).slice(0, 500)
+      : [];
+    const category = typeof payload.category === "string" ? payload.category.trim().slice(0, 30) : "";
+    if (ids.length || category) {
+      if (!ids.length || !category) return Response.json({ error: "请选择菜品和目标大类" }, { status: 400 });
+      await ensureMenuLibrary();
+      const [target] = await getDb().select().from(menuCategories).where(eq(menuCategories.name, category)).limit(1);
+      if (!target) return Response.json({ error: "目标大类不存在，请刷新后重试" }, { status: 404 });
+      const updated = await getDb().update(customDishes).set({ category }).where(inArray(customDishes.id, ids)).returning({ id: customDishes.id });
+      return Response.json({ ok: true, updated: updated.length, category });
+    }
     const id = typeof payload.id === "string" ? payload.id : "";
     if (!id) return Response.json({ error: "无效的菜品状态" }, { status: 400 });
     const updates: Partial<typeof customDishes.$inferInsert> = {};

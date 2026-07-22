@@ -28,7 +28,7 @@ test("ships the private menu and chef workflow", async () => {
   for (const phrase of [
     "朋友点菜", "阿德小厨房", "想吃什么", "主厨工作台", "接单信息汇总", "把点单编成正式宴席菜单",
     "订单和采购提醒", "制作执行台", "合并备菜清单", "倒排烹饪顺序", "单菜计时器", "库存不足提醒",
-    "等待通知的饭局", "菜单管理", "菜品类型（可自定义）", "点菜端 slogan", "千问再生成", "家中库存",
+    "等待通知的饭局", "菜单管理", "自定义新类型", "批量加入大类", "点菜端 slogan", "千问再生成", "家中库存",
     "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "生成一场专属饭局", "饭后留一页", "温馨家宴", "二人世界", "Fine Dining",
     "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐",
   ]) assert.match(page, new RegExp(phrase));
@@ -87,6 +87,7 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /managed-recipe-details/);
   assert.match(page, /mobile-menu-browser/);
   assert.match(page, /mobile-ade-picks/);
+  assert.match(page, /desktop-ade-picks/);
   assert.match(page, /阿德推荐/);
   assert.match(page, /syncMobileCategory/);
   assert.match(page, /recipeLibraryQuery/);
@@ -99,7 +100,9 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /PDF 文件/);
   assert.match(globalStyles, /\.mobile-category-rail/);
   assert.match(globalStyles, /\.mobile-ade-picks-track/);
+  assert.match(globalStyles, /\.desktop-ade-picks-grid/);
   assert.match(globalStyles, /\.recipe-library-toolbar/);
+  assert.match(globalStyles, /\.recipe-bulk-category-bar/);
   assert.match(globalStyles, /column-count: 2/);
   assert.match(categoryRoute, /emoji/);
   assert.match(schema, /emoji: text\("emoji"\)/);
@@ -115,7 +118,16 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(database, /addColumn\("custom_dishes", columns, "slogan"/);
   assert.match(ordersRoute, /steps: dish\.steps/);
   assert.match(shoppingRoute, /shoppingChecks/);
-  assert.match(categoryRoute, /mergeInto/);
+  assert.match(categoryRoute, /export async function DELETE/);
+  assert.match(categoryRoute, /SET category = '未分类'/);
+  assert.match(categoryRoute, /sqlite\.transaction/);
+  assert.doesNotMatch(categoryRoute, /mergeInto/);
+  assert.doesNotMatch(database, /seedCategories/);
+  assert.match(dishRoute, /inArray\(customDishes\.id, ids\)/);
+  assert.match(page, /moveSelectedRecipesToCategory/);
+  assert.match(page, /dishCategorySelection === "__custom__"/);
+  assert.doesNotMatch(page, /duplicateDish/);
+  assert.doesNotMatch(page, />复制<\/button>/);
   assert.match(pantryRoute, /pantryItems/);
   assert.match(inviteRoute, /recommendedDishIds/);
   assert.match(orderStatusRoute, /progressNote/);
