@@ -120,6 +120,7 @@ export async function ensureCustomDishesSchema() {
 }
 
 export async function ensureDinnerInvitesSchema() {
+  await ensureOrdersSchema();
   getSqlite().exec(`CREATE TABLE IF NOT EXISTS dinner_invites (
     id TEXT PRIMARY KEY NOT NULL,
     token TEXT NOT NULL UNIQUE,
@@ -134,13 +135,28 @@ export async function ensureDinnerInvitesSchema() {
   )`);
   getSqlite().exec(`CREATE TABLE IF NOT EXISTS dinner_journals (
     id TEXT PRIMARY KEY NOT NULL,
-    invite_id TEXT NOT NULL,
+    invite_id TEXT NOT NULL DEFAULT '',
+    order_id TEXT NOT NULL DEFAULT '',
     title TEXT NOT NULL DEFAULT '今晚的餐桌日记',
     note TEXT NOT NULL DEFAULT '',
     image_urls TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+  const journalColumns = tableColumns("dinner_journals");
+  addColumn("dinner_journals", journalColumns, "order_id", "TEXT NOT NULL DEFAULT ''");
+  addColumn("dinner_journals", journalColumns, "updated_at", "TEXT NOT NULL DEFAULT ''");
   getSqlite().exec("CREATE INDEX IF NOT EXISTS dinner_journals_invite_id_idx ON dinner_journals (invite_id)");
+  getSqlite().exec("CREATE INDEX IF NOT EXISTS dinner_journals_order_id_idx ON dinner_journals (order_id)");
+  getSqlite().exec(`UPDATE dinner_journals
+    SET order_id = COALESCE((
+      SELECT orders.id FROM orders
+      WHERE orders.invite_id = dinner_journals.invite_id AND orders.status = 'done'
+      ORDER BY orders.created_at DESC LIMIT 1
+    ), '')
+    WHERE order_id = '' AND invite_id <> ''
+      AND id = (SELECT latest.id FROM dinner_journals AS latest WHERE latest.invite_id = dinner_journals.invite_id ORDER BY latest.created_at DESC LIMIT 1)`);
+  getSqlite().exec("CREATE UNIQUE INDEX IF NOT EXISTS dinner_journals_order_id_unique_idx ON dinner_journals (order_id) WHERE order_id <> ''");
 }
 
 export async function ensureShoppingChecksSchema() {

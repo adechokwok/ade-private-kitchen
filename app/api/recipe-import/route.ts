@@ -204,7 +204,7 @@ export async function POST(request: Request) {
 JSON 字段必须包含：name、category、description、slogan、flavor、minutes、source、ingredients、steps、confidenceNotes、difficulty、recipeSummary、missingChecks、substitutions、baseServings、seasons、occasions、dietary。
 ${conciseDescriptionRule}
 ${playfulSloganRule}
-两项文案都必须遵守系统提供的“阿德小厨房”风格；description 不要写成做法摘要，slogan 不要使用菜名、引号、句号或感叹号。
+两项文案都必须遵守系统提供的“阿德小厨房”风格；description 不要写成做法摘要。slogan 可以使用菜名和标点，但笑点必须来自这道菜的真实信息，不能套用通用段子。
 ingredients 每项包含 name、amount、unit、type；type 只能是“生鲜、蔬菜、调料、其他”。数量必须是数字；原文写“适量”时使用 amount=1、unit="适量"。看不清的内容放到 confidenceNotes；原文确实没有但下厨前需要确认的内容放到 missingChecks。difficulty 只能是“简单、适中、进阶”。无法判断份量时 baseServings=4。
 
 图片方向提示：${orientationHint || "无图片"}。

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { ensureDinnerInvitesSchema, ensureOrdersSchema, getDb } from "../../../../db";
 import { dinnerInvites, dinnerJournals, orders } from "../../../../db/schema";
 
@@ -12,12 +12,13 @@ export async function GET(_request: Request, context: { params: Promise<{ token:
   if (!order) return Response.json({ error: "没有找到这份点单" }, { status: 404 });
   let invite = null;
   let journal = null;
+  await ensureDinnerInvitesSchema();
   if (order.inviteId) {
-    await ensureDinnerInvitesSchema();
     const [inviteRow] = await getDb().select().from(dinnerInvites).where(eq(dinnerInvites.id, order.inviteId)).limit(1);
     if (inviteRow) invite = { title: inviteRow.title, message: inviteRow.message, mealDate: inviteRow.mealDate, theme: inviteRow.theme };
-    const [journalRow] = await getDb().select().from(dinnerJournals).where(eq(dinnerJournals.inviteId, order.inviteId)).limit(1);
-    if (journalRow) journal = { ...journalRow, imageUrls: parseList(journalRow.imageUrls) };
   }
+  let [journalRow] = await getDb().select().from(dinnerJournals).where(eq(dinnerJournals.orderId, order.id)).limit(1);
+  if (!journalRow && order.inviteId) [journalRow] = await getDb().select().from(dinnerJournals).where(and(eq(dinnerJournals.inviteId, order.inviteId), eq(dinnerJournals.orderId, ""))).limit(1);
+  if (journalRow) journal = { ...journalRow, imageUrls: parseList(journalRow.imageUrls) };
   return Response.json({ order: { customerName: order.customerName, mealDate: order.mealDate, guestCount: order.guestCount, dishes: parseList(order.dishes), dishSnapshot: parseList(order.dishSnapshot), status: order.status, progressNote: order.progressNote, statusUpdatedAt: order.statusUpdatedAt, createdAt: order.createdAt }, invite, journal });
 }

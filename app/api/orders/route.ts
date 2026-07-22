@@ -1,6 +1,6 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { ensureDinnerInvitesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb } from "../../../db";
-import { customDishes, dinnerInvites, orders } from "../../../db/schema";
+import { appSettings, customDishes, dinnerInvites, dinnerJournals, orders } from "../../../db/schema";
 import { chefApiGuard } from "../../chef-auth";
 
 type Item = { dishId?: string; quantity?: number };
@@ -34,6 +34,8 @@ export async function POST(request: Request) {
     const items = Array.isArray(payload.dishes) ? payload.dishes : [];
     const inviteToken = typeof payload.inviteToken === "string" ? payload.inviteToken : "";
     await ensureMenuLibrary();
+    const [kitchenSetting] = await getDb().select().from(appSettings).where(eq(appSettings.key, "kitchen_open_v1")).limit(1);
+    if (kitchenSetting?.value === "closed") return Response.json({ error: "阿德今天休息，菜单可以慢慢看，等绿灯亮起再来点菜吧" }, { status: 409 });
     const customRows = await getDb().select().from(customDishes).where(eq(customDishes.active, 1));
     let inviteId = "";
     let inviteDishIds: string[] | null = null;
@@ -110,6 +112,10 @@ export async function DELETE(request: Request) {
     if (order.status !== "done" && order.status !== "cancelled") {
       return Response.json({ error: "只有已完成或已取消的饭局可以删除" }, { status: 409 });
     }
+    await ensureDinnerInvitesSchema();
+    let [journal] = await getDb().select({ id: dinnerJournals.id }).from(dinnerJournals).where(eq(dinnerJournals.orderId, order.id)).limit(1);
+    if (!journal && order.inviteId) [journal] = await getDb().select({ id: dinnerJournals.id }).from(dinnerJournals).where(and(eq(dinnerJournals.inviteId, order.inviteId), eq(dinnerJournals.orderId, ""))).limit(1);
+    if (journal) return Response.json({ error: "这场饭局还有餐桌日记，请先在“餐桌日记”中删除日记" }, { status: 409 });
     await getDb().delete(orders).where(eq(orders.id, id));
     return Response.json({ ok: true, id });
   } catch (error) {

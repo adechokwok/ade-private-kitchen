@@ -30,7 +30,7 @@ test("ships the private menu and chef workflow", async () => {
     "朋友点菜", "阿德小厨房", "想吃什么", "主厨工作台", "接单信息汇总", "把点单编成正式宴席菜单",
     "订单和采购提醒", "制作执行台", "合并备菜清单", "倒排烹饪顺序", "单菜计时器", "库存不足提醒",
     "等待通知的饭局", "菜单管理", "自定义新类型", "批量加入大类", "点菜端 slogan", "千问再生成", "家中库存",
-    "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "生成一场专属饭局", "饭后留一页", "温馨家宴", "二人世界", "Fine Dining",
+    "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "生成一场专属饭局", "餐桌日记，想写的时候再写", "温馨家宴", "二人世界", "Fine Dining",
     "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐",
   ]) assert.match(page, new RegExp(phrase));
   assert.match(page, /从本地上传照片/);
@@ -41,6 +41,9 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /chef-studio\.jpg/);
   assert.match(page, /厨房今天休息/);
   assert.match(page, /kitchen-status-toggle/);
+  assert.match(page, /menuReadOnly/);
+  assert.match(page, /今天先看菜单，不接新点单/);
+  assert.match(ordersRoute, /kitchenSetting\?\.value === "closed"/);
   assert.doesNotMatch(page, /window\.print/);
   assert.match(page, /html-to-image/);
   assert.match(page, /jspdf/);
@@ -118,10 +121,13 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(copyRoute, /privateKitchenCopyStyle/);
   assert.match(importRoute, /privateKitchenCopyStyle/);
   assert.match(copyStyle, /22–42 个中文字符/);
-  assert.match(copyStyle, /7–14 个中文字符/);
+  assert.match(copyStyle, /10–24 个中文字符/);
   assert.match(copyStyle, /汤汁请务必留给米饭/);
   assert.match(copyStyle, /软乎乎的一口鲜/);
   assert.match(copyStyle, /简单，但会让人想念/);
+  assert.match(copyStyle, /白天不懂夜的黑，白菜不懂虾的鲜/);
+  assert.match(copyStyle, /没有虾头，是因为我不做虾头男/);
+  assert.match(copyStyle, /内娱真完了/);
   assert.match(schema, /slogan: text\("slogan"\)/);
   assert.match(database, /addColumn\("custom_dishes", columns, "slogan"/);
   assert.match(ordersRoute, /steps: dish\.steps/);
@@ -135,7 +141,12 @@ test("ships the private menu and chef workflow", async () => {
   assert.doesNotMatch(categoryRoute, /mergeInto/);
   assert.doesNotMatch(database, /seedCategories/);
   assert.match(dishRoute, /inArray\(customDishes\.id, ids\)/);
+  assert.match(dishRoute, /normalizeCategoryDishOrder/);
+  assert.match(dishRoute, /move === "top"/);
+  assert.match(dishRoute, /active DESC, sort_order ASC/);
   assert.match(page, /moveSelectedRecipesToCategory/);
+  assert.match(page, /菜品排序/);
+  assert.match(page, /moveDish/);
   assert.match(page, /dishCategorySelection === "__custom__"/);
   assert.doesNotMatch(page, /duplicateDish/);
   assert.doesNotMatch(page, />复制<\/button>/);
@@ -151,6 +162,14 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(statusClient, /setInterval\(\(\) => void load\(\), 15000\)/);
   assert.match(statusClient, /每 15 秒自动更新/);
   assert.match(journalRoute, /dinner-journals/);
+  assert.match(journalRoute, /export async function DELETE/);
+  assert.match(journalRoute, /order\.status !== "done"/);
+  assert.match(journalRoute, /eq\(dinnerJournals\.orderId, ""\)/);
+  assert.match(page, /deleteJournal/);
+  assert.match(page, /journal-workspace/);
+  assert.match(schema, /orderId: text\("order_id"\)/);
+  assert.match(database, /dinner_journals_order_id_unique_idx/);
+  assert.match(orderStatusRoute, /dinnerJournals\.orderId/);
   assert.match(kitchenStatusRoute, /kitchen_open_v1/);
   assert.match(kitchenStatusRoute, /chefApiGuard/);
   assert.doesNotMatch(page, /codex-preview|SkeletonPreview/);

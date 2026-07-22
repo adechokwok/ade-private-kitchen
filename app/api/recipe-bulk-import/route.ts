@@ -111,11 +111,12 @@ async function importRecipes(recipes: NormalizedRecipe[]) {
   const backupFile = `ade-kitchen-before-bulk-import-${stamp}.sqlite`;
   await sqlite.backup(path.join(backupDir, backupFile));
 
-  const findDish = sqlite.prepare("SELECT id FROM custom_dishes WHERE name = ? ORDER BY created_at LIMIT 1");
+  const findDish = sqlite.prepare("SELECT id, category, sort_order AS sortOrder FROM custom_dishes WHERE name = ? ORDER BY created_at LIMIT 1");
   const updateDish = sqlite.prepare(`UPDATE custom_dishes SET
     category = @category, description = @description, slogan = @slogan, flavor = @flavor,
     minutes = @minutes, base_servings = @baseServings, ingredients = @ingredients,
-    steps = @steps, source = @source, difficulty = @difficulty, recipe_summary = @recipeSummary
+    steps = @steps, source = @source, difficulty = @difficulty, recipe_summary = @recipeSummary,
+    sort_order = @sortOrder
     WHERE id = @id`);
   const insertDish = sqlite.prepare(`INSERT INTO custom_dishes (
     id, name, category, description, slogan, flavor, minutes, base_servings,
@@ -129,7 +130,14 @@ async function importRecipes(recipes: NormalizedRecipe[]) {
   )`);
   const insertCategory = sqlite.prepare("INSERT OR IGNORE INTO menu_categories (id, name, sort_order) VALUES (?, ?, ?)");
   const existingCategories = new Set((sqlite.prepare("SELECT name FROM menu_categories").all() as Array<{ name: string }>).map((row) => row.name));
-  let nextSortOrder = Number((sqlite.prepare("SELECT COALESCE(MAX(sort_order), 0) AS value FROM custom_dishes").get() as { value: number }).value) + 1;
+  const nextSortOrderByCategory = new Map<string, number>();
+  const nextDishOrder = (category: string) => {
+    const existing = nextSortOrderByCategory.get(category);
+    if (existing !== undefined) { nextSortOrderByCategory.set(category, existing + 1); return existing; }
+    const next = Number((sqlite.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM custom_dishes WHERE category = ?").get(category) as { value: number }).value);
+    nextSortOrderByCategory.set(category, next + 1);
+    return next;
+  };
   let nextCategoryOrder = Number((sqlite.prepare("SELECT COALESCE(MAX(sort_order), 0) AS value FROM menu_categories").get() as { value: number }).value) + 1;
   let inserted = 0;
   let updated = 0;
@@ -137,13 +145,12 @@ async function importRecipes(recipes: NormalizedRecipe[]) {
   const transaction = sqlite.transaction(() => {
     for (const recipe of recipes) {
       const row = { ...recipe, ingredients: JSON.stringify(recipe.ingredients), steps: JSON.stringify(recipe.steps) };
-      const existing = findDish.get(recipe.name) as { id: string } | undefined;
+      const existing = findDish.get(recipe.name) as { id: string; category: string; sortOrder: number } | undefined;
       if (existing) {
-        updateDish.run({ ...row, id: existing.id });
+        updateDish.run({ ...row, id: existing.id, sortOrder: existing.category === recipe.category ? existing.sortOrder : nextDishOrder(recipe.category) });
         updated += 1;
       } else {
-        insertDish.run({ ...row, id: randomUUID(), sortOrder: nextSortOrder });
-        nextSortOrder += 1;
+        insertDish.run({ ...row, id: randomUUID(), sortOrder: nextDishOrder(recipe.category) });
         inserted += 1;
       }
       if (!existingCategories.has(recipe.category)) {

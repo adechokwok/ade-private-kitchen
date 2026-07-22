@@ -90,9 +90,11 @@ export const dinnerInvites = sqliteTable("dinner_invites", {
 
 export const dinnerJournals = sqliteTable("dinner_journals", {
   id: text("id").primaryKey(),
-  inviteId: text("invite_id").notNull(),
+  inviteId: text("invite_id").notNull().default(""),
+  orderId: text("order_id").notNull().default(""),
   title: text("title").notNull().default("今晚的餐桌日记"),
   note: text("note").notNull().default(""),
   imageUrls: text("image_urls").notNull().default("[]"),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

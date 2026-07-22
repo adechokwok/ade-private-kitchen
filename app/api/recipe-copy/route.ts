@@ -68,7 +68,7 @@ export async function POST(request: Request) {
         model,
         messages: [{ role: "system", content: privateKitchenCopyStyle }, { role: "user", content: prompt }],
         response_format: { type: "json_object" },
-        temperature: field === "slogan" ? 0.82 : 0.52,
+        temperature: field === "slogan" ? 0.9 : 0.52,
         max_tokens: 500,
         enable_thinking: false,
       }),
