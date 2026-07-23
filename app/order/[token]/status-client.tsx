@@ -20,10 +20,12 @@ const statusNotices: Record<string, { mark: string; title: string; description: 
 };
 
 type StatusData = {
-  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; dishSnapshot: Array<{ name: string }> };
+  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; publishedMenuUpdatedAt: string; publishedMenu?: { title: string; date: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
   invite?: { title: string; message: string; theme: string } | null;
   journal?: { title: string; note: string; imageUrls: string[] } | null;
 };
+
+const templateMarks: Record<string, string> = { home: "家", romance: "♡", fine: "FD", spring: "春", midautumn: "月", birthday: "★", housewarming: "宅", summer: "夏", christmas: "✦", brunch: "☀" };
 
 export default function OrderStatusClient({ token }: { token: string }) {
   const [data, setData] = useState<StatusData | null>(null);
@@ -33,6 +35,10 @@ export default function OrderStatusClient({ token }: { token: string }) {
   const [dismissedUpdate, setDismissedUpdate] = useState(() => {
     if (typeof window === "undefined") return "";
     try { return window.localStorage.getItem(`ade-order-update:${token}`) || ""; } catch { return ""; }
+  });
+  const [dismissedMenuUpdate, setDismissedMenuUpdate] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try { return window.localStorage.getItem(`ade-order-menu-update:${token}`) || ""; } catch { return ""; }
   });
 
   const load = useCallback(async () => {
@@ -63,21 +69,30 @@ export default function OrderStatusClient({ token }: { token: string }) {
   const currentStatus = data?.order.status || "";
   const currentNotice = currentStatus ? statusNotices[currentStatus] : undefined;
   const showUpdateAlert = Boolean(currentNotice && currentUpdateKey && dismissedUpdate !== currentUpdateKey);
+  const currentMenuUpdateKey = data?.order.publishedMenuUpdatedAt || "";
+  const showMenuAlert = Boolean(!showUpdateAlert && data?.order.publishedMenu && currentMenuUpdateKey && dismissedMenuUpdate !== currentMenuUpdateKey);
 
   useEffect(() => {
-    if (!showUpdateAlert || !currentStatus) return;
+    if ((!showUpdateAlert || !currentStatus) && !showMenuAlert) return;
     const previousTitle = document.title;
     const timer = window.setTimeout(() => {
-      document.title = currentStatus === "done" ? "🔔 开饭啦｜阿德小厨房" : "🔔 厨房有新进度｜阿德小厨房";
+      document.title = showMenuAlert ? "📜 今晚菜单已送达｜阿德小厨房" : currentStatus === "done" ? "🔔 开饭啦｜阿德小厨房" : "🔔 厨房有新进度｜阿德小厨房";
       if (typeof navigator.vibrate === "function") navigator.vibrate(currentStatus === "done" ? [250, 120, 250, 120, 400] : [160, 80, 160]);
     }, 0);
     return () => { window.clearTimeout(timer); document.title = previousTitle; };
-  }, [showUpdateAlert, currentUpdateKey, currentStatus]);
+  }, [showUpdateAlert, showMenuAlert, currentUpdateKey, currentMenuUpdateKey, currentStatus]);
 
   const acknowledgeUpdate = () => {
     if (!currentUpdateKey) return;
     try { window.localStorage.setItem(`ade-order-update:${token}`, currentUpdateKey); } catch { /* 无痕模式下仍可在本次访问关闭 */ }
     setDismissedUpdate(currentUpdateKey);
+  };
+
+  const acknowledgeMenuUpdate = () => {
+    if (!currentMenuUpdateKey) return;
+    try { window.localStorage.setItem(`ade-order-menu-update:${token}`, currentMenuUpdateKey); } catch { /* 无痕模式下仍可在本次访问关闭 */ }
+    setDismissedMenuUpdate(currentMenuUpdateKey);
+    window.setTimeout(() => document.getElementById("published-menu")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   };
 
   if (error && !data) return <main className="status-page"><section className="status-card"><span>阿德小厨房</span><h1>这张进度卡走丢了</h1><p>{error}</p><button onClick={() => void load()} disabled={refreshing}>{refreshing ? "正在重试…" : "重新加载进度"}</button><Link href="/">回到点菜页</Link></section></main>;
@@ -94,6 +109,16 @@ export default function OrderStatusClient({ token }: { token: string }) {
         <small>这条提醒确认后不会重复弹出</small>
       </section>
     </div>}
+    {showMenuAlert && data.order.publishedMenu && <div className="status-update-modal status-update-menu" role="alertdialog" aria-modal="true" aria-labelledby="menu-update-title">
+      <section>
+        <div className="status-update-mark" aria-hidden="true">单</div>
+        <span>CHEF&apos;S MENU · 新菜单</span>
+        <h2 id="menu-update-title">阿德把正式菜单排好啦</h2>
+        <p>{data.order.publishedMenu.message || "今晚吃什么已经认真排好，随时可以回来翻菜单。"}</p>
+        <button type="button" onClick={acknowledgeMenuUpdate}>打开今晚菜单</button>
+        <small>菜单之后有调整，也会在这里自动更新</small>
+      </section>
+    </div>}
     <section className="status-card">
       <span>PRIVATE DINNER · 实时进度</span>
       <h1>{data.invite?.title || `${data.order.customerName}的这顿饭`}</h1>
@@ -103,6 +128,13 @@ export default function OrderStatusClient({ token }: { token: string }) {
       <div className="status-meta"><strong>{data.order.mealDate}</strong><small>{data.order.guestCount} 位 · {data.order.dishSnapshot.length} 道菜</small></div>
       {data.order.status === "cancelled" ? <div className="status-cancelled">这场饭局暂时取消了，等我们下次再好好约。</div> : <ol className="status-timeline">{stages.map((stage, index) => <li className={index <= activeIndex ? "active" : ""} key={stage.id}><i>{index < activeIndex ? "✓" : index + 1}</i><div><strong>{stage.label}</strong><small>{stage.note}</small></div></li>)}</ol>}
       {data.order.progressNote && <blockquote>“{data.order.progressNote}”<small>— 主厨留言</small></blockquote>}
+      {data.order.publishedMenu && <section id="published-menu" className={`banquet-preview guest-published-menu template-${data.order.publishedMenu.template}`}>
+        <div className="menu-card-ornament" aria-hidden="true"><span>{templateMarks[data.order.publishedMenu.template] || "宴"}</span></div>
+        <div className="menu-card-header"><small>{data.order.publishedMenu.subtitle || "CHEF'S PRIVATE MENU"}</small><h2>{data.order.publishedMenu.title}</h2><p>{data.order.publishedMenu.templateName || "阿德私房菜单"}</p><div><span>{data.order.publishedMenu.date || data.order.mealDate}</span><span>{data.order.publishedMenu.occasion || "今晚相聚"}</span><span>{data.order.guestCount} 位宾客</span></div></div>
+        <div className="menu-card-courses">{data.order.publishedMenu.courses.map((course) => course.dishes.length ? <section key={course.id}><h3><span>{course.label}</span><small>{course.english}</small></h3><div>{course.dishes.map((dish, index) => <article key={`${course.id}-${dish.name}-${index}`}><strong>{dish.name}</strong><span>{dish.description}</span></article>)}</div></section> : null)}</div>
+        <div className="menu-card-footer"><span>—</span><p>{data.order.publishedMenu.message}</p><small>CHEF&apos;S TABLE · 阿德私房呈献</small></div>
+        <div className="guest-menu-updated">菜单会随主厨调整自动更新 · {data.order.publishedMenuUpdatedAt ? new Date(data.order.publishedMenuUpdatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "刚刚送达"}</div>
+      </section>}
       <div className="status-dishes"><small>今晚菜单</small><p>{data.order.dishSnapshot.map((dish) => dish.name).join(" · ")}</p></div>
       {data.journal && <section className="guest-journal"><span>AFTER DINNER</span><h2>{data.journal.title}</h2><p>{data.journal.note}</p>{data.journal.imageUrls.length > 0 && <div>{data.journal.imageUrls.map((url, index) => <img src={url} alt={`饭局照片 ${index + 1}`} key={url} />)}</div>}</section>}
       <button onClick={() => void load()} disabled={refreshing}>{refreshing ? "正在同步厨房进度…" : "立即刷新厨房进度"}</button>

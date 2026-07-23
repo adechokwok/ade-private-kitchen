@@ -63,11 +63,12 @@ function safeNetworkImageUrl(value: string) {
 function normalizeImagePosition(value: FormDataEntryValue | null, fallback = "center") {
   const candidate = String(value || "").trim();
   if (["top", "center", "bottom"].includes(candidate)) return candidate;
-  const match = candidate.match(/^(\d{1,3}(?:\.\d+)?):(\d{1,3}(?:\.\d+)?):(1(?:\.\d+)?|0?\.\d+)$/);
+  const match = candidate.match(/^(-?\d+(?:\.\d+)?):(-?\d+(?:\.\d+)?):(-?\d+(?:\.\d+)?)$/);
   if (!match) return fallback;
   const x = Math.min(100, Math.max(0, Number(match[1])));
   const y = Math.min(100, Math.max(0, Number(match[2])));
-  const zoom = Math.min(1.8, Math.max(1, Number(match[3])));
+  const zoom = Math.min(2.2, Math.max(.6, Number(match[3])));
+  if (![x, y, zoom].every(Number.isFinite)) return fallback;
   return `${Math.round(x)}:${Math.round(y)}:${zoom.toFixed(2)}`;
 }
 
