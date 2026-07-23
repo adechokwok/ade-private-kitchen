@@ -121,6 +121,12 @@ export async function ensureCustomDishesSchema() {
   addColumn("custom_dishes", columns, "difficulty", "TEXT NOT NULL DEFAULT '适中'");
   addColumn("custom_dishes", columns, "recipe_summary", "TEXT NOT NULL DEFAULT ''");
   addColumn("custom_dishes", columns, "substitutions", "TEXT NOT NULL DEFAULT '[]'");
+  getSqlite().prepare(`
+    UPDATE custom_dishes
+    SET image_url = image_url || '?v=cache-refresh-20260723'
+    WHERE image_url LIKE '/api/dish-images/%'
+      AND instr(image_url, '?') = 0
+  `).run();
 }
 
 export async function ensureDinnerInvitesSchema() {

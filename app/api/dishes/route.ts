@@ -60,6 +60,19 @@ function safeNetworkImageUrl(value: string) {
   }
 }
 
+function localDishImagePath(id: string) {
+  return `/api/dish-images/${id}`;
+}
+
+function versionedDishImageUrl(id: string) {
+  return `${localDishImagePath(id)}?v=${crypto.randomUUID()}`;
+}
+
+function isLocalDishImageUrl(value: string, id: string) {
+  const path = localDishImagePath(id);
+  return value === path || value.startsWith(`${path}?`);
+}
+
 function normalizeImagePosition(value: FormDataEntryValue | null, fallback = "center") {
   const candidate = String(value || "").trim();
   if (["top", "center", "bottom"].includes(candidate)) return candidate;
@@ -179,9 +192,9 @@ export async function POST(request: Request) {
       if (!imageTypes.has(imageFile.type)) return Response.json({ error: "请上传 JPG、PNG、WebP 或 GIF 图片" }, { status: 400 });
       if (imageFile.size > 6 * 1024 * 1024) return Response.json({ error: "图片请控制在 6MB 以内" }, { status: 400 });
       await getUploads().put(`dish-images/${id}`, imageFile.stream(), {
-        httpMetadata: { contentType: imageFile.type, cacheControl: "public, max-age=31536000, immutable" },
+        httpMetadata: { contentType: imageFile.type, cacheControl: "public, no-cache, max-age=0, must-revalidate" },
       });
-      imageUrl = `/api/dish-images/${id}`;
+      imageUrl = versionedDishImageUrl(id);
     }
     const gallery: string[] = [];
     for (const [index, file] of galleryFiles.entries()) {
@@ -248,9 +261,9 @@ export async function PUT(request: Request) {
     if (imageFile instanceof File && imageFile.size > 0) {
       if (!imageTypes.has(imageFile.type)) return Response.json({ error: "请上传 JPG、PNG、WebP 或 GIF 图片" }, { status: 400 });
       if (imageFile.size > 6 * 1024 * 1024) return Response.json({ error: "图片请控制在 6MB 以内" }, { status: 400 });
-      await getUploads().put(`dish-images/${id}`, imageFile.stream(), { httpMetadata: { contentType: imageFile.type, cacheControl: "public, max-age=31536000, immutable" } });
-      imageUrl = `/api/dish-images/${id}`;
-    } else if (networkImage && existing.imageUrl === `/api/dish-images/${id}`) {
+      await getUploads().put(`dish-images/${id}`, imageFile.stream(), { httpMetadata: { contentType: imageFile.type, cacheControl: "public, no-cache, max-age=0, must-revalidate" } });
+      imageUrl = versionedDishImageUrl(id);
+    } else if (networkImage && isLocalDishImageUrl(existing.imageUrl, id)) {
       await getUploads().delete(`dish-images/${id}`);
     }
     if (galleryFiles.length) {
@@ -374,7 +387,7 @@ export async function DELETE(request: Request) {
         await getDb().update(orders).set({ dishSnapshot: JSON.stringify(snapshots) }).where(eq(orders.id, order.id));
       }
     }
-    if (existing.imageUrl === `/api/dish-images/${id}`) await getUploads().delete(`dish-images/${id}`);
+    if (isLocalDishImageUrl(existing.imageUrl, id)) await getUploads().delete(`dish-images/${id}`);
     const gallery = (() => { try { return JSON.parse(existing.gallery) as string[]; } catch { return []; } })();
     for (let index = 0; index < gallery.length; index += 1) await getUploads().delete(`dish-gallery/${id}/${index}`);
     await getDb().delete(customDishes).where(eq(customDishes.id, id));

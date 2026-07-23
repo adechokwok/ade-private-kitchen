@@ -369,6 +369,13 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [notice, setNotice] = useState("");
   const [kitchenOpen, setKitchenOpen] = useState(true);
   const [kitchenStatusSaving, setKitchenStatusSaving] = useState(false);
+  const [imageLightboxAspect, setImageLightboxAspect] = useState(1.48);
+
+  const openDishLightbox = (dish: Dish, trigger: HTMLButtonElement) => {
+    const bounds = trigger.getBoundingClientRect();
+    setImageLightboxAspect(bounds.width > 0 && bounds.height > 0 ? bounds.width / bounds.height : 1.48);
+    setImageLightboxDish(dish);
+  };
 
   useEffect(() => {
     if (!imageLightboxDish) return;
@@ -730,18 +737,20 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     }
   };
 
-  const loadInvite = async (token: string) => {
-    setInviteLoading(true);
+  const loadInvite = async (token: string, silent = false) => {
+    if (!silent) setInviteLoading(true);
     try {
       const response = await fetch(`/api/invites/${token}`, { cache: "no-store" });
       const data = await response.json() as { invite?: DinnerInvite; dishes?: ManagedDish[]; error?: string };
       if (!response.ok || !data.invite) throw new Error(data.error || "邀请加载失败");
       setActiveInvite(data.invite);
       setCustomDishes(data.dishes || []);
-      setActiveCategory("全部");
+      if (!silent) setActiveCategory("全部");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "邀请加载失败");
-    } finally { setInviteLoading(false); }
+      if (!silent) setNotice(error instanceof Error ? error.message : "邀请加载失败");
+    } finally {
+      if (!silent) setInviteLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -756,13 +765,24 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   }, [mode]);
 
   useEffect(() => {
+    let timer = 0;
     const bootstrap = window.setTimeout(() => {
       loadKitchenStatus();
       if (initialInviteToken) loadInvite(initialInviteToken);
       else { loadDishes(); loadCategories(); }
+      if (mode === "menu") {
+        timer = window.setInterval(() => {
+          loadKitchenStatus();
+          if (initialInviteToken) loadInvite(initialInviteToken, true);
+          else { loadDishes(); loadCategories(); }
+        }, 15000);
+      }
     }, 0);
-    return () => window.clearTimeout(bootstrap);
-  }, [initialInviteToken]);
+    return () => {
+      window.clearTimeout(bootstrap);
+      if (timer) window.clearInterval(timer);
+    };
+  }, [initialInviteToken, mode]);
 
   useEffect(() => {
     if (!notice) return;
@@ -1749,7 +1769,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 {recommendedDishes.map((dish) => {
                   const quantity = cart[dish.id] || 0;
                   return <article className={`${quantity ? "desktop-ade-pick-card selected" : "desktop-ade-pick-card"}${dish.soldOut ? " sold-out" : ""}`} key={`desktop-ade-pick-${dish.id}`}>
-                    <div className={`desktop-ade-pick-photo tone-${dish.tone}`}>{dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={() => setImageLightboxDish(dish)} aria-label={`查看${dish.name}大图`}><img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}<b>阿德推荐</b></div>
+                    <div className={`desktop-ade-pick-photo tone-${dish.tone}`}>{dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={(event) => openDishLightbox(dish, event.currentTarget)} aria-label={`查看${dish.name}大图`}><img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}<b>阿德推荐</b></div>
                     <div className="desktop-ade-pick-copy"><small>{dish.category}</small><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p></div>
                     <div className="desktop-ade-pick-action">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut || menuReadOnly} onClick={() => updateQuantity(dish.id, 1)}>{dish.soldOut ? "今天已售罄" : menuReadOnly ? "今天只看看" : "就想吃这道"}<b>＋</b></button>}</div>
                   </article>;
@@ -1762,7 +1782,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 {recommendedDishes.map((dish) => {
                   const quantity = cart[dish.id] || 0;
                   return <article className={`${quantity ? "mobile-ade-pick-card selected" : "mobile-ade-pick-card"}${dish.soldOut ? " sold-out" : ""}`} key={`ade-pick-${dish.id}`}>
-                    <div className={`mobile-ade-pick-photo tone-${dish.tone}`}>{dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={() => setImageLightboxDish(dish)} aria-label={`查看${dish.name}大图`}><img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}<b>阿德推荐</b></div>
+                    <div className={`mobile-ade-pick-photo tone-${dish.tone}`}>{dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={(event) => openDishLightbox(dish, event.currentTarget)} aria-label={`查看${dish.name}大图`}><img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}<b>阿德推荐</b></div>
                     <div className="mobile-ade-pick-body"><small>{dish.category}</small><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p><div className="mobile-dish-control">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut || menuReadOnly} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? "下次" : menuReadOnly ? "看看" : "想吃"}<b>＋</b></button>}</div></div>
                   </article>;
                 })}
@@ -1778,7 +1798,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   <div>{group.dishes.map((dish) => {
                     const quantity = cart[dish.id] || 0;
                     return <article className={`${quantity ? "mobile-dish-row selected" : "mobile-dish-row"}${dish.soldOut ? " sold-out" : ""}`} key={`${group.name}-${dish.id}`}>
-                      <div className={`mobile-dish-photo tone-${dish.tone}`}>{dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={() => setImageLightboxDish(dish)} aria-label={`查看${dish.name}大图`}><img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}{(dish.featured || dish.soldOut) && <b>{dish.soldOut ? "售罄" : "推荐"}</b>}</div>
+                      <div className={`mobile-dish-photo tone-${dish.tone}`}>{dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={(event) => openDishLightbox(dish, event.currentTarget)} aria-label={`查看${dish.name}大图`}><img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}{(dish.featured || dish.soldOut) && <b>{dish.soldOut ? "售罄" : "推荐"}</b>}</div>
                       <div className="mobile-dish-copy"><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p><small>{dish.category}</small></div>
                       <div className="mobile-dish-control">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut || menuReadOnly} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? "下次" : menuReadOnly ? "看看" : "想吃"}<b>＋</b></button>}</div>
                     </article>;
@@ -1792,7 +1812,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 return (
                   <article className={`${quantity ? "dish-card selected" : "dish-card"}${dish.soldOut ? " sold-out" : ""}`} key={dish.id}>
                     <div className={`dish-art tone-${dish.tone}`}>
-                      {dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={() => setImageLightboxDish(dish)} aria-label={`查看${dish.name}大图`}><img className="dish-photo" style={dishImageStyle(dish.imagePosition)} src={dish.imageUrl} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}
+                      {dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={(event) => openDishLightbox(dish, event.currentTarget)} aria-label={`查看${dish.name}大图`}><img className="dish-photo" style={dishImageStyle(dish.imagePosition)} src={dish.imageUrl} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}
                       <small>{dish.category}</small>
                       {(dish.soldOut || dish.featured || dish.tag) && <b className="dish-art-tag">{dish.soldOut ? "今天售罄" : dish.featured ? "阿德推荐" : dish.tag}</b>}
                     </div>
@@ -2169,7 +2189,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         <div className="dish-lightbox" onMouseDown={(event) => event.target === event.currentTarget && setImageLightboxDish(null)}>
           <section className="dish-lightbox-card" role="dialog" aria-modal="true" aria-labelledby="dish-lightbox-title">
             <button type="button" className="dish-lightbox-close" autoFocus onClick={() => setImageLightboxDish(null)} aria-label="关闭菜品大图">×</button>
-            <div className="dish-lightbox-image"><img src={imageLightboxDish.imageUrl} alt={`${imageLightboxDish.name}大图`} /></div>
+            <div className="dish-lightbox-image" style={{ aspectRatio: imageLightboxAspect, width: `min(calc((100dvh - 160px) * ${imageLightboxAspect}), calc(100vw - 48px), 1080px)` }}><img src={imageLightboxDish.imageUrl} style={dishImageStyle(imageLightboxDish.imagePosition)} alt={`${imageLightboxDish.name}大图`} /></div>
             <div className="dish-lightbox-copy"><span>{imageLightboxDish.category}</span><h2 id="dish-lightbox-title">{imageLightboxDish.name}</h2><p>{imageLightboxDish.slogan || imageLightboxDish.description}</p></div>
           </section>
         </div>
