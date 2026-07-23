@@ -45,6 +45,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /zoom: clamp\(rawZoom, \.6, 2\.2\)/);
   assert.match(page, /form\.set\("image", croppedCover/);
   assert.match(page, /网络图片还没有预览成功/);
+  assert.match(page, /loadInvite\(initialInviteToken, true\)/);
+  assert.match(page, /\}, 15000\)/);
   assert.match(page, /chef-portrait\.jpg/);
   assert.match(page, /阿德私厨志/);
   assert.match(page, /chef-studio\.jpg/);
@@ -85,8 +87,15 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(dishRoute, /getUploads\(\)\.put/);
   assert.match(dishRoute, /normalizeImagePosition/);
   assert.match(dishRoute, /Math\.min\(2\.2, Math\.max\(\.6, Number\(match\[3\]\)\)\)/);
+  assert.match(dishRoute, /versionedDishImageUrl/);
+  assert.match(dishRoute, /\?v=\$\{crypto\.randomUUID\(\)\}/);
+  assert.match(dishRoute, /isLocalDishImageUrl/);
   assert.match(dishRoute, /chefApiGuard/);
   assert.match(imageRoute, /getUploads\(\)\.get/);
+  assert.match(imageRoute, /public, no-cache, max-age=0, must-revalidate/);
+  assert.match(imageRoute, /if-none-match/);
+  assert.match(imageRoute, /status: 304/);
+  assert.doesNotMatch(imageRoute, /immutable/);
   assert.match(remoteImagePreviewRoute, /chefApiGuard/);
   assert.match(remoteImagePreviewRoute, /lookup\(hostname/);
   assert.match(remoteImagePreviewRoute, /redirect: "manual"/);
@@ -117,6 +126,10 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /Adecho\.Kwok 手写签名/);
   assert.match(page, /imageLightboxDish/);
   assert.match(page, /dish-lightbox-card/);
+  assert.match(page, /openDishLightbox/);
+  assert.match(page, /getBoundingClientRect/);
+  assert.match(page, /aspectRatio: imageLightboxAspect/);
+  assert.match(page, /dishImageStyle\(imageLightboxDish\.imagePosition\)/);
   assert.match(page, /查看\$\{dish\.name\}大图/);
   assert.match(page, /event\.key === "Escape"/);
   assert.match(page, /阿德推荐/);
@@ -140,7 +153,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(globalStyles, /\.chef-signature \{/);
   assert.match(globalStyles, /\.dish-image-trigger/);
   assert.match(globalStyles, /\.dish-lightbox-card/);
-  assert.match(globalStyles, /object-fit: contain/);
+  assert.match(globalStyles, /\.dish-lightbox-image img \{[^}]*object-fit: cover;/);
+  assert.doesNotMatch(globalStyles, /\.dish-lightbox-image img \{[^}]*object-fit: contain;/);
   assert.match(globalStyles, /\.recipe-library-toolbar/);
   assert.match(globalStyles, /\.recipe-bulk-category-bar/);
   assert.match(globalStyles, /column-count: 2/);
@@ -168,6 +182,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(copyStyle, /内娱真完了/);
   assert.match(schema, /slogan: text\("slogan"\)/);
   assert.match(database, /addColumn\("custom_dishes", columns, "slogan"/);
+  assert.match(database, /cache-refresh-20260723/);
+  assert.match(database, /instr\(image_url, '\?'\) = 0/);
   assert.match(ordersRoute, /steps: dish\.steps/);
   assert.match(shoppingRoute, /shoppingChecks/);
   assert.match(categoryRoute, /export async function DELETE/);
