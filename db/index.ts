@@ -60,6 +60,8 @@ export async function ensureOrdersSchema() {
     guest_token TEXT NOT NULL DEFAULT '',
     progress_note TEXT NOT NULL DEFAULT '',
     status_updated_at TEXT NOT NULL DEFAULT '',
+    published_menu TEXT NOT NULL DEFAULT '',
+    published_menu_updated_at TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'new',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
@@ -69,6 +71,8 @@ export async function ensureOrdersSchema() {
   addColumn("orders", columns, "guest_token", "TEXT NOT NULL DEFAULT ''");
   addColumn("orders", columns, "progress_note", "TEXT NOT NULL DEFAULT ''");
   addColumn("orders", columns, "status_updated_at", "TEXT NOT NULL DEFAULT ''");
+  addColumn("orders", columns, "published_menu", "TEXT NOT NULL DEFAULT ''");
+  addColumn("orders", columns, "published_menu_updated_at", "TEXT NOT NULL DEFAULT ''");
 }
 
 export async function ensureCustomDishesSchema() {

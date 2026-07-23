@@ -3,13 +3,14 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the private menu and chef workflow", async () => {
-  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute, kitchenStatusRoute, schema, database, layout, shareImageAsset] = await Promise.all([
+  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, remoteImagePreviewRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute, kitchenStatusRoute, schema, database, layout, shareImageAsset] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/orders/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/dishes/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/dish-images/[id]/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/image-preview/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-import/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-bulk-import/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-copy/route.ts", import.meta.url), "utf8"),
@@ -36,8 +37,14 @@ test("ships the private menu and chef workflow", async () => {
     "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐",
   ]) assert.match(page, new RegExp(phrase));
   assert.match(page, /从本地上传照片/);
-  assert.match(page, /封面智能取景/);
+  assert.match(page, /封面真实裁切/);
   assert.match(page, /自动取景/);
+  assert.match(page, /createCroppedCoverFile/);
+  assert.match(page, /画面缩放（60%–220%）/);
+  assert.match(page, /min="0\.6" max="2\.2"/);
+  assert.match(page, /zoom: clamp\(rawZoom, \.6, 2\.2\)/);
+  assert.match(page, /form\.set\("image", croppedCover/);
+  assert.match(page, /网络图片还没有预览成功/);
   assert.match(page, /chef-portrait\.jpg/);
   assert.match(page, /阿德私厨志/);
   assert.match(page, /chef-studio\.jpg/);
@@ -45,6 +52,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /kitchen-status-toggle/);
   assert.match(page, /menuReadOnly/);
   assert.match(page, /今天先看菜单，不接新点单/);
+  assert.match(page, /menu-title-lines/);
+  assert.match(page, /<span>菜单照常翻，<\/span><span>厨房今天歇<\/span>/);
   assert.match(layout, /\/wechat-share\.jpg/);
   assert.match(layout, /width: 800, height: 800/);
   assert.match(layout, /const protocol = localHost \? forwardedProtocol \|\| "http" : "https"/);
@@ -75,8 +84,13 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(globalStyles, /\.delete-order-confirm-actions/);
   assert.match(dishRoute, /getUploads\(\)\.put/);
   assert.match(dishRoute, /normalizeImagePosition/);
+  assert.match(dishRoute, /Math\.min\(2\.2, Math\.max\(\.6, Number\(match\[3\]\)\)\)/);
   assert.match(dishRoute, /chefApiGuard/);
   assert.match(imageRoute, /getUploads\(\)\.get/);
+  assert.match(remoteImagePreviewRoute, /chefApiGuard/);
+  assert.match(remoteImagePreviewRoute, /lookup\(hostname/);
+  assert.match(remoteImagePreviewRoute, /redirect: "manual"/);
+  assert.match(remoteImagePreviewRoute, /maximumImageBytes/);
   assert.match(importRoute, /chat\/completions/);
   assert.match(importRoute, /image_url/);
   assert.match(importRoute, /qwen3-vl-plus/);
@@ -98,6 +112,13 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /mobile-menu-browser/);
   assert.match(page, /mobile-ade-picks/);
   assert.match(page, /desktop-ade-picks/);
+  assert.match(page, /TODAY'S NOTE/);
+  assert.match(page, /ade-signature\.png/);
+  assert.match(page, /Adecho\.Kwok 手写签名/);
+  assert.match(page, /imageLightboxDish/);
+  assert.match(page, /dish-lightbox-card/);
+  assert.match(page, /查看\$\{dish\.name\}大图/);
+  assert.match(page, /event\.key === "Escape"/);
   assert.match(page, /阿德推荐/);
   assert.match(page, /syncMobileCategory/);
   assert.match(page, /recipeLibraryQuery/);
@@ -105,12 +126,21 @@ test("ships the private menu and chef workflow", async () => {
   assert.doesNotMatch(page, /再显示 12 道/);
   assert.match(page, /category-emoji-editor/);
   assert.match(page, /exportBanquetMenu/);
+  assert.match(page, /publishBanquetMenu/);
+  assert.match(page, /推送到点菜人的进度页/);
   assert.match(page, /PNG 图片/);
   assert.match(page, /JPG 图片/);
   assert.match(page, /PDF 文件/);
   assert.match(globalStyles, /\.mobile-category-rail/);
+  assert.match(globalStyles, /\.menu-title-lines span/);
+  assert.match(globalStyles, /\.section-heading \{ display: block; padding: 0 17px; \}/);
   assert.match(globalStyles, /\.mobile-ade-picks-track/);
   assert.match(globalStyles, /\.desktop-ade-picks-grid/);
+  assert.match(globalStyles, /\.hero-sticker span/);
+  assert.match(globalStyles, /\.chef-signature \{/);
+  assert.match(globalStyles, /\.dish-image-trigger/);
+  assert.match(globalStyles, /\.dish-lightbox-card/);
+  assert.match(globalStyles, /object-fit: contain/);
   assert.match(globalStyles, /\.recipe-library-toolbar/);
   assert.match(globalStyles, /\.recipe-bulk-category-bar/);
   assert.match(globalStyles, /column-count: 2/);
@@ -119,6 +149,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(database, /addColumn\("menu_categories", categoryColumns, "emoji"/);
   assert.match(globalStyles, /\.screenshot-frame img \{ position: absolute;/);
   assert.match(globalStyles, /max-height: 100%/);
+  assert.match(globalStyles, /\.cover-crop-frame > img\.cover-crop-backdrop/);
+  assert.match(globalStyles, /filter: blur\(18px\) saturate\(\.82\)/);
   assert.match(nextConfig, /allowedDevOrigins: \["127\.0\.0\.1", "localhost"\]/);
   assert.match(copyRoute, /OPENAI_API_KEY/);
   assert.match(copyRoute, /qwen3-vl-plus/);
@@ -162,7 +194,13 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(inviteRoute, /recommendedDishIds/);
   assert.match(orderStatusRoute, /progressNote/);
   assert.match(ordersRoute, /statusUpdatedAt/);
+  assert.match(ordersRoute, /action === "publish-menu"/);
+  assert.match(ordersRoute, /publishedMenuUpdatedAt/);
+  assert.match(schema, /publishedMenu: text\("published_menu"\)/);
+  assert.match(database, /addColumn\("orders", columns, "published_menu"/);
   assert.match(statusClient, /status-update-modal/);
+  assert.match(statusClient, /guest-published-menu/);
+  assert.match(statusClient, /ade-order-menu-update/);
   assert.match(statusClient, /localStorage/);
   assert.match(statusClient, /setTimeout\(\(\) => void load\(\), 0\)/);
   assert.match(statusClient, /setInterval\(\(\) => void load\(\), 15000\)/);

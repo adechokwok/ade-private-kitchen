@@ -8,6 +8,8 @@ import { categories, dishes, type Dish, type Ingredient } from "./menu";
 type Cart = Record<string, number>;
 type OrderItem = { dishId: string; quantity: number };
 type DishSnapshot = { dishId: string; name: string; baseServings: number; ingredients: Ingredient[]; steps?: string[]; minutes?: number; recipeSummary?: string; source?: string; difficulty?: string };
+type PublishedMenuCourse = { id: BanquetCourse; label: string; english: string; dishes: Array<{ name: string; description: string }> };
+type PublishedMenu = { title: string; date: string; message: string; template: BanquetTemplate; templateName: string; subtitle: string; occasion: string; courses: PublishedMenuCourse[] };
 type Order = {
   id: string;
   customerName: string;
@@ -20,6 +22,8 @@ type Order = {
   guestToken: string;
   progressNote: string;
   statusUpdatedAt: string;
+  publishedMenu: string;
+  publishedMenuUpdatedAt: string;
   status: "new" | "confirmed" | "shopping" | "preparing" | "done" | "cancelled";
   createdAt: string;
 };
@@ -109,6 +113,11 @@ function parseDishSnapshot(order: Order): DishSnapshot[] {
   try { return JSON.parse(order.dishSnapshot || "[]") as DishSnapshot[]; } catch { return []; }
 }
 
+function parsePublishedMenu(order?: Order): PublishedMenu | null {
+  if (!order?.publishedMenu) return null;
+  try { return JSON.parse(order.publishedMenu) as PublishedMenu; } catch { return null; }
+}
+
 function formatAmount(value: number, unit: string) {
   const rounded = Number.isInteger(value) ? value : Number(value.toFixed(1));
   return `${rounded}${unit}`;
@@ -175,7 +184,7 @@ function parseImageCrop(value?: string): ImageCrop {
   if (!value || value === "center") return { ...defaultImageCrop };
   const [rawX, rawY, rawZoom] = value.split(":").map(Number);
   if (![rawX, rawY, rawZoom].every(Number.isFinite)) return { ...defaultImageCrop };
-  return { x: clamp(rawX, 0, 100), y: clamp(rawY, 0, 100), zoom: clamp(rawZoom, 1, 1.8) };
+  return { x: clamp(rawX, 0, 100), y: clamp(rawY, 0, 100), zoom: clamp(rawZoom, .6, 2.2) };
 }
 
 function serializeImageCrop(crop: ImageCrop) {
@@ -235,6 +244,50 @@ function findSmartImageCrop(image: HTMLImageElement): ImageCrop {
   }
 }
 
+async function createCroppedCoverFile(image: HTMLImageElement, crop: ImageCrop, fileName: string) {
+  const sourceWidth = image.naturalWidth;
+  const sourceHeight = image.naturalHeight;
+  if (!sourceWidth || !sourceHeight) throw new Error("照片还没有加载完成，请稍等一下再保存");
+  const targetAspect = 1.48;
+  const outputWidth = 1440;
+  const outputHeight = Math.round(outputWidth / targetAspect);
+  const canvas = document.createElement("canvas");
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("当前浏览器无法裁切照片");
+  context.fillStyle = "#f5f0e9";
+  context.fillRect(0, 0, outputWidth, outputHeight);
+  const backgroundScale = Math.max(outputWidth / sourceWidth, outputHeight / sourceHeight) * 1.1;
+  const backgroundWidth = sourceWidth * backgroundScale;
+  const backgroundHeight = sourceHeight * backgroundScale;
+  context.save();
+  context.filter = "blur(28px) saturate(.82)";
+  context.globalAlpha = .78;
+  context.drawImage(image, (outputWidth - backgroundWidth) / 2, (outputHeight - backgroundHeight) / 2, backgroundWidth, backgroundHeight);
+  context.restore();
+  context.fillStyle = "rgba(25,20,16,.12)";
+  context.fillRect(0, 0, outputWidth, outputHeight);
+  const baseScale = Math.max(outputWidth / sourceWidth, outputHeight / sourceHeight);
+  const fittedWidth = sourceWidth * baseScale;
+  const fittedHeight = sourceHeight * baseScale;
+  const positionX = crop.x / 100;
+  const positionY = crop.y / 100;
+  const fittedLeft = positionX * (outputWidth - fittedWidth);
+  const fittedTop = positionY * (outputHeight - fittedHeight);
+  const originX = positionX * outputWidth;
+  const originY = positionY * outputHeight;
+  context.save();
+  context.translate(originX, originY);
+  context.scale(crop.zoom, crop.zoom);
+  context.translate(-originX, -originY);
+  context.drawImage(image, fittedLeft, fittedTop, fittedWidth, fittedHeight);
+  context.restore();
+  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("照片裁切失败")), "image/jpeg", .9));
+  const safeName = fileName.replace(/\.[^.]+$/, "").replace(/[^\w\u4e00-\u9fff-]+/g, "-").slice(0, 50) || "dish-cover";
+  return new File([blob], `${safeName}-cover.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+}
+
 export default function Home({ initialMode = "menu", chefUser = "", initialInviteToken = "" }: { initialMode?: "menu" | "chef"; chefUser?: string; initialInviteToken?: string }) {
   const dishFormRef = useRef<HTMLFormElement>(null);
   const dishGridRef = useRef<HTMLDivElement>(null);
@@ -250,6 +303,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [cart, setCart] = useState<Cart>({});
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [imageLightboxDish, setImageLightboxDish] = useState<Dish | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customDishes, setCustomDishes] = useState<ManagedDish[]>([]);
   const [managedCategories, setManagedCategories] = useState<MenuCategory[]>([]);
@@ -262,6 +316,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [imageCrop, setImageCrop] = useState<ImageCrop>(defaultImageCrop);
   const [autoCropPending, setAutoCropPending] = useState(false);
   const [cropMode, setCropMode] = useState<"" | "auto" | "manual" | "saved">("");
+  const [networkImageUrl, setNetworkImageUrl] = useState("");
+  const [networkPreviewState, setNetworkPreviewState] = useState<"" | "loading" | "ready" | "error">("");
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [dishSubmitting, setDishSubmitting] = useState(false);
@@ -307,11 +363,49 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [banquetMessage, setBanquetMessage] = useState("为喜欢的人认真做一桌饭");
   const [serviceTime, setServiceTime] = useState("18:30");
   const [menuExporting, setMenuExporting] = useState<"png" | "jpeg" | "pdf" | null>(null);
+  const [menuPublishing, setMenuPublishing] = useState(false);
   const [dishTimers, setDishTimers] = useState<Record<string, number>>({});
   const [timerNow, setTimerNow] = useState(() => Date.now());
   const [notice, setNotice] = useState("");
   const [kitchenOpen, setKitchenOpen] = useState(true);
   const [kitchenStatusSaving, setKitchenStatusSaving] = useState(false);
+
+  useEffect(() => {
+    if (!imageLightboxDish) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setImageLightboxDish(null);
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [imageLightboxDish]);
+
+  useEffect(() => {
+    const value = networkImageUrl.trim();
+    if (!value) return;
+    const timer = window.setTimeout(() => {
+      try {
+        const parsed = new URL(value);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error();
+        setImagePreview((current) => {
+          if (current.startsWith("blob:")) URL.revokeObjectURL(current);
+          return `/api/image-preview?url=${encodeURIComponent(parsed.toString())}`;
+        });
+        setImageCrop(defaultImageCrop);
+        setCropMode("");
+        setAutoCropPending(true);
+      } catch {
+        setNetworkPreviewState("error");
+        setImagePreview("");
+        setAutoCropPending(false);
+      }
+    }, 420);
+    return () => window.clearTimeout(timer);
+  }, [networkImageUrl]);
 
   const dishCatalog = useMemo<Dish[]>(() => customDishes.length ? customDishes : (initialInviteToken ? [] : dishes), [customDishes, initialInviteToken]);
   const allDishes = useMemo(() => dishCatalog.filter((dish) => dish.active !== false && dish.available !== false), [dishCatalog]);
@@ -453,6 +547,36 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
+  };
+
+  const publishBanquetMenu = async () => {
+    if (!selectedBanquetOrder) return setNotice("请先选择要接收菜单的朋友订单");
+    if (!banquetDishes.length) return setNotice("请先把菜品排入正式菜单");
+    setMenuPublishing(true);
+    try {
+      const publishedMenu: PublishedMenu = {
+        title: banquetTitle || activeBanquetTemplate.defaultTitle,
+        date: banquetDate,
+        message: banquetMessage || activeBanquetTemplate.defaultMessage,
+        template: banquetTemplate,
+        templateName: activeBanquetTemplate.name,
+        subtitle: activeBanquetTemplate.subtitle,
+        occasion: activeBanquetTemplate.occasion,
+        courses: banquetCourses.map((course) => ({
+          ...course,
+          dishes: banquetDishes.filter((item) => item.course === course.id).map(({ dish }) => ({ name: dish.name, description: dish.description || dish.slogan || "阿德认真准备的一道菜" })),
+        })),
+      };
+      const response = await fetch("/api/orders", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: selectedBanquetOrder.id, action: "publish-menu", publishedMenu }) });
+      const data = await response.json() as { order?: Order; error?: string };
+      if (!response.ok || !data.order) throw new Error(data.error || "正式菜单推送失败");
+      setOrders((current) => current.map((order) => order.id === data.order!.id ? data.order! : order));
+      setNotice(`正式菜单已推送给${selectedBanquetOrder.customerName}，进度页会自动出现`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "正式菜单推送失败，请稍后重试");
+    } finally {
+      setMenuPublishing(false);
+    }
   };
 
   const exportBanquetMenu = async (format: "png" | "jpeg" | "pdf") => {
@@ -1045,6 +1169,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const previewLocalImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
+    setNetworkImageUrl("");
+    setNetworkPreviewState("");
     setImagePreview(file ? URL.createObjectURL(file) : "");
     setImageCrop(defaultImageCrop);
     setCropMode("");
@@ -1060,14 +1186,29 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const handleCoverImageLoad = (image: HTMLImageElement) => {
     coverImageRef.current = image;
+    if (networkImageUrl.trim()) setNetworkPreviewState("ready");
     if (autoCropPending) applySmartCrop(image);
+  };
+
+  const handleCoverImageError = async () => {
+    setAutoCropPending(false);
+    setCropMode("");
+    if (!networkImageUrl.trim()) return;
+    setNetworkPreviewState("error");
+    try {
+      const response = await fetch(`/api/image-preview?url=${encodeURIComponent(networkImageUrl.trim())}`, { cache: "no-store" });
+      const payload = await response.json() as { error?: string };
+      setNotice(payload.error || "网络图片无法预览，请检查地址或换一张图片");
+    } catch {
+      setNotice("网络图片无法预览，请检查地址或换一张图片");
+    }
   };
 
   const updateImageCrop = (next: Partial<ImageCrop>, mode: "auto" | "manual" = "manual") => {
     setImageCrop((current) => ({
       x: clamp(next.x ?? current.x, 0, 100),
       y: clamp(next.y ?? current.y, 0, 100),
-      zoom: clamp(next.zoom ?? current.zoom, 1, 1.8),
+      zoom: clamp(next.zoom ?? current.zoom, .6, 2.2),
     }));
     setCropMode(mode);
   };
@@ -1168,7 +1309,15 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const startEditingDish = (dish: ManagedDish) => {
     setEditingDish(dish);
-    setImagePreview(dish.imageUrl || "");
+    if (/^https?:\/\//i.test(dish.imageUrl || "")) {
+      setNetworkImageUrl(dish.imageUrl || "");
+      setNetworkPreviewState("loading");
+      setImagePreview("");
+    } else {
+      setNetworkImageUrl("");
+      setNetworkPreviewState("");
+      setImagePreview(dish.imageUrl || "");
+    }
     fillDishForm({
       name: dish.name, category: dish.category, description: dish.description, slogan: dish.slogan || "", flavor: dish.flavor,
       minutes: dish.minutes, baseServings: dish.baseServings || 4, source: dish.source || "",
@@ -1186,6 +1335,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     dishFormRef.current?.reset();
     setIngredientRows([newIngredientRow()]);
     setImagePreview("");
+    setNetworkImageUrl("");
+    setNetworkPreviewState("");
     setImageCrop(defaultImageCrop);
     setCropMode("");
     setAutoCropPending(false);
@@ -1325,6 +1476,15 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     if (!form.get("substitutions")) form.set("substitutions", JSON.stringify(recipeDraft?.substitutions || editingDish?.substitutions || []));
     if (editingDish) form.set("id", editingDish.id);
     try {
+      if (networkImageUrl.trim() && networkPreviewState !== "ready") throw new Error("网络图片还没有预览成功，请稍等或换一个地址");
+      if (imagePreview && (cropMode === "auto" || cropMode === "manual")) {
+        const image = coverImageRef.current;
+        if (!image) throw new Error("照片取景还没有准备好，请稍等一下再保存");
+        const croppedCover = await createCroppedCoverFile(image, imageCrop, String(form.get("name") || "dish-cover"));
+        form.set("image", croppedCover, croppedCover.name);
+        form.delete("imageUrl");
+        form.set("imagePosition", "center");
+      }
       const response = await fetch("/api/dishes", { method: editingDish ? "PUT" : "POST", body: form });
       const data = await response.json() as { dish?: ManagedDish; error?: string };
       if (!response.ok || !data.dish) throw new Error(data.error || "菜品保存失败");
@@ -1334,6 +1494,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       formElement.reset();
       if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
       setImagePreview("");
+      setNetworkImageUrl("");
+      setNetworkPreviewState("");
       setImageCrop(defaultImageCrop);
       setCropMode("");
       setAutoCropPending(false);
@@ -1467,6 +1629,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               <option value="">选择一个订单…</option>
               {orders.map((order) => <option value={order.id} key={order.id}>{order.customerName} · {order.mealDate} · {parseItems(order).length} 道菜</option>)}
             </select>
+            {selectedBanquetOrder && <p className={parsePublishedMenu(selectedBanquetOrder) ? "banquet-publish-state published" : "banquet-publish-state"}><span>{parsePublishedMenu(selectedBanquetOrder) ? "✓" : "○"}</span>{parsePublishedMenu(selectedBanquetOrder) ? `已推送过正式菜单 · ${selectedBanquetOrder.publishedMenuUpdatedAt ? new Date(selectedBanquetOrder.publishedMenuUpdatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "可再次更新"}` : "这份订单还没有收到正式宴席菜单"}</p>}
             {orders.length === 0 && <p className="banquet-hint">还没有订单，也可以先从下方菜谱库加入菜品，做一张备用菜单。</p>}
           </div>
 
@@ -1513,8 +1676,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
           </div>
           <div className="menu-card-footer"><span>—</span><p>{banquetMessage || activeBanquetTemplate.defaultMessage}</p><small>CHEF&apos;S TABLE · 私房呈献</small></div>
         </div>
+        <button type="button" className="publish-menu-button" disabled={menuPublishing || !selectedBanquetOrder || !banquetDishes.length} onClick={() => void publishBanquetMenu()}><span aria-hidden="true">↗</span><strong>{menuPublishing ? "正在推送菜单…" : parsePublishedMenu(selectedBanquetOrder) ? "更新朋友端正式菜单" : "推送到点菜人的进度页"}</strong><small>{selectedBanquetOrder ? `发给 ${selectedBanquetOrder.customerName} · 之后修改可再次推送` : "先选择一场朋友订单"}</small></button>
         <div className="preview-actions"><button type="button" className="quiet" onClick={() => { setBanquetItems([]); setBanquetOrderId(""); }}>清空重排</button><div className="export-options" aria-label="导出菜单格式"><button type="button" className="export" disabled={menuExporting !== null} onClick={() => exportBanquetMenu("png")}>{menuExporting === "png" ? "生成中…" : "PNG 图片"}</button><button type="button" className="export" disabled={menuExporting !== null} onClick={() => exportBanquetMenu("jpeg")}>{menuExporting === "jpeg" ? "生成中…" : "JPG 图片"}</button><button type="button" className="export" disabled={menuExporting !== null} onClick={() => exportBanquetMenu("pdf")}>{menuExporting === "pdf" ? "生成中…" : "PDF 文件"}</button></div></div>
-        <p className="preview-tip">只导出上方正式菜单卡片；PNG、JPG 适合发微信，PDF 适合留存。</p>
+        <p className="preview-tip">推送后，朋友的实时进度页会自动出现这张菜单；PNG、JPG 适合发微信，PDF 适合留存。</p>
       </aside>
     </section>
   );
@@ -1549,7 +1713,11 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               <div className="chef-portrait-frame">
                 <Image className="chef-portrait" src="/chef-portrait.jpg" width={960} height={960} priority alt="阿德主厨在厨房为朋友准备菜品" />
                 <div className="magazine-masthead" style={{ borderBottom: 0, paddingBottom: 0 }}><small>ADE&apos;S PRIVATE KITCHEN</small><strong>阿德私厨志</strong></div>
-                <div className="hero-sticker">{activeInvite ? "只为你" : "今日份"}<br /><strong>{activeInvite ? "留了位置" : "好好吃饭"}</strong></div>
+                <div className="hero-sticker">
+                  <span>{activeInvite ? "JUST FOR YOU" : "TODAY'S NOTE"}</span>
+                  <small>{activeInvite ? "只为你" : "今日份"}</small>
+                  <strong>{activeInvite ? "留了位置" : "好好吃饭"}</strong>
+                </div>
                 <div className="magazine-cover-slogan"><small>放心点</small><strong>不用替主厨<br />省事</strong><span>NO NEED TO HOLD BACK</span></div>
                 <div className="chef-portrait-caption"><span>TONIGHT&apos;S CHEF</span><strong>阿德 · 为你掌勺</strong></div>
               </div>
@@ -1561,7 +1729,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
           <section className="menu-section" id="weekly-menu">
             {menuReadOnly && <div className="menu-readonly-notice" role="status"><span>歇</span><div><strong>今天先看菜单，不接新点单</strong><p>喜欢的菜可以先记在心里，等厨房重新亮起绿灯，再把这一顿约起来。</p></div></div>}
             <div className="section-heading">
-              <div><span className="eyebrow">{activeInvite ? "YOUR PRIVATE DINNER MENU" : "THIS WEEK'S LITTLE MENU"}</span><h2>{menuReadOnly ? "菜单照常翻，厨房今天歇" : activeInvite ? "这桌菜，等你翻牌" : "挑几道喜欢的"}</h2><p>{menuReadOnly ? "可以慢慢看，但今天暂时不能加菜和提交。" : activeInvite ? "阿德特意为这场饭局留出的菜单。" : "点菜不用客气，洗碗也不用你。"}</p></div>
+              <div><span className="eyebrow">{activeInvite ? "YOUR PRIVATE DINNER MENU" : "THIS WEEK'S LITTLE MENU"}</span><h2 className={menuReadOnly ? "menu-title-lines" : undefined}>{menuReadOnly ? <><span>菜单照常翻，</span><span>厨房今天歇</span></> : activeInvite ? "这桌菜，等你翻牌" : "挑几道喜欢的"}</h2><p>{menuReadOnly ? "可以慢慢看，但今天暂时不能加菜和提交。" : activeInvite ? "阿德特意为这场饭局留出的菜单。" : "点菜不用客气，洗碗也不用你。"}</p></div>
               <div className="menu-count-pill"><strong>{allDishes.length}</strong><span>道拿手菜<br />等你翻牌</span></div>
             </div>
             {inviteLoading && <div className="invite-loading">正在把你的专属菜单端上来…</div>}
@@ -1581,7 +1749,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 {recommendedDishes.map((dish) => {
                   const quantity = cart[dish.id] || 0;
                   return <article className={`${quantity ? "desktop-ade-pick-card selected" : "desktop-ade-pick-card"}${dish.soldOut ? " sold-out" : ""}`} key={`desktop-ade-pick-${dish.id}`}>
-                    <div className={`desktop-ade-pick-photo tone-${dish.tone}`}>{dish.imageUrl ? <img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /> : <span>{dish.emoji}</span>}<b>阿德推荐</b></div>
+                    <div className={`desktop-ade-pick-photo tone-${dish.tone}`}>{dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={() => setImageLightboxDish(dish)} aria-label={`查看${dish.name}大图`}><img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}<b>阿德推荐</b></div>
                     <div className="desktop-ade-pick-copy"><small>{dish.category}</small><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p></div>
                     <div className="desktop-ade-pick-action">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut || menuReadOnly} onClick={() => updateQuantity(dish.id, 1)}>{dish.soldOut ? "今天已售罄" : menuReadOnly ? "今天只看看" : "就想吃这道"}<b>＋</b></button>}</div>
                   </article>;
@@ -1594,7 +1762,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 {recommendedDishes.map((dish) => {
                   const quantity = cart[dish.id] || 0;
                   return <article className={`${quantity ? "mobile-ade-pick-card selected" : "mobile-ade-pick-card"}${dish.soldOut ? " sold-out" : ""}`} key={`ade-pick-${dish.id}`}>
-                    <div className={`mobile-ade-pick-photo tone-${dish.tone}`}>{dish.imageUrl ? <img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /> : <span>{dish.emoji}</span>}<b>阿德推荐</b></div>
+                    <div className={`mobile-ade-pick-photo tone-${dish.tone}`}>{dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={() => setImageLightboxDish(dish)} aria-label={`查看${dish.name}大图`}><img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}<b>阿德推荐</b></div>
                     <div className="mobile-ade-pick-body"><small>{dish.category}</small><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p><div className="mobile-dish-control">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut || menuReadOnly} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? "下次" : menuReadOnly ? "看看" : "想吃"}<b>＋</b></button>}</div></div>
                   </article>;
                 })}
@@ -1610,7 +1778,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   <div>{group.dishes.map((dish) => {
                     const quantity = cart[dish.id] || 0;
                     return <article className={`${quantity ? "mobile-dish-row selected" : "mobile-dish-row"}${dish.soldOut ? " sold-out" : ""}`} key={`${group.name}-${dish.id}`}>
-                      <div className={`mobile-dish-photo tone-${dish.tone}`}>{dish.imageUrl ? <img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /> : <span>{dish.emoji}</span>}{(dish.featured || dish.soldOut) && <b>{dish.soldOut ? "售罄" : "推荐"}</b>}</div>
+                      <div className={`mobile-dish-photo tone-${dish.tone}`}>{dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={() => setImageLightboxDish(dish)} aria-label={`查看${dish.name}大图`}><img src={dish.imageUrl} style={dishImageStyle(dish.imagePosition)} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}{(dish.featured || dish.soldOut) && <b>{dish.soldOut ? "售罄" : "推荐"}</b>}</div>
                       <div className="mobile-dish-copy"><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p><small>{dish.category}</small></div>
                       <div className="mobile-dish-control">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut || menuReadOnly} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? "下次" : menuReadOnly ? "看看" : "想吃"}<b>＋</b></button>}</div>
                     </article>;
@@ -1624,7 +1792,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 return (
                   <article className={`${quantity ? "dish-card selected" : "dish-card"}${dish.soldOut ? " sold-out" : ""}`} key={dish.id}>
                     <div className={`dish-art tone-${dish.tone}`}>
-                      {dish.imageUrl ? <img className="dish-photo" style={dishImageStyle(dish.imagePosition)} src={dish.imageUrl} alt={dish.name} /> : <span>{dish.emoji}</span>}
+                      {dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={() => setImageLightboxDish(dish)} aria-label={`查看${dish.name}大图`}><img className="dish-photo" style={dishImageStyle(dish.imagePosition)} src={dish.imageUrl} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}
                       <small>{dish.category}</small>
                       {(dish.soldOut || dish.featured || dish.tag) && <b className="dish-art-tag">{dish.soldOut ? "今天售罄" : dish.featured ? "阿德推荐" : dish.tag}</b>}
                     </div>
@@ -1650,7 +1818,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
           <section className="chef-story" aria-label="认识今晚的主厨">
             <Image className="chef-story-photo" src="/chef-studio.jpg" width={1440} height={809} alt="阿德主厨站在开放式厨房里" />
-            <div className="chef-story-copy"><span>MEET YOUR CHEF</span><h2>菜慢慢挑，<br />心意已经开火。</h2><p>这不是餐厅的制式菜单，而是一顿专门留给朋友的饭。你负责挑喜欢的，我负责把每一道认真做好。</p><small className="chef-signature"><b>阿德</b><i>Ade</i></small></div>
+            <div className="chef-story-copy"><span>MEET YOUR CHEF</span><h2>菜慢慢挑，<br />心意已经开火。</h2><p>这不是餐厅的制式菜单，而是一顿专门留给朋友的饭。你负责挑喜欢的，我负责把每一道认真做好。</p><Image className="chef-signature" src="/ade-signature.png" width={960} height={320} alt="阿德，Adecho.Kwok 手写签名" /></div>
           </section>
 
           <section className="promise-strip">
@@ -1905,19 +2073,19 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                         <span className="upload-icon">＋</span><strong>从本地上传照片</strong><small>JPG、PNG、WebP 或 GIF，最大 6MB</small>
                       </label>
                       <div className="or-divider"><span>或</span></div>
-                      <label className="network-photo"><span>粘贴网络图片地址</span><input name="imageUrl" type="url" placeholder="https://example.com/dish.jpg" onChange={(event) => { setImagePreview(event.target.value); setImageCrop(defaultImageCrop); setCropMode(""); setAutoCropPending(Boolean(event.target.value)); }} /><small>请使用你有权使用的图片地址</small></label>
+                      <label className={`network-photo ${networkPreviewState}`}><span>粘贴网络图片地址</span><input name="imageUrl" type="url" value={networkImageUrl} placeholder="https://example.com/dish.jpg" onChange={(event) => { const value = event.target.value; setNetworkImageUrl(value); if (value.trim()) setNetworkPreviewState("loading"); else { setNetworkPreviewState(""); setImagePreview((current) => current.startsWith("/api/image-preview?") ? "" : current); setAutoCropPending(false); } }} /><small>{networkPreviewState === "loading" ? "正在读取图片并生成实时预览…" : networkPreviewState === "ready" ? "✓ 图片已读取，保存时会裁切并转存到 NAS" : networkPreviewState === "error" ? "未能读取这张图片，请检查地址或换一张" : "请使用你有权使用的图片地址，粘贴后会自动预览"}</small></label>
                     </div>
                     <input name="imagePosition" type="hidden" value={serializeImageCrop(imageCrop)} readOnly />
                     <div className="cover-editor">
-                      <div className="cover-editor-heading"><div><strong>封面智能取景</strong><small>{cropMode === "auto" ? "已自动找到画面主体，可继续微调" : cropMode === "manual" ? "已手动调整，保存后朋友端同步显示" : cropMode === "saved" ? "正在使用上次保存的取景" : "上传后会自动寻找菜品主体"}</small></div><div><button type="button" onClick={() => applySmartCrop()} disabled={!imagePreview}>自动取景</button><button type="button" className="quiet" onClick={() => updateImageCrop(defaultImageCrop)} disabled={!imagePreview}>居中重置</button></div></div>
+                      <div className="cover-editor-heading"><div><strong>封面真实裁切</strong><small>{cropMode === "auto" ? "已自动找到画面主体；保存时会按框内画面生成新封面" : cropMode === "manual" ? "已手动调整；保存时会真实裁出框内画面" : cropMode === "saved" ? "正在使用上次保存的取景；重新调整后会生成新封面" : "上传或粘贴图片后自动取景，保存时真正裁切"}</small></div><div><button type="button" onClick={() => applySmartCrop()} disabled={!imagePreview}>自动取景</button><button type="button" className="quiet" onClick={() => updateImageCrop(defaultImageCrop)} disabled={!imagePreview}>居中重置</button></div></div>
                       <div className={`cover-crop-frame ${imagePreview ? "has-image" : ""}`} onPointerDown={startCoverDrag} onPointerMove={moveCoverDrag} onPointerUp={finishCoverDrag} onPointerCancel={finishCoverDrag}>
-                        {imagePreview ? <img ref={coverImageRef} src={imagePreview} alt="菜品封面取景预览" draggable={false} style={dishImageStyle(serializeImageCrop(imageCrop))} onLoad={(event) => handleCoverImageLoad(event.currentTarget)} /> : <div><span>📷</span><small>上传照片后在这里拖动画面</small></div>}
+                        {imagePreview ? <><img className="cover-crop-backdrop" src={imagePreview} alt="" aria-hidden="true" draggable={false} /><img className="cover-crop-image" ref={coverImageRef} src={imagePreview} alt="菜品封面取景预览" draggable={false} style={dishImageStyle(serializeImageCrop(imageCrop))} onLoad={(event) => handleCoverImageLoad(event.currentTarget)} onError={() => void handleCoverImageError()} /></> : <div><span>📷</span><small>{networkPreviewState === "loading" ? "正在读取网络图片…" : networkPreviewState === "error" ? "图片没有加载出来，请换一个地址" : "上传照片后在这里拖动画面"}</small></div>}
                         {imagePreview && <span className="crop-guide" aria-hidden="true" />}
                       </div>
                       <div className="cover-sliders">
                         <label><span>左右焦点</span><input type="range" min="0" max="100" step="1" value={Math.round(imageCrop.x)} onChange={(event) => updateImageCrop({ x: Number(event.target.value) })} /></label>
                         <label><span>上下焦点</span><input type="range" min="0" max="100" step="1" value={Math.round(imageCrop.y)} onChange={(event) => updateImageCrop({ y: Number(event.target.value) })} /></label>
-                        <label><span>画面缩放</span><input type="range" min="1" max="1.8" step="0.01" value={imageCrop.zoom} onChange={(event) => updateImageCrop({ zoom: Number(event.target.value) })} /><b>{Math.round(imageCrop.zoom * 100)}%</b></label>
+                        <label><span>画面缩放（60%–220%）</span><input type="range" min="0.6" max="2.2" step="0.01" value={imageCrop.zoom} onChange={(event) => updateImageCrop({ zoom: Number(event.target.value) })} /><b>{Math.round(imageCrop.zoom * 100)}%</b></label>
                       </div>
                     </div>
                     <div className="photo-detail-row"><label className="gallery-upload"><span>制作过程图</span><input name="galleryImages" type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" /><small>最多 4 张；编辑时重新上传会替换原过程图</small></label></div>
@@ -1995,6 +2163,16 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             </section>
           )}
         </section>
+      )}
+
+      {imageLightboxDish?.imageUrl && (
+        <div className="dish-lightbox" onMouseDown={(event) => event.target === event.currentTarget && setImageLightboxDish(null)}>
+          <section className="dish-lightbox-card" role="dialog" aria-modal="true" aria-labelledby="dish-lightbox-title">
+            <button type="button" className="dish-lightbox-close" autoFocus onClick={() => setImageLightboxDish(null)} aria-label="关闭菜品大图">×</button>
+            <div className="dish-lightbox-image"><img src={imageLightboxDish.imageUrl} alt={`${imageLightboxDish.name}大图`} /></div>
+            <div className="dish-lightbox-copy"><span>{imageLightboxDish.category}</span><h2 id="dish-lightbox-title">{imageLightboxDish.name}</h2><p>{imageLightboxDish.slogan || imageLightboxDish.description}</p></div>
+          </section>
+        </div>
       )}
 
       {cartOpen && (
