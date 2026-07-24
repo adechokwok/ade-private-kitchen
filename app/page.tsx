@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent as ReactDragEvent, FormEvent, PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { categories, dishes, type Dish, type Ingredient } from "./menu";
@@ -73,6 +73,86 @@ type BanquetCourse = "starter" | "main" | "staple" | "soup";
 type BanquetItem = { dishId: string; course: BanquetCourse };
 type BanquetTemplate = "home" | "romance" | "fine" | "spring" | "midautumn" | "birthday" | "housewarming" | "summer" | "christmas" | "brunch";
 type ChefView = "accepting" | "shopping" | "cooking" | "serving" | "menuManager" | "invitations" | "journals";
+
+const acceptedImageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const acceptedImageInputTypes = "image/jpeg,image/png,image/webp,image/gif";
+const maximumImageBytes = 6 * 1024 * 1024;
+
+function ImageDropField({
+  name,
+  multiple = false,
+  maximumFiles = 1,
+  maximumTotalBytes = maximumImageBytes * maximumFiles,
+  className,
+  onChange,
+  onNotice,
+  children,
+}: {
+  name?: string;
+  multiple?: boolean;
+  maximumFiles?: number;
+  maximumTotalBytes?: number;
+  className: string;
+  onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
+  onNotice: (message: string) => void;
+  children: ReactNode;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragActive, setDragActive] = useState(false);
+
+  const dropFiles = (event: ReactDragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragActive(false);
+    const dropped = Array.from(event.dataTransfer.files);
+    if (!dropped.length) return;
+    if (dropped.some((file) => !acceptedImageTypes.has(file.type))) {
+      onNotice("照片仅支持 JPG、PNG、WebP 或 GIF 格式");
+      return;
+    }
+    if (dropped.some((file) => file.size > maximumImageBytes)) {
+      onNotice("每张照片请控制在 6MB 以内");
+      return;
+    }
+    const selected = dropped.slice(0, multiple ? maximumFiles : 1);
+    if (selected.reduce((total, file) => total + file.size, 0) > maximumTotalBytes) {
+      onNotice(`这次选择的照片总大小请控制在 ${Math.round(maximumTotalBytes / 1024 / 1024)}MB 以内`);
+      return;
+    }
+    const input = inputRef.current;
+    if (!input) return;
+    const transfer = new DataTransfer();
+    selected.forEach((file) => transfer.items.add(file));
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    if (dropped.length > selected.length) onNotice(`一次最多上传 ${maximumFiles} 张，已保留前 ${selected.length} 张`);
+  };
+
+  return (
+    <label
+      className={`${className} image-drop-field${dragActive ? " is-dragging" : ""}`}
+      onDragEnter={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        setDragActive(true);
+      }}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        setDragActive(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false);
+      }}
+      onDrop={dropFiles}
+    >
+      <input ref={inputRef} name={name} type="file" multiple={multiple} accept={acceptedImageInputTypes} onChange={onChange} />
+      {children}
+      {dragActive && <em className="image-drop-overlay">松开鼠标，照片就会放进这里</em>}
+    </label>
+  );
+}
 
 const banquetCourses: Array<{ id: BanquetCourse; label: string; english: string }> = [
   { id: "starter", label: "开胃前菜", english: "APPETIZER" },
@@ -1970,10 +2050,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 <div className="smart-import-body">
                   <div className="smart-import-grid">
                     <div className="screenshot-import">
-                      <label className={recipeScreenshots.length ? "recipe-upload has-files" : "recipe-upload"}>
-                        <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" onChange={selectRecipeScreenshots} />
-                        <span>＋</span><strong>{recipeScreenshots.length ? "重新选择菜谱截图" : "上传菜谱截图"}</strong><small>最多 4 张；建议同时拍清菜名、材料和全部步骤</small>
-                      </label>
+                      <ImageDropField className={recipeScreenshots.length ? "recipe-upload has-files" : "recipe-upload"} multiple maximumFiles={4} maximumTotalBytes={14 * 1024 * 1024} onChange={selectRecipeScreenshots} onNotice={setNotice}>
+                        <span>＋</span><strong>{recipeScreenshots.length ? "重新选择或拖入菜谱截图" : "点击选择，或把菜谱截图拖到这里"}</strong><small>最多 4 张；建议同时拍清菜名、材料和全部步骤</small>
+                      </ImageDropField>
                       {recipeScreenshots.length > 0 && <div className="screenshot-previews">{recipeScreenshots.map((screenshot, index) => <figure key={screenshot.id}><div className="screenshot-frame"><img src={screenshot.preview} alt={`菜谱截图 ${index + 1}`} style={{ transform: `rotate(${screenshot.rotation}deg)` }} /><figcaption>{index + 1}</figcaption></div><div className="screenshot-meta"><span title={screenshot.file.name}>{screenshot.file.name}</span><div><button type="button" onClick={() => rotateRecipeScreenshot(screenshot.id)} aria-label={`顺时针旋转第 ${index + 1} 张截图`}>↻ 旋转</button><button type="button" onClick={() => removeRecipeScreenshot(screenshot.id)} aria-label={`移除第 ${index + 1} 张截图`}>移除</button></div></div></figure>)}</div>}
                     </div>
                     <div className="import-or"><span>或</span></div>
@@ -2088,10 +2167,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   <fieldset className="photo-fieldset">
                     <legend>菜品照片</legend>
                     <div className="photo-options">
-                      <label className="upload-box">
-                        <input name="image" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={previewLocalImage} />
-                        <span className="upload-icon">＋</span><strong>从本地上传照片</strong><small>JPG、PNG、WebP 或 GIF，最大 6MB</small>
-                      </label>
+                      <ImageDropField name="image" className="upload-box" onChange={previewLocalImage} onNotice={setNotice}>
+                        <span className="upload-icon">＋</span><strong>点击选择或拖入封面照片</strong><small>JPG、PNG、WebP 或 GIF，最大 6MB</small>
+                      </ImageDropField>
                       <div className="or-divider"><span>或</span></div>
                       <label className={`network-photo ${networkPreviewState}`}><span>粘贴网络图片地址</span><input name="imageUrl" type="url" value={networkImageUrl} placeholder="https://example.com/dish.jpg" onChange={(event) => { const value = event.target.value; setNetworkImageUrl(value); if (value.trim()) setNetworkPreviewState("loading"); else { setNetworkPreviewState(""); setImagePreview((current) => current.startsWith("/api/image-preview?") ? "" : current); setAutoCropPending(false); } }} /><small>{networkPreviewState === "loading" ? "正在读取图片并生成实时预览…" : networkPreviewState === "ready" ? "✓ 图片已读取，保存时会裁切并转存到 NAS" : networkPreviewState === "error" ? "未能读取这张图片，请检查地址或换一张" : "请使用你有权使用的图片地址，粘贴后会自动预览"}</small></label>
                     </div>
@@ -2108,7 +2186,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                         <label><span>画面缩放（60%–220%）</span><input type="range" min="0.6" max="2.2" step="0.01" value={imageCrop.zoom} onChange={(event) => updateImageCrop({ zoom: Number(event.target.value) })} /><b>{Math.round(imageCrop.zoom * 100)}%</b></label>
                       </div>
                     </div>
-                    <div className="photo-detail-row"><label className="gallery-upload"><span>制作过程图</span><input name="galleryImages" type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" /><small>最多 4 张；编辑时重新上传会替换原过程图</small></label></div>
+                    <div className="photo-detail-row"><ImageDropField name="galleryImages" className="gallery-upload" multiple maximumFiles={4} onNotice={setNotice}><span>制作过程图</span><strong>点击选择，或把过程照片拖到这里</strong><small>最多 4 张；编辑时重新上传会替换原过程图</small></ImageDropField></div>
                     {editingDish?.gallery && editingDish.gallery.length > 0 && <div className="gallery-strip">{editingDish.gallery.map((photo, index) => <img key={photo} src={photo} alt={`${editingDish.name}制作过程 ${index + 1}`} />)}</div>}
                   </fieldset>
 
@@ -2174,7 +2252,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   <form className="journal-form" key={`${order.id}-${journal?.id || "new"}`} onSubmit={(event) => saveJournal(event, order)}>
                     <label><span>这一页叫什么</span><input name="title" defaultValue={journal?.title || `${order.mealDate}的餐桌日记`} maxLength={60} /></label>
                     <label><span>今晚想记住什么</span><textarea name="note" defaultValue={journal?.note || ""} maxLength={800} placeholder="最好吃的一道菜、最好笑的一句话，或者什么都不写也没关系…" /></label>
-                    <label><span>餐桌照片（最多 6 张，新上传会替换原照片）</span><input name="images" type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" /></label>
+                    <ImageDropField name="images" className="journal-photo-upload" multiple maximumFiles={6} onNotice={setNotice}><span>餐桌照片</span><strong>点击选择，或把饭局照片拖到这里</strong><small>最多 6 张；新上传会替换原照片</small></ImageDropField>
                     {journal?.imageUrls.length ? <div className="journal-thumbs">{journal.imageUrls.map((url) => <img src={url} alt="饭局记录" key={url} />)}</div> : null}
                     <div className="journal-form-actions"><button type="submit">{journal ? "保存修改" : "留下这一页"}</button>{journal && <button type="button" className="danger" onClick={() => deleteJournal(journal)}>删除日记</button>}</div>
                   </form>
