@@ -28,6 +28,10 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/wechat-share.jpg", import.meta.url)),
   ]);
+  await assert.rejects(
+    readFile(new URL("../app/api/dishes/duplicate/route.ts", import.meta.url), "utf8"),
+    { code: "ENOENT" },
+  );
 
   for (const phrase of [
     "朋友点菜", "阿德小厨房", "想吃什么", "主厨工作台", "接单信息汇总", "把点单编成正式宴席菜单",
@@ -36,7 +40,16 @@ test("ships the private menu and chef workflow", async () => {
     "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "生成一场专属饭局", "餐桌日记，想写的时候再写", "温馨家宴", "二人世界", "Fine Dining",
     "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐",
   ]) assert.match(page, new RegExp(phrase));
-  assert.match(page, /从本地上传照片/);
+  assert.match(page, /function ImageDropField/);
+  assert.match(page, /onDrop=\{dropFiles\}/);
+  assert.match(page, /input\.dispatchEvent\(new Event\("change", \{ bubbles: true \}\)\)/);
+  assert.match(page, /松开鼠标，照片就会放进这里/);
+  assert.match(page, /点击选择，或把菜谱截图拖到这里/);
+  assert.match(page, /点击选择或拖入封面照片/);
+  assert.match(page, /点击选择，或把过程照片拖到这里/);
+  assert.match(page, /点击选择，或把饭局照片拖到这里/);
+  assert.match(globalStyles, /\.image-drop-field\.is-dragging/);
+  assert.match(globalStyles, /\.image-drop-overlay/);
   assert.match(page, /封面真实裁切/);
   assert.match(page, /自动取景/);
   assert.match(page, /createCroppedCoverFile/);
