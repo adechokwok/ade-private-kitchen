@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 
 const stages = [
   { id: "new", label: "点单送达", note: "阿德已经收到你的心愿" },
@@ -120,6 +121,11 @@ export default function OrderStatusClient({ token }: { token: string }) {
       </section>
     </div>}
     <section className="status-card">
+      <section className="status-thanks-hero" aria-label="主厨感谢">
+        <Image src="/chef-serving-wide.jpg" width={2200} height={1236} alt="阿德主厨端上为朋友认真准备的菜" priority />
+        <div><strong><i>谢谢你</i><i>来吃饭</i></strong></div>
+        <p className="status-thanks-note">你点喜欢的，我认真做。</p>
+      </section>
       <span>PRIVATE DINNER · 实时进度</span>
       <h1>{data.invite?.title || `${data.order.customerName}的这顿饭`}</h1>
       <p>{data.invite?.message || "慢慢等，好好吃，厨房正在认真准备。"}</p>
@@ -135,7 +141,7 @@ export default function OrderStatusClient({ token }: { token: string }) {
         <div className="menu-card-footer"><span>—</span><p>{data.order.publishedMenu.message}</p><small>CHEF&apos;S TABLE · 阿德私房呈献</small></div>
         <div className="guest-menu-updated">菜单会随主厨调整自动更新 · {data.order.publishedMenuUpdatedAt ? new Date(data.order.publishedMenuUpdatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "刚刚送达"}</div>
       </section>}
-      <div className="status-dishes"><small>今晚菜单</small><p>{data.order.dishSnapshot.map((dish) => dish.name).join(" · ")}</p></div>
+      {!data.order.publishedMenu && <div className="status-dishes"><small>今晚菜单</small><p>{data.order.dishSnapshot.map((dish) => dish.name).join(" · ")}</p><span>主厨排好正式菜单后，会在这里自动替换成完整菜单卡。</span></div>}
       {data.journal && <section className="guest-journal"><span>AFTER DINNER</span><h2>{data.journal.title}</h2><p>{data.journal.note}</p>{data.journal.imageUrls.length > 0 && <div>{data.journal.imageUrls.map((url, index) => <img src={url} alt={`饭局照片 ${index + 1}`} key={url} />)}</div>}</section>}
       <button onClick={() => void load()} disabled={refreshing}>{refreshing ? "正在同步厨房进度…" : "立即刷新厨房进度"}</button>
     </section>

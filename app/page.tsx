@@ -1811,7 +1811,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             </div>
             <div className="hero-visual">
               <div className="chef-portrait-frame">
-                <Image className="chef-portrait" src="/chef-portrait.jpg" width={960} height={960} priority alt="阿德主厨在厨房为朋友准备菜品" />
+                <Image className="chef-portrait" src="/chef-magazine-v2.jpg" width={1600} height={1600} priority alt="阿德主厨在厨房为朋友准备菜品" />
                 <div className="magazine-masthead" style={{ borderBottom: 0, paddingBottom: 0 }}><small>ADE&apos;S PRIVATE KITCHEN</small><strong>阿德私厨志</strong></div>
                 <div className="hero-sticker">
                   <span>{activeInvite ? "JUST FOR YOU" : "TODAY'S NOTE"}</span>
@@ -1824,7 +1824,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             </div>
           </section>
 
-          {orderProgressUrl && <section className="order-success-card"><span>点单已送进厨房</span><h2>接下来，就等香味慢慢靠近</h2><p>这张进度卡会告诉你：阿德确认了没有、买菜到哪一步、什么时候开火。</p><a href={orderProgressUrl}>查看我的厨房进度 <b>→</b></a></section>}
+          {orderProgressUrl && <section className="order-success-card"><span>谢谢你来吃饭</span><h2>这份想吃的，阿德已经接住了</h2><p>从确认、买菜到开火，这张进度卡都会及时告诉你。带着好胃口来，剩下的交给厨房。</p><a href={orderProgressUrl}>查看我的厨房进度 <b>→</b></a></section>}
 
           <section className="menu-section" id="weekly-menu">
             {menuReadOnly && <div className="menu-readonly-notice" role="status"><span>歇</span><div><strong>今天先看菜单，不接新点单</strong><p>喜欢的菜可以先记在心里，等厨房重新亮起绿灯，再把这一顿约起来。</p></div></div>}
@@ -1844,7 +1844,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               </div>
             </div>
             {recommendedDishes.length > 0 && <section className="desktop-ade-picks" aria-labelledby="desktop-ade-picks-title">
-              <header><div><span>ADE&apos;S PICKS · TODAY</span><h3 id="desktop-ade-picks-title">主厨今天特别推荐</h3><p>要是拿不定主意，就从这几道开始。都是阿德今天很想端上桌的味道。</p></div><small>{recommendedDishes.length} 道心选</small></header>
+              <header><div><span>ADE&apos;S PICKS · TODAY</span><h3 id="desktop-ade-picks-title">阿德推荐</h3><p>要是拿不定主意，就从这几道开始。都是阿德今天很想端上桌的味道。</p></div><small>{recommendedDishes.length} 道心选</small></header>
               <div className="desktop-ade-picks-grid">
                 {recommendedDishes.map((dish) => {
                   const quantity = cart[dish.id] || 0;
@@ -1916,16 +1916,19 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             {!inviteLoading && initialInviteToken && !activeInvite && <div className="invite-loading"><strong>这份邀请暂时不能点菜</strong><p>可能饭局已经结束，可以问问阿德下一顿什么时候开席。</p></div>}
           </section>
 
-          <section className="chef-story" aria-label="认识今晚的主厨">
-            <Image className="chef-story-photo" src="/chef-studio.jpg" width={1440} height={809} alt="阿德主厨站在开放式厨房里" />
+          <section className="chef-story" id="meet-chef" aria-label="认识今晚的主厨">
             <div className="chef-story-copy"><span>MEET YOUR CHEF</span><h2>菜慢慢挑，<br />心意已经开火。</h2><p>这不是餐厅的制式菜单，而是一顿专门留给朋友的饭。你负责挑喜欢的，我负责把每一道认真做好。</p><Image className="chef-signature" src="/ade-signature.png" width={960} height={320} alt="阿德，Adecho.Kwok 手写签名" /></div>
+            <div className="chef-story-visual">
+              <Image className="chef-story-photo" src="/chef-interview-light.png" width={2048} height={1148} alt="阿德主厨在明亮厨房里的个人肖像" />
+              <div className="chef-story-caption"><small>ADE&apos;S PRIVATE KITCHEN</small><strong>今晚，阿德掌勺。</strong></div>
+            </div>
           </section>
 
           <section className="promise-strip">
             <div className="promise-heading"><span>主厨保证书</span><h2>放心点，<br />我认真做。</h2><p>一顿好饭不一定隆重，<br />但一定要有诚意。</p></div>
             <div className="promise-card"><span>01</span><div>🧺</div><strong>收到点单再买菜</strong><p>新鲜这件事，不打折。</p></div>
             <div className="promise-card playful"><span>02</span><div>🍳</div><strong>每一道都现做</strong><p>锅气，是厨房的签名。</p></div>
-            <div className="promise-card"><span>03</span><div>☺</div><strong>最重要的是开心</strong><p>吃饱以后，再慢慢聊天。</p></div>
+            <div className="promise-card"><span>03</span><div>🥂</div><strong>最重要的是开心</strong><p>吃饱以后，再慢慢聊天。</p></div>
           </section>
 
           {kitchenOpen && cartCount > 0 && (
@@ -2302,10 +2305,14 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         <div className="overlay checkout-overlay">
           <section className="checkout-card order-success-dialog" role="dialog" aria-modal="true" aria-label="点菜成功">
             <button type="button" className="close" onClick={() => setOrderSuccessOpen(false)} aria-label="关闭">×</button>
+            <div className="order-success-visual">
+              <Image src="/chef-serving-wide.jpg" width={2200} height={1236} alt="阿德主厨端上为朋友认真准备的菜" />
+              <span>THANK YOU FOR COMING</span>
+            </div>
             <div className="order-success-mark" aria-hidden="true">✓</div>
-            <span className="eyebrow">ORDER RECEIVED</span>
-            <h2>点单已经送进厨房</h2>
-            <p>进度卡会自动更新主厨确认、买菜和开火状态。建议现在打开，并把页面留在微信里。</p>
+            <span className="eyebrow">ORDER RECEIVED · 谢谢你来吃饭</span>
+            <h2>谢谢你把这一顿，交给阿德。</h2>
+            <p>你的点单已经稳稳送进厨房。从确认、买菜到开火，每一步都会在进度卡里告诉你。带着好胃口来，剩下的交给我。</p>
             <a className="primary-button" href={orderProgressUrl}>查看实时厨房进度 <span>→</span></a>
             <button type="button" className="order-success-secondary" onClick={() => setOrderSuccessOpen(false)}>继续看看菜单</button>
           </section>

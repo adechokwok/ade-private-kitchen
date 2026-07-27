@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the private menu and chef workflow", async () => {
-  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, remoteImagePreviewRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute, kitchenStatusRoute, schema, database, layout, shareImageAsset] = await Promise.all([
+  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, remoteImagePreviewRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute, kitchenStatusRoute, schema, database, layout, shareImageAsset, chefInterviewAsset] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
@@ -27,6 +27,7 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../db/index.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../public/wechat-share.jpg", import.meta.url)),
+    readFile(new URL("../public/chef-interview-light.png", import.meta.url)),
   ]);
   await assert.rejects(
     readFile(new URL("../app/api/dishes/duplicate/route.ts", import.meta.url), "utf8"),
@@ -60,9 +61,18 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /网络图片还没有预览成功/);
   assert.match(page, /loadInvite\(initialInviteToken, true\)/);
   assert.match(page, /\}, 15000\)/);
-  assert.match(page, /chef-portrait\.jpg/);
+  assert.match(page, /chef-magazine-v2\.jpg/);
   assert.match(page, /阿德私厨志/);
-  assert.match(page, /chef-studio\.jpg/);
+  assert.match(page, /chef-serving-wide\.jpg/);
+  assert.match(page, /chef-interview-light\.png/);
+  assert.doesNotMatch(page, /chef-at-counter\.jpg/);
+  assert.doesNotMatch(page, /kitchen-handoff/);
+  assert.match(page, /谢谢你把这一顿，交给阿德/);
+  assert.match(statusClient, /chef-serving-wide\.jpg/);
+  assert.match(statusClient, /<i>谢谢你<\/i><i>来吃饭<\/i>/);
+  assert.match(statusClient, /!data\.order\.publishedMenu && <div className="status-dishes">/);
+  assert.match(statusClient, /主厨排好正式菜单后，会在这里自动替换成完整菜单卡/);
+  assert.match(globalStyles, /\.status-thanks-hero/);
   assert.match(page, /厨房今天休息/);
   assert.match(page, /kitchen-status-toggle/);
   assert.match(page, /menuReadOnly/);
@@ -73,6 +83,7 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(layout, /width: 800, height: 800/);
   assert.match(layout, /const protocol = localHost \? forwardedProtocol \|\| "http" : "https"/);
   assert.ok(shareImageAsset.byteLength < 400 * 1024, "微信分享图应保持轻量");
+  assert.ok(chefInterviewAsset.byteLength > 0 && chefInterviewAsset.byteLength < 3 * 1024 * 1024, "主厨介绍图应存在并控制在 3MB 内");
   assert.match(ordersRoute, /kitchenSetting\?\.value === "closed"/);
   assert.doesNotMatch(page, /window\.print/);
   assert.match(page, /html-to-image/);
