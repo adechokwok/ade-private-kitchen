@@ -166,6 +166,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .status-actions button { border: 0; background: var(--red); color: #fff; padding: 8px 13px; font-size: 12px; cursor: pointer; }.status-actions button.quiet { background: transparent; color: var(--muted); border: 1px solid var(--line); }
 .status-actions button.delete-order { background: #fff7f5; color: #a33c32; border: 1px solid #e8c9c3; }
 .status-actions button.delete-order:hover { background: #a33c32; color: #fff; border-color: #a33c32; }
+.status-actions button.archive-confirm { display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg,#376449,#58805f); box-shadow: 0 7px 18px rgba(55,100,73,.2); font-weight: 800; }
+.status-actions button:disabled { opacity: .58; cursor: wait; }
 .delete-order-dialog { text-align: center; }
 .delete-order-mark { width: 58px; height: 58px; display: grid; place-items: center; margin: 0 auto 16px; border-radius: 50%; background: #fff0ed; color: #a33c32; font: 700 30px Georgia,serif; }
 .delete-order-dialog > p { margin-bottom: 14px; color: var(--ink); font-weight: 700; }

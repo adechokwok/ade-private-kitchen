@@ -15,6 +15,7 @@ export const orders = sqliteTable("orders", {
   statusUpdatedAt: text("status_updated_at").notNull().default(""),
   publishedMenu: text("published_menu").notNull().default(""),
   publishedMenuUpdatedAt: text("published_menu_updated_at").notNull().default(""),
+  archivedAt: text("archived_at").notNull().default(""),
   status: text("status", { enum: ["new", "confirmed", "shopping", "preparing", "done", "cancelled"] }).notNull().default("new"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

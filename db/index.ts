@@ -62,10 +62,12 @@ export async function ensureOrdersSchema() {
     status_updated_at TEXT NOT NULL DEFAULT '',
     published_menu TEXT NOT NULL DEFAULT '',
     published_menu_updated_at TEXT NOT NULL DEFAULT '',
+    archived_at TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'new',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
   const columns = tableColumns("orders");
+  const hadArchivedAt = columns.has("archived_at");
   addColumn("orders", columns, "dish_snapshot", "TEXT NOT NULL DEFAULT '[]'");
   addColumn("orders", columns, "invite_id", "TEXT NOT NULL DEFAULT ''");
   addColumn("orders", columns, "guest_token", "TEXT NOT NULL DEFAULT ''");
@@ -73,6 +75,15 @@ export async function ensureOrdersSchema() {
   addColumn("orders", columns, "status_updated_at", "TEXT NOT NULL DEFAULT ''");
   addColumn("orders", columns, "published_menu", "TEXT NOT NULL DEFAULT ''");
   addColumn("orders", columns, "published_menu_updated_at", "TEXT NOT NULL DEFAULT ''");
+  addColumn("orders", columns, "archived_at", "TEXT NOT NULL DEFAULT ''");
+  if (!hadArchivedAt) {
+    getSqlite().exec(`UPDATE orders
+      SET archived_at = CASE
+        WHEN status_updated_at <> '' THEN status_updated_at
+        ELSE created_at
+      END
+      WHERE status IN ('done', 'cancelled')`);
+  }
 }
 
 export async function ensureCustomDishesSchema() {

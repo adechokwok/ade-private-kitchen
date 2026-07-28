@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { activeGuestOrderStorageKey } from "../../order-memory";
 
 const stages = [
   { id: "new", label: "点单送达", note: "阿德已经收到你的心愿" },
@@ -21,7 +22,7 @@ const statusNotices: Record<string, { mark: string; title: string; description: 
 };
 
 type StatusData = {
-  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; publishedMenuUpdatedAt: string; publishedMenu?: { title: string; date: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
+  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; publishedMenuUpdatedAt: string; archivedAt: string; publishedMenu?: { title: string; date: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
   invite?: { title: string; message: string; theme: string } | null;
   journal?: { title: string; note: string; imageUrls: string[] } | null;
 };
@@ -66,6 +67,13 @@ export default function OrderStatusClient({ token }: { token: string }) {
       window.clearInterval(timer);
     };
   }, [load]);
+
+  useEffect(() => {
+    try {
+      if (data?.order.archivedAt) window.localStorage.removeItem(activeGuestOrderStorageKey);
+      else window.localStorage.setItem(activeGuestOrderStorageKey, token);
+    } catch { /* 微信无痕环境仍可使用当前进度链接 */ }
+  }, [data?.order.archivedAt, token]);
   const currentUpdateKey = data?.order.statusUpdatedAt || "";
   const currentStatus = data?.order.status || "";
   const currentNotice = currentStatus ? statusNotices[currentStatus] : undefined;

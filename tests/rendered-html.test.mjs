@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the private menu and chef workflow", async () => {
-  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, remoteImagePreviewRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, journalRoute, kitchenStatusRoute, schema, database, layout, shareImageAsset, chefInterviewAsset] = await Promise.all([
+  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, remoteImagePreviewRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, orderMemory, journalRoute, kitchenStatusRoute, schema, database, layout, shareImageAsset, chefInterviewAsset] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
@@ -21,6 +21,7 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../app/api/invites/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/order-status/[token]/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/order/[token]/status-client.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/order-memory.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/journals/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/kitchen-status/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
@@ -38,7 +39,7 @@ test("ships the private menu and chef workflow", async () => {
   for (const phrase of [
     "朋友点菜", "阿德小厨房", "想吃什么", "主厨工作台", "接单信息汇总", "把点单编成正式宴席菜单",
     "订单和采购提醒", "制作执行台", "合并备菜清单", "倒排烹饪顺序", "单菜计时器", "库存不足提醒",
-    "等待通知的饭局", "菜单管理", "自定义新类型", "批量加入大类", "点菜端 slogan", "千问再生成", "家中库存",
+    "等待通知与确认归档", "菜单管理", "自定义新类型", "批量加入大类", "点菜端 slogan", "千问再生成", "家中库存",
     "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "生成一场专属饭局", "餐桌日记，想写的时候再写", "温馨家宴", "二人世界", "Fine Dining",
     "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐",
   ]) assert.match(page, new RegExp(phrase));
@@ -98,11 +99,16 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /quantity-stepper/);
   assert.match(page, /archivedOrders/);
   assert.match(page, /通知开饭 · 强提醒/);
+  assert.match(page, /确认归档这顿饭/);
+  assert.match(page, /action: "archive-order"/);
+  assert.match(page, /activeGuestOrderStorageKey/);
+  assert.match(page, /window\.localStorage\.setItem\(activeGuestOrderStorageKey/);
+  assert.match(page, /正在找回这顿饭/);
   assert.match(page, /\/api\/auth\/logout/);
   assert.match(ordersRoute, /export async function POST/);
   assert.match(ordersRoute, /export async function PATCH/);
   assert.match(ordersRoute, /export async function DELETE/);
-  assert.match(ordersRoute, /order\.status !== "done" && order\.status !== "cancelled"/);
+  assert.match(ordersRoute, /if \(!order\.archivedAt\)/);
   assert.match(page, /deleteArchivedOrder/);
   assert.match(page, /删除饭局/);
   assert.match(page, /orderPendingDelete/);
@@ -113,6 +119,7 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /action: "delete-order"/);
   assert.match(page, /method: "POST", credentials: "same-origin"/);
   assert.match(globalStyles, /\.status-actions button\.delete-order/);
+  assert.match(globalStyles, /\.status-actions button\.archive-confirm/);
   assert.match(globalStyles, /\.delete-order-confirm-actions/);
   assert.match(dishRoute, /getUploads\(\)\.put/);
   assert.match(dishRoute, /normalizeImagePosition/);
@@ -250,21 +257,30 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(ordersRoute, /statusUpdatedAt/);
   assert.match(ordersRoute, /action === "publish-menu"/);
   assert.match(ordersRoute, /action === "update-status"/);
+  assert.match(ordersRoute, /action === "archive-order"/);
   assert.match(ordersRoute, /action === "delete-order"/);
-  assert.match(ordersRoute, /已归档的饭局不能再推送菜单/);
+  assert.match(ordersRoute, /已开饭或已归档的饭局不能再推送菜单/);
   assert.match(ordersRoute, /publishedMenuUpdatedAt/);
   assert.match(schema, /publishedMenu: text\("published_menu"\)/);
+  assert.match(schema, /archivedAt: text\("archived_at"\)/);
   assert.match(database, /addColumn\("orders", columns, "published_menu"/);
+  assert.match(database, /addColumn\("orders", columns, "archived_at"/);
+  assert.match(database, /WHERE status IN \('done', 'cancelled'\)/);
   assert.match(statusClient, /status-update-modal/);
   assert.match(statusClient, /guest-published-menu/);
   assert.match(statusClient, /ade-order-menu-update/);
+  assert.match(statusClient, /activeGuestOrderStorageKey/);
+  assert.match(statusClient, /data\?\.order\.archivedAt/);
+  assert.match(orderMemory, /ade-kitchen-active-guest-order-v1/);
+  assert.match(orderMemory, /a-f0-9/);
   assert.match(statusClient, /localStorage/);
   assert.match(statusClient, /setTimeout\(\(\) => void load\(\), 0\)/);
   assert.match(statusClient, /setInterval\(\(\) => void load\(\), 15000\)/);
   assert.match(statusClient, /每 15 秒自动更新/);
   assert.match(orderStatusPage, /dynamic = "force-dynamic"/);
-  assert.match(orderStatusPage, /order\?\.status === "done" \|\| order\?\.status === "cancelled"/);
-  assert.match(orderStatusPage, /redirect\("\/"\)/);
+  assert.match(orderStatusPage, /orders\.archivedAt/);
+  assert.match(orderStatusPage, /order\?\.archivedAt/);
+  assert.match(orderStatusPage, /redirect\("\/\?order=archived"\)/);
   assert.match(journalRoute, /dinner-journals/);
   assert.match(journalRoute, /export async function DELETE/);
   assert.match(journalRoute, /order\.status !== "done"/);

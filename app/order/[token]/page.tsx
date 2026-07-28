@@ -10,8 +10,8 @@ export default async function OrderStatusPage({ params }: { params: Promise<{ to
   const { token } = await params;
   if (/^[a-f0-9]{32}$/i.test(token)) {
     await ensureOrdersSchema();
-    const [order] = await getDb().select({ status: orders.status }).from(orders).where(eq(orders.guestToken, token)).limit(1);
-    if (order?.status === "done" || order?.status === "cancelled") redirect("/");
+    const [order] = await getDb().select({ archivedAt: orders.archivedAt }).from(orders).where(eq(orders.guestToken, token)).limit(1);
+    if (order?.archivedAt) redirect("/?order=archived");
   }
   return <OrderStatusClient token={token} />;
 }

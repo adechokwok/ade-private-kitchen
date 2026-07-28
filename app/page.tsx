@@ -4,6 +4,7 @@ import { ChangeEvent, DragEvent as ReactDragEvent, FormEvent, PointerEvent as Re
 import Link from "next/link";
 import Image from "next/image";
 import { categories, dishes, type Dish, type Ingredient } from "./menu";
+import { activeGuestOrderStorageKey, isGuestOrderToken } from "./order-memory";
 
 type Cart = Record<string, number>;
 type OrderItem = { dishId: string; quantity: number };
@@ -24,6 +25,7 @@ type Order = {
   statusUpdatedAt: string;
   publishedMenu: string;
   publishedMenuUpdatedAt: string;
+  archivedAt: string;
   status: "new" | "confirmed" | "shopping" | "preparing" | "done" | "cancelled";
   createdAt: string;
 };
@@ -188,10 +190,11 @@ const banquetTemplates: Array<{ id: BanquetTemplate; name: string; occasion: str
   { id: "brunch", name: "周末早午餐", occasion: "周末 · Brunch", subtitle: "SLOW MORNING, GOOD FOOD", mark: "☀", defaultTitle: "周末早午餐", defaultMessage: "睡到自然醒，再认真吃一顿" },
 ];
 
-const statusLabel = { new: "待确认", confirmed: "已确认", shopping: "买菜中", preparing: "制作中", done: "已完成", cancelled: "已取消" };
+const statusLabel = { new: "待确认", confirmed: "已确认", shopping: "买菜中", preparing: "制作中", done: "已开饭", cancelled: "已取消" };
 const cookingStages: Array<{ id: Order["status"]; label: string }> = [{ id: "confirmed", label: "接单" }, { id: "shopping", label: "买菜" }, { id: "preparing", label: "制作" }, { id: "done", label: "开饭" }];
 const statusProgressIndex: Record<Order["status"], number> = { new: -1, confirmed: 0, shopping: 1, preparing: 2, done: 3, cancelled: -1 };
-const isArchivedOrder = (order: Order) => order.status === "done" || order.status === "cancelled";
+const isArchivedOrder = (order: Order) => Boolean(order.archivedAt);
+const isActiveKitchenOrder = (order: Order) => !isArchivedOrder(order) && order.status !== "done" && order.status !== "cancelled";
 const categoryEmoji: Record<string, string> = {
   全部: "✦", 未分类: "📥", 家常热炒: "🍳", 江浙风味: "🌿", 川湘小馆: "🌶", 汤羹主食: "🥣", 海鲜: "🦐", 家常菜: "🥢",
 };
@@ -444,6 +447,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [orderPendingDelete, setOrderPendingDelete] = useState<Order | null>(null);
   const [orderDeleting, setOrderDeleting] = useState(false);
+  const [orderArchiving, setOrderArchiving] = useState("");
+  const [guestOrderChecking, setGuestOrderChecking] = useState(initialMode === "menu");
   const [cookingChecks, setCookingChecks] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {};
     try { return JSON.parse(window.localStorage.getItem("ade-kitchen-cooking-checks") || "{}"); } catch { return {}; }
@@ -558,15 +563,17 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const cartItems = allDishes
     .filter((dish) => cart[dish.id])
     .map((dish) => ({ ...dish, quantity: cart[dish.id] }));
-  const activeOrders = useMemo(() => orders.filter((order) => !isArchivedOrder(order)), [orders]);
+  const activeOrders = useMemo(() => orders.filter(isActiveKitchenOrder), [orders]);
   const archivedOrders = useMemo(() => orders.filter(isArchivedOrder), [orders]);
+  const pendingArchiveOrders = useMemo(() => orders.filter((order) => order.status === "done" && !isArchivedOrder(order)), [orders]);
   const activeBanquetTemplate = banquetTemplates.find((template) => template.id === banquetTemplate) || banquetTemplates[0];
   const selectedBanquetOrder = activeOrders.find((order) => order.id === banquetOrderId);
   const completedOrders = useMemo(() => orders.filter((order) => order.status === "done"), [orders]);
   const acceptingOrders = useMemo(() => activeOrders.filter((order) => order.status === "new"), [activeOrders]);
   const shoppingOrders = useMemo(() => activeOrders.filter((order) => order.status === "confirmed" || order.status === "shopping"), [activeOrders]);
   const productionOrders = useMemo(() => activeOrders.filter((order) => order.status === "shopping" || order.status === "preparing"), [activeOrders]);
-  const servingOrders = useMemo(() => activeOrders.filter((order) => order.status === "preparing"), [activeOrders]);
+  const servingReadyOrders = useMemo(() => activeOrders.filter((order) => order.status === "preparing"), [activeOrders]);
+  const servingOrders = useMemo(() => [...servingReadyOrders, ...pendingArchiveOrders], [pendingArchiveOrders, servingReadyOrders]);
   const recentDoneOrders = useMemo(() => archivedOrders.filter((order) => order.status === "done").slice(0, 8), [archivedOrders]);
   const cookingOrders = useMemo(() => [...activeOrders].sort((left, right) => left.mealDate.localeCompare(right.mealDate) || left.createdAt.localeCompare(right.createdAt)), [activeOrders]);
   const cookingRecipeCount = new Set(activeOrders.flatMap((order) => parseItems(order).map((item) => item.dishId))).size;
@@ -750,7 +757,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       if (!response.ok) throw new Error(data.error || "订单加载失败");
       const nextOrders = data.orders || [];
       setOrders(nextOrders);
-      setBanquetOrderId((current) => current && !nextOrders.some((order) => order.id === current && !isArchivedOrder(order)) ? "" : current);
+      setBanquetOrderId((current) => current && !nextOrders.some((order) => order.id === current && isActiveKitchenOrder(order)) ? "" : current);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "订单加载失败");
     } finally {
@@ -870,6 +877,59 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       }, 0);
       return () => { window.clearTimeout(bootstrap); if (timer) window.clearInterval(timer); };
     }
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "menu") return;
+    let active = true;
+    let redirecting = false;
+    const bootstrap = window.setTimeout(async () => {
+      let token = "";
+      try {
+        const currentUrl = new URL(window.location.href);
+        if (currentUrl.searchParams.get("order") === "archived") {
+          window.localStorage.removeItem(activeGuestOrderStorageKey);
+          currentUrl.searchParams.delete("order");
+          window.history.replaceState(null, "", `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+          if (active) setGuestOrderChecking(false);
+          return;
+        }
+        token = window.localStorage.getItem(activeGuestOrderStorageKey) || "";
+        if (!isGuestOrderToken(token)) {
+          window.localStorage.removeItem(activeGuestOrderStorageKey);
+          if (active) setGuestOrderChecking(false);
+          return;
+        }
+        const response = await fetch(`/api/order-status/${token}`, { cache: "no-store" });
+        if (response.ok) {
+          const payload = await response.json() as { order?: { archivedAt?: string } };
+          if (payload.order?.archivedAt) {
+            window.localStorage.removeItem(activeGuestOrderStorageKey);
+            if (active) setGuestOrderChecking(false);
+            return;
+          }
+        } else if (response.status === 404) {
+          window.localStorage.removeItem(activeGuestOrderStorageKey);
+          if (active) setGuestOrderChecking(false);
+          return;
+        }
+        redirecting = true;
+        window.location.replace(`/order/${token}`);
+      } catch {
+        if (isGuestOrderToken(token)) {
+          redirecting = true;
+          window.location.replace(`/order/${token}`);
+        } else if (active) {
+          setGuestOrderChecking(false);
+        }
+      } finally {
+        if (active && !redirecting) setGuestOrderChecking(false);
+      }
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(bootstrap);
+    };
   }, [mode]);
 
   useEffect(() => {
@@ -1204,6 +1264,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       setCheckoutOpen(false);
       setCartOpen(false);
       if (data.guestToken) {
+        try { window.localStorage.setItem(activeGuestOrderStorageKey, data.guestToken); } catch { /* 当前进度链接仍可正常打开 */ }
         setOrderProgressUrl(`/order/${data.guestToken}`);
         setOrderSuccessOpen(true);
       }
@@ -1219,7 +1280,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const updateOrderStatus = async (id: string, status: Order["status"]) => {
     try {
       const defaultNotes: Partial<Record<Order["status"], string>> = { confirmed: "饭局确认好啦，我会按时准备。", shopping: "正在挑新鲜食材，等你带着好胃口来。", preparing: "厨房已经开火，香味正在慢慢冒出来。", done: "开饭啦，愿今晚吃得开心。" };
-      if (status === "done" && !window.confirm("确认通知开饭？朋友的进度页会弹出全屏强提醒，订单随后自动归档。")) return;
+      if (status === "done" && !window.confirm("确认通知开饭？朋友的进度页会弹出全屏强提醒，这场饭会继续保留，直到你稍后确认归档。")) return;
       const suggestedNote = defaultNotes[status] || (status === "cancelled" ? "这场饭局先暂停，等我们下次再好好约。" : "");
       const promptResult = window.prompt(status === "done" ? "填写开饭强提醒内容（可直接确认默认内容）" : "填写朋友端弹窗提醒内容（可直接确认默认内容）", suggestedNote);
       if (promptResult === null) return;
@@ -1234,11 +1295,34 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       if (!response.ok || !data.order) throw new Error(data.error || "更新失败");
       setOrders((current) => current.map((order) => order.id === id ? data.order! : order));
       if (status === "done" || status === "cancelled") setBanquetOrderId((current) => current === id ? "" : current);
-      if (status === "done") setNotice("开饭强提醒已发出，订单已自动归档");
+      if (status === "done") setNotice("开饭强提醒已发出；饭局会保留在“待确认归档”中");
       else if (status === "cancelled") setNotice("取消通知已发出，订单已归档");
       else setNotice("进度已更新，朋友端会弹窗提醒");
     } catch {
       setNotice("状态更新失败，请稍后重试");
+    }
+  };
+
+  const archiveOrder = async (order: Order) => {
+    if (order.status !== "done" || isArchivedOrder(order)) return;
+    if (!window.confirm(`确认归档“${order.customerName}”的这顿饭吗？归档后，对方下次打开链接会重新进入点菜首页。`)) return;
+    setOrderArchiving(order.id);
+    try {
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: order.id, action: "archive-order" }),
+      });
+      const data = await response.json() as { order?: Order; error?: string };
+      if (!response.ok || !data.order) throw new Error(data.error || "归档失败");
+      setOrders((current) => current.map((item) => item.id === order.id ? data.order! : item));
+      if (banquetOrderId === order.id) setBanquetOrderId("");
+      setNotice(`“${order.customerName}”的饭局已确认归档，对方下次可以重新点菜`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "归档失败，请稍后重试");
+    } finally {
+      setOrderArchiving("");
     }
   };
 
@@ -1283,9 +1367,10 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         {!archived && order.status === "confirmed" && <button onClick={() => updateOrderStatus(order.id, "shopping")}>开始买菜</button>}
         {!archived && order.status === "shopping" && <button onClick={() => updateOrderStatus(order.id, "preparing")}>开始制作</button>}
         {!archived && order.status === "preparing" && <button className="ready-alert" onClick={() => updateOrderStatus(order.id, "done")}><span aria-hidden="true">🔔</span> 通知开饭 · 强提醒</button>}
+        {!archived && order.status === "done" && <button className="archive-confirm" disabled={orderArchiving === order.id} onClick={() => void archiveOrder(order)}><span aria-hidden="true">✓</span> {orderArchiving === order.id ? "正在归档…" : "确认归档这顿饭"}</button>}
         {archived && <button className="quiet" onClick={() => updateOrderStatus(order.id, "confirmed")}>重新打开订单</button>}
         {archived && <button className="delete-order" onClick={() => setOrderPendingDelete(order)}>删除饭局</button>}
-        {!archived && <button className="quiet" onClick={() => updateOrderStatus(order.id, "cancelled")}>取消饭局</button>}
+        {!archived && order.status !== "done" && <button className="quiet" onClick={() => updateOrderStatus(order.id, "cancelled")}>取消饭局</button>}
       </div>
     </article>
   );
@@ -1826,6 +1911,10 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     </section>
   );
 
+  if (mode === "menu" && guestOrderChecking) {
+    return <main className="status-page guest-order-resume"><section className="status-card"><span>阿德小厨房</span><h1>正在找回这顿饭</h1><p>上次点过的菜还在，我带你回到厨房进度页。</p></section></main>;
+  }
+
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -1990,7 +2079,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             <button className={chefView === "accepting" ? "active" : ""} onClick={() => setChefView("accepting")}><i>01</i><span><b>接单</b><small>{acceptingOrders.length} 份待确认 · 编排宴席</small></span></button>
             <button className={chefView === "shopping" ? "active" : ""} onClick={() => setChefView("shopping")}><i>02</i><span><b>订单和采购</b><small>{shoppingList.length} 项要买 · {shoppingDoneCount} 项完成</small></span></button>
             <button className={chefView === "cooking" ? "active" : ""} onClick={() => setChefView("cooking")}><i>03</i><span><b>制作</b><small>{productionOrders.length} 场进行中 · {cookingRecipeCount} 道菜</small></span></button>
-            <button className={chefView === "serving" ? "active" : ""} onClick={() => setChefView("serving")}><i>04</i><span><b>开饭</b><small>{servingOrders.length} 场待通知 · {recentDoneOrders.length} 场已归档</small></span></button>
+            <button className={chefView === "serving" ? "active" : ""} onClick={() => setChefView("serving")}><i>04</i><span><b>开饭</b><small>{servingReadyOrders.length} 场待通知 · {pendingArchiveOrders.length} 场待归档</small></span></button>
           </div>
           <div className="chef-secondary-nav" role="tablist" aria-label="主厨其他工具">
             <span>其他工具</span>
@@ -2257,10 +2346,10 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             </>
           ) : chefView === "serving" ? (
             <section className="serving-workspace" aria-labelledby="serving-title">
-              <section className="serving-hero panel"><div><span>STEP 04 · READY TO SERVE</span><h2 id="serving-title">最后确认，然后通知开饭</h2><p>这里只保留已经开火的饭局。检查步骤完成情况后发送强提醒，订单会自动进入下方归档。</p></div><div><strong>{servingOrders.length}</strong><small>场等待开饭</small></div></section>
+              <section className="serving-hero panel"><div><span>STEP 04 · READY TO SERVE</span><h2 id="serving-title">通知开饭，再由你确认归档</h2><p>开饭提醒发出后，饭局仍会留在这里；等今晚真正结束，再确认归档并让朋友下次重新点菜。</p></div><div><strong>{servingOrders.length}</strong><small>场待处理</small></div></section>
               <div className="serving-grid">
-                <section className="panel"><div className="panel-title"><div><span>READY QUEUE</span><h2>等待通知的饭局</h2></div><small>{servingOrders.length} 场</small></div>{servingOrders.length === 0 ? <div className="empty"><span>🔔</span><strong>暂时没有等待开饭的饭局</strong><p>制作页点击“开始制作”后，订单会出现在这里。</p></div> : <div className="order-list serving-list">{servingOrders.map((order) => renderOrderCard(order))}</div>}</section>
-                <section className="panel"><div className="panel-title"><div><span>RECENTLY SERVED</span><h2>最近完成</h2></div><small>{recentDoneOrders.length} 场</small></div>{recentDoneOrders.length === 0 ? <div className="empty compact"><span>🍽️</span><p>完成的饭局会自动归档到这里。</p></div> : <div className="order-list archived-list">{recentDoneOrders.map((order) => renderOrderCard(order, true))}</div>}{archivedOrders.length > recentDoneOrders.length && <section className="order-archive"><button type="button" className="order-archive-toggle" onClick={() => setArchiveOpen((value) => !value)} aria-expanded={archiveOpen}><span><b>全部订单归档</b><small>包含已完成和已取消的历史饭局</small></span><strong>{archivedOrders.length} 份 {archiveOpen ? "收起 ↑" : "查看 ↓"}</strong></button>{archiveOpen && <div className="order-list archived-list">{archivedOrders.map((order) => renderOrderCard(order, true))}</div>}</section>}</section>
+                <section className="panel"><div className="panel-title"><div><span>READY & ARCHIVE</span><h2>等待通知与确认归档</h2></div><small>{servingReadyOrders.length} 待通知 · {pendingArchiveOrders.length} 待归档</small></div>{servingOrders.length === 0 ? <div className="empty"><span>🔔</span><strong>暂时没有待处理的饭局</strong><p>制作页点击“开始制作”后，订单会出现在这里。</p></div> : <div className="order-list serving-list">{servingOrders.map((order) => renderOrderCard(order))}</div>}</section>
+                <section className="panel"><div className="panel-title"><div><span>RECENTLY ARCHIVED</span><h2>最近归档</h2></div><small>{recentDoneOrders.length} 场</small></div>{recentDoneOrders.length === 0 ? <div className="empty compact"><span>🍽️</span><p>确认归档后的饭局会出现在这里。</p></div> : <div className="order-list archived-list">{recentDoneOrders.map((order) => renderOrderCard(order, true))}</div>}{archivedOrders.length > recentDoneOrders.length && <section className="order-archive"><button type="button" className="order-archive-toggle" onClick={() => setArchiveOpen((value) => !value)} aria-expanded={archiveOpen}><span><b>全部订单归档</b><small>包含已完成和已取消的历史饭局</small></span><strong>{archivedOrders.length} 份 {archiveOpen ? "收起 ↑" : "查看 ↓"}</strong></button>{archiveOpen && <div className="order-list archived-list">{archivedOrders.map((order) => renderOrderCard(order, true))}</div>}</section>}</section>
               </div>
             </section>
           ) : chefView === "invitations" ? (
