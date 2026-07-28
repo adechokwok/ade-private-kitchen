@@ -11,11 +11,17 @@ export async function generateMetadata(): Promise<Metadata> {
   const origin = `${protocol}://${host}`;
   const title = "阿德小厨房 · 私房菜单";
   const description = "选几道想吃的家常菜，我来认真准备。朋友点菜、主厨接单、食材自动汇总。";
-  const shareImage = `${origin}/wechat-share.jpg`;
+  const shareImage = `${origin}/wechat-share.jpg?v=20260728-braised-pork`;
   return {
     metadataBase: new URL(origin),
     title,
     description,
+    manifest: "/manifest.webmanifest",
+    icons: {
+      icon: [{ url: "/icon.png", type: "image/png", sizes: "1024x1024" }],
+      apple: [{ url: "/apple-icon.png", type: "image/png", sizes: "180x180" }],
+    },
+    appleWebApp: { capable: true, title: "阿德小厨房", statusBarStyle: "black-translucent" },
     alternates: { canonical: origin },
     openGraph: {
       title,
@@ -24,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
       siteName: "阿德小厨房",
       locale: "zh_CN",
       url: origin,
-      images: [{ url: shareImage, secureUrl: shareImage, type: "image/jpeg", width: 800, height: 800, alt: "阿德小厨房 · 好好吃饭" }],
+      images: [{ url: shareImage, secureUrl: shareImage, type: "image/jpeg", width: 800, height: 800, alt: "阿德小厨房 · 红烧肉家宴图标" }],
     },
     twitter: { card: "summary_large_image", title, description, images: [{ url: shareImage, alt: "阿德小厨房私房菜单" }] },
     other: { image: shareImage },

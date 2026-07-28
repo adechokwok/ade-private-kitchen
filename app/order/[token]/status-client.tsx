@@ -14,11 +14,11 @@ const stages = [
 ] as const;
 
 const statusNotices: Record<string, { mark: string; title: string; description: string; action: string }> = {
-  confirmed: { mark: "✓", title: "饭局确认好啦", description: "主厨已经接下这顿饭，会按约定认真准备。", action: "知道啦" },
-  shopping: { mark: "篮", title: "正在为你买菜", description: "新鲜食材正在赶来，带着好胃口等一等。", action: "收到" },
-  preparing: { mark: "火", title: "厨房已经开火", description: "锅里开始热闹起来，香味正在慢慢靠近。", action: "好期待" },
-  done: { mark: "铃", title: "开饭啦！", description: "菜已经准备好了，快来吃饭，别让热气等太久。", action: "马上来吃" },
-  cancelled: { mark: "约", title: "这场饭局先暂停", description: "计划有一点变化，等下次再重新约一顿好饭。", action: "我知道了" },
+  confirmed: { mark: "🥰", title: "饭局确认好啦", description: "主厨已经接下这顿饭，会按约定认真准备。", action: "知道啦" },
+  shopping: { mark: "🛒", title: "正在为你买菜", description: "新鲜食材正在赶来，带着好胃口等一等。", action: "收到" },
+  preparing: { mark: "🔥", title: "厨房已经开火", description: "锅里开始热闹起来，香味正在慢慢靠近。", action: "好期待" },
+  done: { mark: "😋", title: "开饭啦！", description: "菜已经准备好了，快来吃饭，别让热气等太久。", action: "马上来吃" },
+  cancelled: { mark: "🥺", title: "这场饭局先暂停", description: "计划有一点变化，等下次再重新约一顿好饭。", action: "我知道了" },
 };
 
 type StatusData = {
@@ -120,7 +120,7 @@ export default function OrderStatusClient({ token }: { token: string }) {
     </div>}
     {showMenuAlert && data.order.publishedMenu && <div className="status-update-modal status-update-menu" role="alertdialog" aria-modal="true" aria-labelledby="menu-update-title">
       <section>
-        <div className="status-update-mark" aria-hidden="true">单</div>
+        <div className="status-update-mark" aria-hidden="true">📜</div>
         <span>CHEF&apos;S MENU · 新菜单</span>
         <h2 id="menu-update-title">阿德把正式菜单排好啦</h2>
         <p>{data.order.publishedMenu.message || "今晚吃什么已经认真排好，随时可以回来翻菜单。"}</p>

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the private menu and chef workflow", async () => {
-  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, remoteImagePreviewRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, orderMemory, journalRoute, kitchenStatusRoute, schema, database, layout, shareImageAsset, chefInterviewAsset] = await Promise.all([
+  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, remoteImagePreviewRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, orderMemory, journalRoute, kitchenStatusRoute, schema, database, layout, manifest, appIconAsset, appleIconAsset, shareImageAsset, chefInterviewAsset] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
@@ -27,6 +27,9 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../db/index.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/manifest.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/icon.png", import.meta.url)),
+    readFile(new URL("../app/apple-icon.png", import.meta.url)),
     readFile(new URL("../public/wechat-share.jpg", import.meta.url)),
     readFile(new URL("../public/chef-interview-light.png", import.meta.url)),
   ]);
@@ -82,8 +85,16 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /menu-title-lines/);
   assert.match(page, /<span>菜单照常翻，<\/span><span>厨房今天歇<\/span>/);
   assert.match(layout, /\/wechat-share\.jpg/);
+  assert.match(layout, /20260728-braised-pork/);
   assert.match(layout, /width: 800, height: 800/);
+  assert.match(layout, /\/manifest\.webmanifest/);
+  assert.match(layout, /\/icon\.png/);
+  assert.match(layout, /\/apple-icon\.png/);
+  assert.match(manifest, /\/app-icon-192\.png/);
+  assert.match(manifest, /\/app-icon-512\.png/);
   assert.match(layout, /const protocol = localHost \? forwardedProtocol \|\| "http" : "https"/);
+  assert.ok(appIconAsset.byteLength > 0, "正式 App 图标应存在");
+  assert.ok(appleIconAsset.byteLength > 0, "iPhone 图标应存在");
   assert.ok(shareImageAsset.byteLength < 400 * 1024, "微信分享图应保持轻量");
   assert.ok(chefInterviewAsset.byteLength > 0 && chefInterviewAsset.byteLength < 3 * 1024 * 1024, "主厨介绍图应存在并控制在 3MB 内");
   assert.match(ordersRoute, /kitchenSetting\?\.value === "closed"/);
@@ -267,6 +278,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(database, /addColumn\("orders", columns, "archived_at"/);
   assert.match(database, /WHERE status IN \('done', 'cancelled'\)/);
   assert.match(statusClient, /status-update-modal/);
+  for (const emoji of ["🥰", "🛒", "🔥", "😋", "🥺", "📜"]) assert.match(statusClient, new RegExp(emoji, "u"));
+  assert.match(globalStyles, /Apple Color Emoji/);
   assert.match(statusClient, /guest-published-menu/);
   assert.match(statusClient, /ade-order-menu-update/);
   assert.match(statusClient, /activeGuestOrderStorageKey/);
