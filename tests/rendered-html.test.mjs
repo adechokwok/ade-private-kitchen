@@ -33,6 +33,7 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../app/api/dishes/duplicate/route.ts", import.meta.url), "utf8"),
     { code: "ENOENT" },
   );
+  const orderStatusPage = await readFile(new URL("../app/order/[token]/page.tsx", import.meta.url), "utf8");
 
   for (const phrase of [
     "朋友点菜", "阿德小厨房", "想吃什么", "主厨工作台", "接单信息汇总", "把点单编成正式宴席菜单",
@@ -106,6 +107,11 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /删除饭局/);
   assert.match(page, /orderPendingDelete/);
   assert.match(page, /永久删除这场饭局/);
+  assert.match(page, /\{activeOrders\.map\(\(order\) => <option/);
+  assert.match(page, /目前没有进行中的订单/);
+  assert.match(page, /action: "update-status"/);
+  assert.match(page, /action: "delete-order"/);
+  assert.match(page, /method: "POST", credentials: "same-origin"/);
   assert.match(globalStyles, /\.status-actions button\.delete-order/);
   assert.match(globalStyles, /\.delete-order-confirm-actions/);
   assert.match(dishRoute, /getUploads\(\)\.put/);
@@ -235,6 +241,9 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(orderStatusRoute, /progressNote/);
   assert.match(ordersRoute, /statusUpdatedAt/);
   assert.match(ordersRoute, /action === "publish-menu"/);
+  assert.match(ordersRoute, /action === "update-status"/);
+  assert.match(ordersRoute, /action === "delete-order"/);
+  assert.match(ordersRoute, /已归档的饭局不能再推送菜单/);
   assert.match(ordersRoute, /publishedMenuUpdatedAt/);
   assert.match(schema, /publishedMenu: text\("published_menu"\)/);
   assert.match(database, /addColumn\("orders", columns, "published_menu"/);
@@ -245,6 +254,9 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(statusClient, /setTimeout\(\(\) => void load\(\), 0\)/);
   assert.match(statusClient, /setInterval\(\(\) => void load\(\), 15000\)/);
   assert.match(statusClient, /每 15 秒自动更新/);
+  assert.match(orderStatusPage, /dynamic = "force-dynamic"/);
+  assert.match(orderStatusPage, /order\?\.status === "done" \|\| order\?\.status === "cancelled"/);
+  assert.match(orderStatusPage, /redirect\("\/"\)/);
   assert.match(journalRoute, /dinner-journals/);
   assert.match(journalRoute, /export async function DELETE/);
   assert.match(journalRoute, /order\.status !== "done"/);

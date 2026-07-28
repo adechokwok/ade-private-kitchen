@@ -4,6 +4,13 @@ import { appSettings, customDishes, dinnerInvites, dinnerJournals, orders } from
 import { chefApiGuard } from "../../chef-auth";
 
 type Item = { dishId?: string; quantity?: number };
+type ChefOrderMutation = {
+  id?: string;
+  action?: "publish-menu" | "update-status" | "delete-order";
+  status?: typeof validStatuses[number];
+  progressNote?: unknown;
+  publishedMenu?: unknown;
+};
 const validStatuses = ["new", "confirmed", "shopping", "preparing", "done", "cancelled"] as const;
 const validMenuTemplates = new Set(["home", "romance", "fine", "spring", "midautumn", "birthday", "housewarming", "summer", "christmas", "brunch"]);
 const validMenuCourses = new Set(["starter", "main", "staple", "soup"]);
@@ -50,6 +57,48 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "服务暂时开小差了";
 }
 
+async function mutateOrderForChef(payload: ChefOrderMutation) {
+  if (!payload.id) return Response.json({ error: "请选择要处理的饭局" }, { status: 400 });
+  await ensureOrdersSchema();
+
+  if (payload.action === "publish-menu") {
+    const [existing] = await getDb().select({ status: orders.status }).from(orders).where(eq(orders.id, payload.id)).limit(1);
+    if (!existing) return Response.json({ error: "没有找到这份订单" }, { status: 404 });
+    if (existing.status === "done" || existing.status === "cancelled") {
+      return Response.json({ error: "已归档的饭局不能再推送菜单，请重新打开订单后再操作" }, { status: 409 });
+    }
+    const publishedMenu = normalizePublishedMenu(payload.publishedMenu);
+    const publishedMenuUpdatedAt = new Date().toISOString();
+    const [order] = await getDb().update(orders).set({ publishedMenu: JSON.stringify(publishedMenu), publishedMenuUpdatedAt }).where(eq(orders.id, payload.id)).returning();
+    return Response.json({ order });
+  }
+
+  if (payload.action === "update-status") {
+    if (!payload.status || !validStatuses.includes(payload.status)) return Response.json({ error: "无效的订单状态" }, { status: 400 });
+    const progressNote = typeof payload.progressNote === "string" ? payload.progressNote.trim().slice(0, 160) : "";
+    const statusUpdatedAt = new Date().toISOString();
+    const [order] = await getDb().update(orders).set({ status: payload.status, progressNote, statusUpdatedAt }).where(eq(orders.id, payload.id)).returning();
+    if (!order) return Response.json({ error: "没有找到这份订单" }, { status: 404 });
+    return Response.json({ order });
+  }
+
+  if (payload.action === "delete-order") {
+    const [order] = await getDb().select().from(orders).where(eq(orders.id, payload.id)).limit(1);
+    if (!order) return Response.json({ error: "没有找到这场饭局" }, { status: 404 });
+    if (order.status !== "done" && order.status !== "cancelled") {
+      return Response.json({ error: "只有已完成或已取消的饭局可以删除" }, { status: 409 });
+    }
+    await ensureDinnerInvitesSchema();
+    let [journal] = await getDb().select({ id: dinnerJournals.id }).from(dinnerJournals).where(eq(dinnerJournals.orderId, order.id)).limit(1);
+    if (!journal && order.inviteId) [journal] = await getDb().select({ id: dinnerJournals.id }).from(dinnerJournals).where(and(eq(dinnerJournals.inviteId, order.inviteId), eq(dinnerJournals.orderId, ""))).limit(1);
+    if (journal) return Response.json({ error: "这场饭局还有餐桌日记，请先在“餐桌日记”中删除日记" }, { status: 409 });
+    await getDb().delete(orders).where(eq(orders.id, payload.id));
+    return Response.json({ ok: true, id: payload.id });
+  }
+
+  return Response.json({ error: "无效的订单操作" }, { status: 400 });
+}
+
 export async function GET(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
@@ -65,8 +114,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const payload = await request.json() as {
-      customerName?: unknown; mealDate?: unknown; guestCount?: unknown; note?: unknown; dishes?: Item[]; inviteToken?: unknown;
-    };
+      customerName?: unknown; mealDate?: unknown; guestCount?: unknown; note?: unknown; dishes?: Item[]; inviteToken?: unknown; action?: unknown;
+    } & ChefOrderMutation;
+    if (typeof payload.action === "string" && payload.action) {
+      const denied = chefApiGuard(request);
+      if (denied) return denied;
+      return await mutateOrderForChef(payload);
+    }
     const customerName = typeof payload.customerName === "string" ? payload.customerName.trim() : "";
     const mealDate = typeof payload.mealDate === "string" ? payload.mealDate : "";
     const guestCount = Number(payload.guestCount);
@@ -127,23 +181,8 @@ export async function PATCH(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   try {
-    const payload = await request.json() as { id?: string; action?: string; status?: typeof validStatuses[number]; progressNote?: unknown; publishedMenu?: unknown };
-    if (payload.action === "publish-menu") {
-      if (!payload.id) return Response.json({ error: "请选择要接收菜单的饭局" }, { status: 400 });
-      await ensureOrdersSchema();
-      const publishedMenu = normalizePublishedMenu(payload.publishedMenu);
-      const publishedMenuUpdatedAt = new Date().toISOString();
-      const [order] = await getDb().update(orders).set({ publishedMenu: JSON.stringify(publishedMenu), publishedMenuUpdatedAt }).where(eq(orders.id, payload.id)).returning();
-      if (!order) return Response.json({ error: "没有找到这份订单" }, { status: 404 });
-      return Response.json({ order });
-    }
-    if (!payload.id || !payload.status || !validStatuses.includes(payload.status)) return Response.json({ error: "无效的订单状态" }, { status: 400 });
-    await ensureOrdersSchema();
-    const progressNote = typeof payload.progressNote === "string" ? payload.progressNote.trim().slice(0, 160) : "";
-    const statusUpdatedAt = new Date().toISOString();
-    const [order] = await getDb().update(orders).set({ status: payload.status, progressNote, statusUpdatedAt }).where(eq(orders.id, payload.id)).returning();
-    if (!order) return Response.json({ error: "没有找到这份订单" }, { status: 404 });
-    return Response.json({ order });
+    const payload = await request.json() as ChefOrderMutation;
+    return await mutateOrderForChef({ ...payload, action: payload.action || "update-status" });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
   }
@@ -154,19 +193,7 @@ export async function DELETE(request: Request) {
   if (denied) return denied;
   try {
     const id = new URL(request.url).searchParams.get("id")?.trim();
-    if (!id) return Response.json({ error: "缺少要删除的饭局编号" }, { status: 400 });
-    await ensureOrdersSchema();
-    const [order] = await getDb().select().from(orders).where(eq(orders.id, id)).limit(1);
-    if (!order) return Response.json({ error: "没有找到这场饭局" }, { status: 404 });
-    if (order.status !== "done" && order.status !== "cancelled") {
-      return Response.json({ error: "只有已完成或已取消的饭局可以删除" }, { status: 409 });
-    }
-    await ensureDinnerInvitesSchema();
-    let [journal] = await getDb().select({ id: dinnerJournals.id }).from(dinnerJournals).where(eq(dinnerJournals.orderId, order.id)).limit(1);
-    if (!journal && order.inviteId) [journal] = await getDb().select({ id: dinnerJournals.id }).from(dinnerJournals).where(and(eq(dinnerJournals.inviteId, order.inviteId), eq(dinnerJournals.orderId, ""))).limit(1);
-    if (journal) return Response.json({ error: "这场饭局还有餐桌日记，请先在“餐桌日记”中删除日记" }, { status: 409 });
-    await getDb().delete(orders).where(eq(orders.id, id));
-    return Response.json({ ok: true, id });
+    return await mutateOrderForChef({ id, action: "delete-order" });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
   }

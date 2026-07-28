@@ -539,10 +539,10 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const cartItems = allDishes
     .filter((dish) => cart[dish.id])
     .map((dish) => ({ ...dish, quantity: cart[dish.id] }));
-  const activeBanquetTemplate = banquetTemplates.find((template) => template.id === banquetTemplate) || banquetTemplates[0];
-  const selectedBanquetOrder = orders.find((order) => order.id === banquetOrderId);
   const activeOrders = useMemo(() => orders.filter((order) => !isArchivedOrder(order)), [orders]);
   const archivedOrders = useMemo(() => orders.filter(isArchivedOrder), [orders]);
+  const activeBanquetTemplate = banquetTemplates.find((template) => template.id === banquetTemplate) || banquetTemplates[0];
+  const selectedBanquetOrder = activeOrders.find((order) => order.id === banquetOrderId);
   const completedOrders = useMemo(() => orders.filter((order) => order.status === "done"), [orders]);
   const acceptingOrders = useMemo(() => activeOrders.filter((order) => order.status === "new"), [activeOrders]);
   const shoppingOrders = useMemo(() => activeOrders.filter((order) => order.status === "confirmed" || order.status === "shopping"), [activeOrders]);
@@ -591,7 +591,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const composeFromOrder = (orderId: string) => {
     setBanquetOrderId(orderId);
-    const order = orders.find((item) => item.id === orderId);
+    const order = activeOrders.find((item) => item.id === orderId);
     if (!order) {
       setBanquetItems([]);
       return;
@@ -654,7 +654,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
           dishes: banquetDishes.filter((item) => item.course === course.id).map(({ dish }) => ({ name: dish.name, description: dish.description || dish.slogan || "阿德认真准备的一道菜" })),
         })),
       };
-      const response = await fetch("/api/orders", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: selectedBanquetOrder.id, action: "publish-menu", publishedMenu }) });
+      const response = await fetch("/api/orders", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: selectedBanquetOrder.id, action: "publish-menu", publishedMenu }) });
       const data = await response.json() as { order?: Order; error?: string };
       if (!response.ok || !data.order) throw new Error(data.error || "正式菜单推送失败");
       setOrders((current) => current.map((order) => order.id === data.order!.id ? data.order! : order));
@@ -722,7 +722,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       const response = await fetch("/api/orders", { cache: "no-store" });
       const data = await response.json() as { orders?: Order[]; error?: string };
       if (!response.ok) throw new Error(data.error || "订单加载失败");
-      setOrders(data.orders || []);
+      const nextOrders = data.orders || [];
+      setOrders(nextOrders);
+      setBanquetOrderId((current) => current && !nextOrders.some((order) => order.id === current && !isArchivedOrder(order)) ? "" : current);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "订单加载失败");
     } finally {
@@ -1197,13 +1199,15 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       if (promptResult === null) return;
       const progressNote = promptResult.trim() || suggestedNote;
       const response = await fetch("/api/orders", {
-        method: "PATCH",
+        method: "POST",
+        credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id, status, progressNote }),
+        body: JSON.stringify({ id, action: "update-status", status, progressNote }),
       });
       const data = await response.json() as { order?: Order; error?: string };
       if (!response.ok || !data.order) throw new Error(data.error || "更新失败");
       setOrders((current) => current.map((order) => order.id === id ? data.order! : order));
+      if (status === "done" || status === "cancelled") setBanquetOrderId((current) => current === id ? "" : current);
       if (status === "done") setNotice("开饭强提醒已发出，订单已自动归档");
       else if (status === "cancelled") setNotice("取消通知已发出，订单已归档");
       else setNotice("进度已更新，朋友端会弹窗提醒");
@@ -1216,7 +1220,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     if (!isArchivedOrder(order)) return;
     setOrderDeleting(true);
     try {
-      const response = await fetch(`/api/orders?id=${encodeURIComponent(order.id)}`, { method: "DELETE" });
+      const response = await fetch("/api/orders", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: order.id, action: "delete-order" }) });
       const data = await response.json() as { ok?: boolean; error?: string };
       if (!response.ok || !data.ok) throw new Error(data.error || "删除失败");
       setOrders((current) => current.filter((item) => item.id !== order.id));
@@ -1727,10 +1731,10 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             <div className="banquet-step-title"><b>1</b><div><strong>选择这场饭局</strong><small>菜品、人数、日期与客人留言会一起带入</small></div></div>
             <select value={banquetOrderId} onChange={(event) => composeFromOrder(event.target.value)} aria-label="选择朋友的订单">
               <option value="">选择一个订单…</option>
-              {orders.map((order) => <option value={order.id} key={order.id}>{order.customerName} · {order.mealDate} · {parseItems(order).length} 道菜</option>)}
+              {activeOrders.map((order) => <option value={order.id} key={order.id}>{order.customerName} · {order.mealDate} · {parseItems(order).length} 道菜</option>)}
             </select>
             {selectedBanquetOrder && <p className={parsePublishedMenu(selectedBanquetOrder) ? "banquet-publish-state published" : "banquet-publish-state"}><span>{parsePublishedMenu(selectedBanquetOrder) ? "✓" : "○"}</span>{parsePublishedMenu(selectedBanquetOrder) ? `已推送过正式菜单 · ${selectedBanquetOrder.publishedMenuUpdatedAt ? new Date(selectedBanquetOrder.publishedMenuUpdatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "可再次更新"}` : "这份订单还没有收到正式宴席菜单"}</p>}
-            {orders.length === 0 && <p className="banquet-hint">还没有订单，也可以先从下方菜谱库加入菜品，做一张备用菜单。</p>}
+            {activeOrders.length === 0 && <p className="banquet-hint">目前没有进行中的订单，也可以先从下方菜谱库加入菜品，做一张备用菜单。</p>}
           </div>
 
           <div className="banquet-step">
