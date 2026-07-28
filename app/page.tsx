@@ -161,6 +161,20 @@ const banquetCourses: Array<{ id: BanquetCourse; label: string; english: string 
   { id: "soup", label: "汤饮甜品", english: "SOUP & DESSERT" },
 ];
 
+const banquetCourseOrder: Record<BanquetCourse, number> = {
+  starter: 0,
+  main: 1,
+  staple: 2,
+  soup: 3,
+};
+
+function sortBanquetItemsByCourse(items: BanquetItem[]) {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => banquetCourseOrder[left.item.course] - banquetCourseOrder[right.item.course] || left.index - right.index)
+    .map(({ item }) => item);
+}
+
 const banquetTemplates: Array<{ id: BanquetTemplate; name: string; occasion: string; subtitle: string; mark: string; defaultTitle: string; defaultMessage: string }> = [
   { id: "home", name: "温馨家宴", occasion: "亲友小聚", subtitle: "一桌家常味，都是惦念", mark: "家", defaultTitle: "今晚家宴", defaultMessage: "为喜欢的人认真做一桌饭" },
   { id: "romance", name: "二人世界", occasion: "约会 · 纪念日", subtitle: "TONIGHT, JUST FOR US", mark: "♡", defaultTitle: "两个人的晚餐", defaultMessage: "把今晚留给好菜，也留给彼此" },
@@ -512,7 +526,12 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     });
     return groups;
   }, [allDishes, menuCategories]);
-  const recipeLibraryCategories = useMemo(() => Array.from(new Set(customDishes.map((dish) => dish.category))).sort((left, right) => left.localeCompare(right, "zh-CN")), [customDishes]);
+  const recipeLibraryCategories = useMemo(() => {
+    const managedNames = managedCategories.map((category) => category.name);
+    const managedNameSet = new Set(managedNames);
+    const legacyNames = Array.from(new Set(customDishes.map((dish) => dish.category))).filter((name) => !managedNameSet.has(name));
+    return [...managedNames, ...legacyNames];
+  }, [customDishes, managedCategories]);
   const filteredRecipeLibrary = useMemo(() => {
     const query = recipeLibraryQuery.trim().toLocaleLowerCase("zh-CN");
     return customDishes.filter((dish) => {
@@ -597,7 +616,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       return;
     }
     const uniqueIds = Array.from(new Set(parseItems(order).map((item) => item.dishId)));
-    setBanquetItems(uniqueIds.map((dishId) => ({ dishId, course: courseForDish(dishCatalog.find((dish) => dish.id === dishId)) })));
+    setBanquetItems(sortBanquetItemsByCourse(uniqueIds.map((dishId) => ({ dishId, course: courseForDish(dishCatalog.find((dish) => dish.id === dishId)) }))));
     setBanquetTitle(`${order.customerName}的${activeBanquetTemplate.name}`);
     setBanquetDate(order.mealDate);
     setBanquetMessage(order.note ? `今日心意：${order.note}` : `为 ${order.guestCount} 位朋友认真准备的一桌饭`);
@@ -617,22 +636,29 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       return;
     }
     const dish = dishCatalog.find((item) => item.id === banquetDishId);
-    setBanquetItems((current) => [...current, { dishId: banquetDishId, course: courseForDish(dish) }]);
+    setBanquetItems((current) => sortBanquetItemsByCourse([...current, { dishId: banquetDishId, course: courseForDish(dish) }]));
     setBanquetDishId("");
   };
 
   const updateBanquetCourse = (dishId: string, course: BanquetCourse) => {
-    setBanquetItems((current) => current.map((item) => item.dishId === dishId ? { ...item, course } : item));
+    setBanquetItems((current) => sortBanquetItemsByCourse(current.map((item) => item.dishId === dishId ? { ...item, course } : item)));
+    const courseLabel = banquetCourses.find((item) => item.id === course)?.label || "新栏目";
+    setNotice(`已移入${courseLabel}，整桌顺序也替你排好了`);
   };
 
   const moveBanquetDish = (dishId: string, direction: -1 | 1) => {
     setBanquetItems((current) => {
-      const index = current.findIndex((item) => item.dishId === dishId);
-      const target = index + direction;
-      if (index < 0 || target < 0 || target >= current.length) return current;
+      const item = current.find((candidate) => candidate.dishId === dishId);
+      if (!item) return current;
+      const courseDishIds = current.filter((candidate) => candidate.course === item.course).map((candidate) => candidate.dishId);
+      const courseIndex = courseDishIds.indexOf(dishId);
+      const targetDishId = courseDishIds[courseIndex + direction];
+      if (!targetDishId) return current;
+      const index = current.findIndex((candidate) => candidate.dishId === dishId);
+      const target = current.findIndex((candidate) => candidate.dishId === targetDishId);
       const next = [...current];
       [next[index], next[target]] = [next[target], next[index]];
-      return next;
+      return sortBanquetItemsByCourse(next);
     });
   };
 
@@ -1754,9 +1780,22 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
           </div>
 
           <div className="banquet-step">
-            <div className="banquet-step-title"><b>4</b><div><strong>调整菜品和栏目</strong><small>自动分为前菜、热菜、主食与汤饮，也可手动调整</small></div></div>
+            <div className="banquet-step-title"><b>4</b><div><strong>调整菜品和栏目</strong><small>按前菜 → 热菜 → 主食 → 汤饮甜品自动排列，栏目内仍可手动调整</small></div></div>
             <div className="banquet-add-row"><select value={banquetDishId} onChange={(event) => setBanquetDishId(event.target.value)} aria-label="从菜谱库选择菜品"><option value="">从我的菜谱库添加…</option>{dishCatalog.filter((dish) => !banquetItems.some((item) => item.dishId === dish.id)).map((dish) => <option value={dish.id} key={dish.id}>{dish.name} · {dish.category}</option>)}</select><button type="button" onClick={addBanquetDish}>＋ 加入</button></div>
-            {banquetDishes.length === 0 ? <div className="banquet-empty"><span>宴</span><p>选择一个订单，或从菜谱库加入第一道菜。</p></div> : <div className="banquet-arrangement">{banquetDishes.map(({ dish, course }, index) => <article key={dish.id}><span className="arrange-number">{String(index + 1).padStart(2, "0")}</span><div><strong>{dish.name}</strong><small>{dish.flavor} · 约 {dish.minutes} 分钟</small></div><select value={course} onChange={(event) => updateBanquetCourse(dish.id, event.target.value as BanquetCourse)} aria-label={`${dish.name}所属栏目`}>{banquetCourses.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select><div className="arrange-actions"><button type="button" onClick={() => moveBanquetDish(dish.id, -1)} disabled={index === 0} aria-label={`上移${dish.name}`}>↑</button><button type="button" onClick={() => moveBanquetDish(dish.id, 1)} disabled={index === banquetDishes.length - 1} aria-label={`下移${dish.name}`}>↓</button><button type="button" className="remove" onClick={() => setBanquetItems((current) => current.filter((item) => item.dishId !== dish.id))} aria-label={`移除${dish.name}`}>×</button></div></article>)}</div>}
+            {banquetDishes.length === 0 ? <div className="banquet-empty"><span>宴</span><p>选择一个订单，或从菜谱库加入第一道菜。</p></div> : <div className="banquet-arrangement">
+              <p className="banquet-auto-order-note"><span>✓</span>换栏目后会自动归位；上下箭头只调整同一栏目的出菜先后。</p>
+              {banquetCourses.map((banquetCourse) => {
+                const courseDishes = banquetDishes.filter((item) => item.course === banquetCourse.id);
+                if (!courseDishes.length) return null;
+                return <section className="banquet-course-group" key={banquetCourse.id}>
+                  <header><div><strong>{banquetCourse.label}</strong><small>{banquetCourse.english}</small></div><span>{courseDishes.length} 道</span></header>
+                  <div>{courseDishes.map(({ dish, course }, courseIndex) => {
+                    const menuIndex = banquetDishes.findIndex((item) => item.dish.id === dish.id);
+                    return <article key={dish.id}><span className="arrange-number">{String(menuIndex + 1).padStart(2, "0")}</span><div><strong>{dish.name}</strong><small>{dish.flavor} · 约 {dish.minutes} 分钟</small></div><select value={course} onChange={(event) => updateBanquetCourse(dish.id, event.target.value as BanquetCourse)} aria-label={`${dish.name}所属栏目`}>{banquetCourses.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select><div className="arrange-actions"><button type="button" onClick={() => moveBanquetDish(dish.id, -1)} disabled={courseIndex === 0} aria-label={`在${banquetCourse.label}中上移${dish.name}`}>↑</button><button type="button" onClick={() => moveBanquetDish(dish.id, 1)} disabled={courseIndex === courseDishes.length - 1} aria-label={`在${banquetCourse.label}中下移${dish.name}`}>↓</button><button type="button" className="remove" onClick={() => setBanquetItems((current) => current.filter((item) => item.dishId !== dish.id))} aria-label={`移除${dish.name}`}>×</button></div></article>;
+                  })}</div>
+                </section>;
+              })}
+            </div>}
           </div>
         </div>
       </div>
@@ -2123,7 +2162,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 <div className="recipe-bulk-category-bar">
                   <label><input type="checkbox" checked={allFilteredRecipesSelected} onChange={toggleAllFilteredRecipes} disabled={filteredRecipeLibrary.length === 0} /><span>选择当前筛选的 {filteredRecipeLibrary.length} 道</span></label>
                   <strong>已选 {selectedRecipeIds.length} 道</strong>
-                  <select value={bulkCategoryTarget} onChange={(event) => setBulkCategoryTarget(event.target.value)} aria-label="批量加入菜品大类"><option value="">选择目标大类…</option>{managedCategories.map((category) => <option value={category.name} key={`bulk-${category.id}`}>{category.name}</option>)}</select>
+                  <select value={bulkCategoryTarget} onChange={(event) => setBulkCategoryTarget(event.target.value)} aria-label="批量加入菜品大类"><option value="">选择目标大类…</option>{recipeLibraryCategories.map((category) => <option value={category} key={`bulk-${category}`}>{category}</option>)}</select>
                   <button type="button" onClick={moveSelectedRecipesToCategory} disabled={!selectedRecipeIds.length || !bulkCategoryTarget || bulkCategorySaving}>{bulkCategorySaving ? "正在整理…" : "批量加入大类"}</button>
                   {selectedRecipeIds.length > 0 && <button type="button" className="clear" onClick={() => setSelectedRecipeIds([])}>取消选择</button>}
                 </div>

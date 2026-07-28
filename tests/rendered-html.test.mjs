@@ -229,9 +229,17 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(dishRoute, /move === "top"/);
   assert.match(dishRoute, /active DESC, sort_order ASC/);
   assert.match(page, /moveSelectedRecipesToCategory/);
+  assert.match(page, /const managedNames = managedCategories\.map/);
+  assert.match(page, /return \[\.\.\.managedNames, \.\.\.legacyNames\]/);
+  assert.match(page, /recipeLibraryCategories\.map\(\(category\) => <option value=\{category\} key=\{`bulk-/);
   assert.match(page, /菜品排序/);
   assert.match(page, /moveDish/);
   assert.match(page, /dishCategorySelection === "__custom__"/);
+  assert.match(page, /sortBanquetItemsByCourse/);
+  assert.match(page, /banquetCourseOrder/);
+  assert.match(page, /按前菜 → 热菜 → 主食 → 汤饮甜品自动排列/);
+  assert.match(page, /换栏目后会自动归位/);
+  assert.match(globalStyles, /\.banquet-course-group/);
   assert.doesNotMatch(page, /duplicateDish/);
   assert.doesNotMatch(page, />复制<\/button>/);
   assert.match(page, /managed-card-actions\$\{dish\.active \? "" : " archived"\}/);
