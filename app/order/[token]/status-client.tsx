@@ -22,7 +22,7 @@ const statusNotices: Record<string, { mark: string; title: string; description: 
 };
 
 type StatusData = {
-  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; publishedMenuUpdatedAt: string; archivedAt: string; publishedMenu?: { title: string; date: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
+  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; publishedMenuUpdatedAt: string; archivedAt: string; publishedMenu?: { title: string; date: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; guestCount?: number; chefCredit?: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
   invite?: { title: string; message: string; theme: string } | null;
   journal?: { title: string; note: string; imageUrls: string[] } | null;
 };
@@ -125,33 +125,4 @@ export default function OrderStatusClient({ token }: { token: string }) {
         <h2 id="menu-update-title">阿德把正式菜单排好啦</h2>
         <p>{data.order.publishedMenu.message || "今晚吃什么已经认真排好，随时可以回来翻菜单。"}</p>
         <button type="button" onClick={acknowledgeMenuUpdate}>打开今晚菜单</button>
-        <small>菜单之后有调整，也会在这里自动更新</small>
-      </section>
-    </div>}
-    <section className="status-card">
-      <section className="status-thanks-hero" aria-label="主厨感谢">
-        <Image src="/chef-serving-wide.jpg" width={2200} height={1236} alt="阿德主厨端上为朋友认真准备的菜" priority />
-        <div><strong><i>谢谢你</i><i>来吃饭</i></strong></div>
-        <p className="status-thanks-note">你点喜欢的，我认真做。</p>
-      </section>
-      <span>PRIVATE DINNER · 实时进度</span>
-      <h1>{data.invite?.title || `${data.order.customerName}的这顿饭`}</h1>
-      <p>{data.invite?.message || "慢慢等，好好吃，厨房正在认真准备。"}</p>
-      <div className="status-live"><span><i />实时同步中</span><small>{updatedAt ? `最近更新 ${updatedAt.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "正在获取最新状态"} · 每 15 秒自动更新 · 新进度弹窗提醒</small></div>
-      {error && <div className="status-sync-warning">这次同步没有成功：{error}。已有进度仍然保留，可以稍后重试。</div>}
-      <div className="status-meta"><strong>{data.order.mealDate}</strong><small>{data.order.guestCount} 位 · {data.order.dishSnapshot.length} 道菜</small></div>
-      {data.order.status === "cancelled" ? <div className="status-cancelled">这场饭局暂时取消了，等我们下次再好好约。</div> : <ol className="status-timeline">{stages.map((stage, index) => <li className={index <= activeIndex ? "active" : ""} key={stage.id}><i>{index < activeIndex ? "✓" : index + 1}</i><div><strong>{stage.label}</strong><small>{stage.note}</small></div></li>)}</ol>}
-      {data.order.progressNote && <blockquote>“{data.order.progressNote}”<small>— 主厨留言</small></blockquote>}
-      {data.order.publishedMenu && <section id="published-menu" className={`banquet-preview guest-published-menu template-${data.order.publishedMenu.template}`}>
-        <div className="menu-card-ornament" aria-hidden="true"><span>{templateMarks[data.order.publishedMenu.template] || "宴"}</span></div>
-        <div className="menu-card-header"><small>{data.order.publishedMenu.subtitle || "CHEF'S PRIVATE MENU"}</small><h2>{data.order.publishedMenu.title}</h2><p>{data.order.publishedMenu.templateName || "阿德私房菜单"}</p><div><span>{data.order.publishedMenu.date || data.order.mealDate}</span><span>{data.order.publishedMenu.occasion || "今晚相聚"}</span><span>{data.order.guestCount} 位宾客</span></div></div>
-        <div className="menu-card-courses">{data.order.publishedMenu.courses.map((course) => course.dishes.length ? <section key={course.id}><h3><span>{course.label}</span><small>{course.english}</small></h3><div>{course.dishes.map((dish, index) => <article key={`${course.id}-${dish.name}-${index}`}><strong>{dish.name}</strong><span>{dish.description}</span></article>)}</div></section> : null)}</div>
-        <div className="menu-card-footer"><span>—</span><p>{data.order.publishedMenu.message}</p><small>CHEF&apos;S TABLE · 阿德私房呈献</small></div>
-        <div className="guest-menu-updated">菜单会随主厨调整自动更新 · {data.order.publishedMenuUpdatedAt ? new Date(data.order.publishedMenuUpdatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "刚刚送达"}</div>
-      </section>}
-      {!data.order.publishedMenu && <div className="status-dishes"><small>今晚菜单</small><p>{data.order.dishSnapshot.map((dish) => dish.name).join(" · ")}</p><span>主厨排好正式菜单后，会在这里自动替换成完整菜单卡。</span></div>}
-      {data.journal && <section className="guest-journal"><span>AFTER DINNER</span><h2>{data.journal.title}</h2><p>{data.journal.note}</p>{data.journal.imageUrls.length > 0 && <div>{data.journal.imageUrls.map((url, index) => <img src={url} alt={`饭局照片 ${index + 1}`} key={url} />)}</div>}</section>}
-      <button onClick={() => void load()} disabled={refreshing}>{refreshing ? "正在同步厨房进度…" : "立即刷新厨房进度"}</button>
-    </section>
-  </main>;
-}
+        <sma
