@@ -22,7 +22,7 @@ const statusNotices: Record<string, { mark: string; title: string; description: 
 };
 
 type StatusData = {
-  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; publishedMenuUpdatedAt: string; archivedAt: string; publishedMenu?: { title: string; date: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
+  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; publishedMenuUpdatedAt: string; archivedAt: string; publishedMenu?: { title: string; date: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; guestCount?: number; chefCredit?: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
   invite?: { title: string; message: string; theme: string } | null;
   journal?: { title: string; note: string; imageUrls: string[] } | null;
 };
@@ -144,9 +144,9 @@ export default function OrderStatusClient({ token }: { token: string }) {
       {data.order.progressNote && <blockquote>“{data.order.progressNote}”<small>— 主厨留言</small></blockquote>}
       {data.order.publishedMenu && <section id="published-menu" className={`banquet-preview guest-published-menu template-${data.order.publishedMenu.template}`}>
         <div className="menu-card-ornament" aria-hidden="true"><span>{templateMarks[data.order.publishedMenu.template] || "宴"}</span></div>
-        <div className="menu-card-header"><small>{data.order.publishedMenu.subtitle || "CHEF'S PRIVATE MENU"}</small><h2>{data.order.publishedMenu.title}</h2><p>{data.order.publishedMenu.templateName || "阿德私房菜单"}</p><div><span>{data.order.publishedMenu.date || data.order.mealDate}</span><span>{data.order.publishedMenu.occasion || "今晚相聚"}</span><span>{data.order.guestCount} 位宾客</span></div></div>
+        <div className="menu-card-header"><small>{data.order.publishedMenu.subtitle || "CHEF'S PRIVATE MENU"}</small><h2>{data.order.publishedMenu.title}</h2><p>{data.order.publishedMenu.templateName || "阿德私房菜单"}</p><div><span>{data.order.publishedMenu.date || data.order.mealDate}</span><span>{data.order.publishedMenu.occasion || "今晚相聚"}</span><span>{data.order.publishedMenu.guestCount || data.order.guestCount} 位宾客</span></div></div>
         <div className="menu-card-courses">{data.order.publishedMenu.courses.map((course) => course.dishes.length ? <section key={course.id}><h3><span>{course.label}</span><small>{course.english}</small></h3><div>{course.dishes.map((dish, index) => <article key={`${course.id}-${dish.name}-${index}`}><strong>{dish.name}</strong><span>{dish.description}</span></article>)}</div></section> : null)}</div>
-        <div className="menu-card-footer"><span>—</span><p>{data.order.publishedMenu.message}</p><small>CHEF&apos;S TABLE · 阿德私房呈献</small></div>
+        <div className="menu-card-footer"><span>—</span><p>{data.order.publishedMenu.message}</p><small>{data.order.publishedMenu.chefCredit || "CHEF'S TABLE · 阿德私房呈献"}</small></div>
         <div className="guest-menu-updated">菜单会随主厨调整自动更新 · {data.order.publishedMenuUpdatedAt ? new Date(data.order.publishedMenuUpdatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "刚刚送达"}</div>
       </section>}
       {!data.order.publishedMenu && <div className="status-dishes"><small>今晚菜单</small><p>{data.order.dishSnapshot.map((dish) => dish.name).join(" · ")}</p><span>主厨排好正式菜单后，会在这里自动替换成完整菜单卡。</span></div>}
