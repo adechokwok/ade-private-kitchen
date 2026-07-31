@@ -19,6 +19,7 @@ function normalizePublishedMenu(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("正式菜单内容不完整");
   const menu = value as Record<string, unknown>;
   const text = (key: string, maximum: number) => typeof menu[key] === "string" ? menu[key].trim().slice(0, maximum) : "";
+  const guestCount = typeof menu.guestCount === "number" && Number.isInteger(menu.guestCount) ? Math.min(20, Math.max(1, menu.guestCount)) : undefined;
   const template = text("template", 20);
   if (!validMenuTemplates.has(template)) throw new Error("请选择有效的宴席模板");
   const rawCourses = Array.isArray(menu.courses) ? menu.courses : [];
@@ -49,6 +50,8 @@ function normalizePublishedMenu(value: unknown) {
     templateName: text("templateName", 24),
     subtitle: text("subtitle", 60),
     occasion: text("occasion", 32),
+    ...(guestCount ? { guestCount } : {}),
+    chefCredit: text("chefCredit", 50),
     courses,
   };
 }
