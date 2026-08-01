@@ -1086,7 +1086,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         const dish = dishCatalog.find((candidate) => candidate.id === item.dishId);
         const dishName = snapshot?.name || dish?.name || "历史菜品";
         const ingredients = snapshot?.ingredients?.length ? snapshot.ingredients : dish?.ingredients || [];
-        const scale = (order.guestCount / (snapshot?.baseServings || dish?.baseServings || 4)) * item.quantity;
+        // 制作台沿用菜谱原始分量；订单人数只用于饭局信息，不参与用料换算。
+        const scale = Math.max(1, item.quantity);
         ingredients.forEach((ingredient) => {
           const name = normalizedIngredientName(ingredient.name);
           const key = `${name}-${ingredient.unit}`;
@@ -2198,18 +2199,18 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                     const dish = dishCatalog.find((candidate) => candidate.id === item.dishId);
                     const ingredients = snapshot?.ingredients?.length ? snapshot.ingredients : dish?.ingredients || [];
                     const steps = snapshot?.steps?.length ? snapshot.steps : dish?.steps || [];
-                    const baseServings = snapshot?.baseServings || dish?.baseServings || 4;
-                    const scale = (order.guestCount / baseServings) * item.quantity;
+                    // 每道菜严格按菜谱记录的原始分量制作，不按订单人数放大或缩小。
+                    const scale = Math.max(1, item.quantity);
                     const checkPrefix = `${order.id}:${item.dishId}`;
                     const completedSteps = steps.filter((_, index) => cookingChecks[`${checkPrefix}:${index}`]).length;
                     const schedule = cookingSchedule.find((entry) => entry.key === checkPrefix);
                     const timerDeadline = dishTimers[checkPrefix];
                     const timerRemaining = timerDeadline ? timerDeadline - timerNow : 0;
                     return <section className="cooking-dish-card" key={`${order.id}-${item.dishId}`}>
-                      <div className="cooking-dish-head"><span>{String(dishIndex + 1).padStart(2, "0")}</span><div><h4>{snapshot?.name || dish?.name || "历史菜品"}</h4><p>{item.quantity} 份 · 按 {order.guestCount} 人换算 · 约 {snapshot?.minutes || dish?.minutes || 30} 分钟</p></div><strong>{completedSteps}/{steps.length || 0} 步</strong></div>
+                      <div className="cooking-dish-head"><span>{String(dishIndex + 1).padStart(2, "0")}</span><div><h4>{snapshot?.name || dish?.name || "历史菜品"}</h4><p>{item.quantity} 份 · 按菜谱原始分量 · 约 {snapshot?.minutes || dish?.minutes || 30} 分钟</p></div><strong>{completedSteps}/{steps.length || 0} 步</strong></div>
                       {(snapshot?.recipeSummary || dish?.recipeSummary) && <p className="cooking-recipe-summary">{snapshot?.recipeSummary || dish?.recipeSummary}</p>}
                       <div className={`dish-timer${timerDeadline ? timerRemaining <= 0 ? " finished" : " running" : ""}`}><div><small>{schedule ? `建议 ${schedule.startTime} 开火` : "单菜计时器"}</small><strong>{timerDeadline ? timerRemaining > 0 ? formatCountdown(timerRemaining) : "时间到" : `${snapshot?.minutes || dish?.minutes || 30}:00`}</strong></div>{timerDeadline ? <button onClick={() => stopDishTimer(checkPrefix)}>{timerRemaining > 0 ? "停止计时" : "关闭提醒"}</button> : <button onClick={() => startDishTimer(checkPrefix, snapshot?.minutes || dish?.minutes || 30)}>开始计时</button>}</div>
-                      <div className="cooking-recipe-grid"><section><div className="cooking-section-title"><b>本单用料</b><small>已自动换算</small></div>{ingredients.length ? <ul>{ingredients.map((ingredient) => <li key={`${item.dishId}-${ingredient.name}-${ingredient.unit}`}><span>{ingredient.name}</span><strong>{formatAmount(ingredient.amount * scale, ingredient.unit)}</strong></li>)}</ul> : <p className="cooking-missing">暂时没有记录用料。</p>}</section><section><div className="cooking-section-title"><b>具体做法</b><small>做完可勾选</small></div>{steps.length ? <ol>{steps.map((step, index) => { const checkKey = `${checkPrefix}:${index}`; return <li className={cookingChecks[checkKey] ? "checked" : ""} key={checkKey}><label><input type="checkbox" checked={Boolean(cookingChecks[checkKey])} onChange={(event) => setCookingStepChecked(checkKey, event.target.checked)} /><i>{index + 1}</i><span>{step}</span></label></li>; })}</ol> : <p className="cooking-missing">这道菜还没有记录步骤，可在“菜单管理”中补充。</p>}</section></div>
+                      <div className="cooking-recipe-grid"><section><div className="cooking-section-title"><b>本单用料</b><small>菜谱原始分量</small></div>{ingredients.length ? <ul>{ingredients.map((ingredient) => <li key={`${item.dishId}-${ingredient.name}-${ingredient.unit}`}><span>{ingredient.name}</span><strong>{formatAmount(ingredient.amount * scale, ingredient.unit)}</strong></li>)}</ul> : <p className="cooking-missing">暂时没有记录用料。</p>}</section><section><div className="cooking-section-title"><b>具体做法</b><small>做完可勾选</small></div>{steps.length ? <ol>{steps.map((step, index) => { const checkKey = `${checkPrefix}:${index}`; return <li className={cookingChecks[checkKey] ? "checked" : ""} key={checkKey}><label><input type="checkbox" checked={Boolean(cookingChecks[checkKey])} onChange={(event) => setCookingStepChecked(checkKey, event.target.checked)} /><i>{index + 1}</i><span>{step}</span></label></li>; })}</ol> : <p className="cooking-missing">这道菜还没有记录步骤，可在“菜单管理”中补充。</p>}</section></div>
                       <footer>{(snapshot?.difficulty || dish?.difficulty) && <span>难度：{snapshot?.difficulty || dish?.difficulty}</span>}{(snapshot?.source || dish?.source) && <span>来源：{snapshot?.source || dish?.source}</span>}{dish?.gallery?.length ? <span>{dish.gallery.length} 张过程图可参考</span> : null}</footer>
                     </section>;
                   })}</div>
@@ -2362,7 +2363,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                     <label className="category-edit-field"><span>菜品类型 *</span><select value={dishCategorySelection} onChange={(event) => { setDishCategorySelection(event.target.value); if (event.target.value !== "__custom__") setCustomDishCategory(""); }} required><option value="">请从已有类型中选择</option>{managedCategories.map((category) => <option value={category.name} key={`dish-form-${category.id}`}>{category.emoji || categoryEmoji[category.name] || "•"} {category.name}</option>)}<option value="__custom__">＋ 自定义新类型</option></select>{dishCategorySelection === "__custom__" && <input value={customDishCategory} onChange={(event) => setCustomDishCategory(event.target.value)} required maxLength={30} placeholder="输入新类型，例如：烧烤" aria-label="自定义菜品类型" />}<input type="hidden" name="category" value={dishCategorySelection === "__custom__" ? customDishCategory : dishCategorySelection} /><small>{dishCategorySelection === "__custom__" ? "保存后，这个新类型会自动加入上方类型管理。" : "只有选择“自定义新类型”后，才可以输入新的类型。"}</small></label>
                     <label><span>口味标签</span><input name="flavor" maxLength={30} placeholder="例如：酸甜 · 不辣" /></label>
                     <label><span>预计烹饪时间</span><div className="input-suffix"><input name="minutes" type="number" min="5" max="360" defaultValue="30" required /><b>分钟</b></div></label>
-                    <label><span>这份菜谱适合几人</span><div className="input-suffix"><input name="baseServings" type="number" min="1" max="20" defaultValue="4" required /><b>人</b></div><small>只用于后台换算采购量，朋友端不会显示。</small></label>
+                    <label><span>原始配方参考几人</span><div className="input-suffix"><input name="baseServings" type="number" min="1" max="20" defaultValue="4" required /><b>人</b></div><small>仅记录菜谱原始分量的参考人数，不会按订单人数调整用料。</small></label>
                     <label><span>菜谱来源</span><input name="source" maxLength={80} placeholder="例如：食遇日记 · 村驴" /></label>
                     <label><span>操作难度</span><select name="difficulty" defaultValue="适中"><option>简单</option><option>适中</option><option>进阶</option></select></label>
                   </div>
