@@ -22,10 +22,11 @@ const statusNotices: Record<string, { mark: string; title: string; description: 
 };
 
 type StatusData = {
-  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; publishedMenuUpdatedAt: string; archivedAt: string; publishedMenu?: { title: string; date: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; guestCount?: number; chefCredit?: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
+  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; statusReadAt: string; publishedMenuUpdatedAt: string; menuReadAt: string; archivedAt: string; publishedMenu?: { title: string; date: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; guestCount?: number; chefCredit?: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
   invite?: { title: string; message: string; theme: string } | null;
   journal?: { title: string; note: string; imageUrls: string[] } | null;
 };
+type PendingReadReceipt = { action: "read-status" | "read-menu"; updateKey: string };
 
 const templateMarks: Record<string, string> = { home: "家", romance: "♡", fine: "FD", spring: "春", midautumn: "月", birthday: "★", housewarming: "宅", summer: "夏", christmas: "✦", brunch: "☀" };
 
@@ -34,6 +35,8 @@ export default function OrderStatusClient({ token }: { token: string }) {
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [readSyncError, setReadSyncError] = useState("");
+  const [pendingRead, setPendingRead] = useState<PendingReadReceipt | null>(null);
   const [dismissedUpdate, setDismissedUpdate] = useState(() => {
     if (typeof window === "undefined") return "";
     try { return window.localStorage.getItem(`ade-order-update:${token}`) || ""; } catch { return ""; }
@@ -59,6 +62,11 @@ export default function OrderStatusClient({ token }: { token: string }) {
     }
   }, [token]);
 
+  const sendReadReceipt = useCallback(async (receipt: PendingReadReceipt) => {
+    const response = await fetch(`/api/order-status/${token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(receipt) });
+    if (!response.ok) throw new Error("read receipt failed");
+  }, [token]);
+
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void load(), 0);
     const timer = window.setInterval(() => void load(), 15000);
@@ -69,6 +77,17 @@ export default function OrderStatusClient({ token }: { token: string }) {
   }, [load]);
 
   useEffect(() => {
+    if (!pendingRead) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void sendReadReceipt(pendingRead).then(() => {
+        if (active) { setPendingRead(null); setReadSyncError(""); }
+      }).catch(() => { if (active) setPendingRead(null); });
+    }, 15000);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [pendingRead, sendReadReceipt]);
+
+  useEffect(() => {
     try {
       if (data?.order.archivedAt) window.localStorage.removeItem(activeGuestOrderStorageKey);
       else window.localStorage.setItem(activeGuestOrderStorageKey, token);
@@ -77,9 +96,9 @@ export default function OrderStatusClient({ token }: { token: string }) {
   const currentUpdateKey = data?.order.statusUpdatedAt || "";
   const currentStatus = data?.order.status || "";
   const currentNotice = currentStatus ? statusNotices[currentStatus] : undefined;
-  const showUpdateAlert = Boolean(currentNotice && currentUpdateKey && dismissedUpdate !== currentUpdateKey);
+  const showUpdateAlert = Boolean(currentNotice && currentUpdateKey && dismissedUpdate !== currentUpdateKey && data?.order.statusReadAt !== currentUpdateKey);
   const currentMenuUpdateKey = data?.order.publishedMenuUpdatedAt || "";
-  const showMenuAlert = Boolean(!showUpdateAlert && data?.order.publishedMenu && currentMenuUpdateKey && dismissedMenuUpdate !== currentMenuUpdateKey);
+  const showMenuAlert = Boolean(!showUpdateAlert && data?.order.publishedMenu && currentMenuUpdateKey && dismissedMenuUpdate !== currentMenuUpdateKey && data.order.menuReadAt !== currentMenuUpdateKey);
 
   useEffect(() => {
     if ((!showUpdateAlert || !currentStatus) && !showMenuAlert) return;
@@ -91,17 +110,31 @@ export default function OrderStatusClient({ token }: { token: string }) {
     return () => { window.clearTimeout(timer); document.title = previousTitle; };
   }, [showUpdateAlert, showMenuAlert, currentUpdateKey, currentMenuUpdateKey, currentStatus]);
 
-  const acknowledgeUpdate = () => {
+  const acknowledgeUpdate = async () => {
     if (!currentUpdateKey) return;
+    setReadSyncError("");
     try { window.localStorage.setItem(`ade-order-update:${token}`, currentUpdateKey); } catch { /* 无痕模式下仍可在本次访问关闭 */ }
     setDismissedUpdate(currentUpdateKey);
+    try {
+      await sendReadReceipt({ action: "read-status", updateKey: currentUpdateKey });
+    } catch {
+      setPendingRead({ action: "read-status", updateKey: currentUpdateKey });
+      setReadSyncError("提醒已在本机确认，但主厨端暂时没有收到已读回执；保持页面打开会自动重试同步。 ");
+    }
   };
 
-  const acknowledgeMenuUpdate = () => {
+  const acknowledgeMenuUpdate = async () => {
     if (!currentMenuUpdateKey) return;
+    setReadSyncError("");
     try { window.localStorage.setItem(`ade-order-menu-update:${token}`, currentMenuUpdateKey); } catch { /* 无痕模式下仍可在本次访问关闭 */ }
     setDismissedMenuUpdate(currentMenuUpdateKey);
     window.setTimeout(() => document.getElementById("published-menu")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+    try {
+      await sendReadReceipt({ action: "read-menu", updateKey: currentMenuUpdateKey });
+    } catch {
+      setPendingRead({ action: "read-menu", updateKey: currentMenuUpdateKey });
+      setReadSyncError("菜单已在本机打开，但主厨端暂时没有收到已读回执；保持页面打开会自动重试同步。 ");
+    }
   };
 
   if (error && !data) return <main className="status-page"><section className="status-card"><span>阿德小厨房</span><h1>这张进度卡走丢了</h1><p>{error}</p><button onClick={() => void load()} disabled={refreshing}>{refreshing ? "正在重试…" : "重新加载进度"}</button><Link href="/">回到点菜页</Link></section></main>;
@@ -139,6 +172,7 @@ export default function OrderStatusClient({ token }: { token: string }) {
       <p>{data.invite?.message || "慢慢等，好好吃，厨房正在认真准备。"}</p>
       <div className="status-live"><span><i />实时同步中</span><small>{updatedAt ? `最近更新 ${updatedAt.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "正在获取最新状态"} · 每 15 秒自动更新 · 新进度弹窗提醒</small></div>
       {error && <div className="status-sync-warning">这次同步没有成功：{error}。已有进度仍然保留，可以稍后重试。</div>}
+      {readSyncError && <div className="status-sync-warning">{readSyncError}</div>}
       <div className="status-meta"><strong>{data.order.mealDate}</strong><small>{data.order.guestCount} 位 · {data.order.dishSnapshot.length} 道菜</small></div>
       {data.order.status === "cancelled" ? <div className="status-cancelled">这场饭局暂时取消了，等我们下次再好好约。</div> : <ol className="status-timeline">{stages.map((stage, index) => <li className={index <= activeIndex ? "active" : ""} key={stage.id}><i>{index < activeIndex ? "✓" : index + 1}</i><div><strong>{stage.label}</strong><small>{stage.note}</small></div></li>)}</ol>}
       {data.order.progressNote && <blockquote>“{data.order.progressNote}”<small>— 主厨留言</small></blockquote>}
