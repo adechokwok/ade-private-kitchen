@@ -128,6 +128,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /目前没有进行中的订单/);
   assert.match(page, /action: "update-status"/);
   assert.match(page, /action: "delete-order"/);
+  assert.doesNotMatch(page, /ingredient\.amount \* scale/);
+  assert.doesNotMatch(page, /const scale = Math\.max\(1, item\.quantity\)/);
   assert.match(page, /method: "POST", credentials: "same-origin"/);
   assert.match(globalStyles, /\.status-actions button\.delete-order/);
   assert.match(globalStyles, /\.status-actions button\.archive-confirm/);
@@ -265,7 +267,12 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(pantryRoute, /pantryItems/);
   assert.match(inviteRoute, /recommendedDishIds/);
   assert.match(orderStatusRoute, /progressNote/);
+  assert.match(orderStatusRoute, /export async function POST/);
+  assert.match(orderStatusRoute, /read-status/);
+  assert.match(orderStatusRoute, /read-menu/);
   assert.match(ordersRoute, /statusUpdatedAt/);
+  assert.match(ordersRoute, /statusReadAt/);
+  assert.match(ordersRoute, /menuReadAt/);
   assert.match(ordersRoute, /action === "publish-menu"/);
   assert.match(ordersRoute, /action === "update-status"/);
   assert.match(ordersRoute, /action === "archive-order"/);
@@ -273,11 +280,15 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(ordersRoute, /已开饭或已归档的饭局不能再推送菜单/);
   assert.match(ordersRoute, /publishedMenuUpdatedAt/);
   assert.match(schema, /publishedMenu: text\("published_menu"\)/);
+  assert.match(schema, /statusReadAt: text\("status_read_at"\)/);
+  assert.match(schema, /menuReadAt: text\("menu_read_at"\)/);
   assert.match(schema, /archivedAt: text\("archived_at"\)/);
   assert.match(database, /addColumn\("orders", columns, "published_menu"/);
   assert.match(database, /addColumn\("orders", columns, "archived_at"/);
   assert.match(database, /WHERE status IN \('done', 'cancelled'\)/);
   assert.match(statusClient, /status-update-modal/);
+  assert.match(statusClient, /statusReadAt !== currentUpdateKey/);
+  assert.match(statusClient, /menuReadAt !== currentMenuUpdateKey/);
   for (const emoji of ["🥰", "🛒", "🔥", "😋", "🥺", "📜"]) assert.match(statusClient, new RegExp(emoji, "u"));
   assert.match(globalStyles, /Apple Color Emoji/);
   assert.match(statusClient, /guest-published-menu/);
