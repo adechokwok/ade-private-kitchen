@@ -23,8 +23,10 @@ type Order = {
   guestToken: string;
   progressNote: string;
   statusUpdatedAt: string;
+  statusReadAt: string;
   publishedMenu: string;
   publishedMenuUpdatedAt: string;
+  menuReadAt: string;
   archivedAt: string;
   status: "new" | "confirmed" | "shopping" | "preparing" | "done" | "cancelled";
   createdAt: string;
@@ -75,6 +77,7 @@ type BanquetCourse = "starter" | "main" | "staple" | "soup";
 type BanquetItem = { dishId: string; course: BanquetCourse };
 type BanquetTemplate = "home" | "romance" | "fine" | "spring" | "midautumn" | "birthday" | "housewarming" | "summer" | "christmas" | "brunch";
 type ChefView = "accepting" | "shopping" | "cooking" | "serving" | "menuManager" | "invitations" | "journals";
+type StatusUpdateDraft = { orderId: string; status: Order["status"]; note: string };
 
 const acceptedImageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const acceptedImageInputTypes = "image/jpeg,image/png,image/webp,image/gif";
@@ -193,6 +196,9 @@ const banquetTemplates: Array<{ id: BanquetTemplate; name: string; occasion: str
 const statusLabel = { new: "待确认", confirmed: "已确认", shopping: "买菜中", preparing: "制作中", done: "已开饭", cancelled: "已取消" };
 const cookingStages: Array<{ id: Order["status"]; label: string }> = [{ id: "confirmed", label: "接单" }, { id: "shopping", label: "买菜" }, { id: "preparing", label: "制作" }, { id: "done", label: "开饭" }];
 const statusProgressIndex: Record<Order["status"], number> = { new: -1, confirmed: 0, shopping: 1, preparing: 2, done: 3, cancelled: -1 };
+const statusUpdateNotes: Partial<Record<Order["status"], string>> = { confirmed: "饭局确认好啦，我会按时准备。", shopping: "正在挑新鲜食材，等你带着好胃口来。", preparing: "厨房已经开火，香味正在慢慢冒出来。", done: "开饭啦，今晚要吃得开心。", cancelled: "这场饭局先暂停，等我们下次再好好约。" };
+const statusUpdateActionLabel: Partial<Record<Order["status"], string>> = { confirmed: "确认接单", shopping: "开始买菜", preparing: "开始制作", done: "通知开饭", cancelled: "发送取消通知" };
+const statusUpdateSuccessNotice: Partial<Record<Order["status"], string>> = { confirmed: "已确认接单，朋友端已收到进度提醒", shopping: "已开始买菜，朋友端已收到进度提醒", preparing: "已开始制作，朋友端已收到进度提醒" };
 const isArchivedOrder = (order: Order) => Boolean(order.archivedAt);
 const isActiveKitchenOrder = (order: Order) => !isArchivedOrder(order) && order.status !== "done" && order.status !== "cancelled";
 const categoryEmoji: Record<string, string> = {
@@ -479,6 +485,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [dishTimers, setDishTimers] = useState<Record<string, number>>({});
   const [timerNow, setTimerNow] = useState(() => Date.now());
   const [notice, setNotice] = useState("");
+  const [statusUpdateDraft, setStatusUpdateDraft] = useState<StatusUpdateDraft | null>(null);
+  const [statusUpdating, setStatusUpdating] = useState(false);
   const [kitchenOpen, setKitchenOpen] = useState(true);
   const [kitchenStatusSaving, setKitchenStatusSaving] = useState(false);
   const [imageLightboxAspect, setImageLightboxAspect] = useState(1.48);
@@ -1045,8 +1053,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         const dish = dishCatalog.find((candidate) => candidate.id === item.dishId);
         const dishName = snapshot?.name || dish?.name || "历史菜品";
         const ingredients = snapshot?.ingredients || dish?.ingredients || [];
-        // 采购按每道菜的原始配方分量显示；不再按订单人数换算。
-        const scale = Math.max(1, item.quantity);
+        // 采购永远按每道菜的原始配方分量显示，不按人数或点菜数量换算。
         ingredients.forEach((ingredient) => {
           const name = normalizedIngredientName(ingredient.name);
           const key = `${item.dishId || dishName}::${name}::${ingredient.unit}`;
@@ -1058,7 +1065,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             name,
             location: shoppingLocation(ingredient.type),
             stockUsed: 0,
-            amount: (current?.amount || 0) + ingredient.amount * scale,
+            amount: (current?.amount || 0) + ingredient.amount,
           });
         });
       });
@@ -1086,13 +1093,12 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         const dish = dishCatalog.find((candidate) => candidate.id === item.dishId);
         const dishName = snapshot?.name || dish?.name || "历史菜品";
         const ingredients = snapshot?.ingredients?.length ? snapshot.ingredients : dish?.ingredients || [];
-        // 制作台沿用菜谱原始分量；订单人数只用于饭局信息，不参与用料换算。
-        const scale = Math.max(1, item.quantity);
+        // 制作台永远沿用菜谱原始分量；订单人数和点菜数量都不参与用料换算。
         ingredients.forEach((ingredient) => {
           const name = normalizedIngredientName(ingredient.name);
           const key = `${name}-${ingredient.unit}`;
           const current = merged.get(key) || { key, name, amount: 0, unit: ingredient.unit, type: ingredient.type, action: prepActionForIngredient(ingredient.type, name), dishes: new Set<string>() };
-          current.amount += ingredient.amount * scale;
+          current.amount += ingredient.amount;
           current.dishes.add(dishName);
           merged.set(key, current);
         });
@@ -1343,14 +1349,19 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     }
   };
 
-  const updateOrderStatus = async (id: string, status: Order["status"]) => {
+  const updateOrderStatus = (id: string, status: Order["status"]) => {
+    const order = orders.find((item) => item.id === id);
+    if (!order || !statusUpdateActionLabel[status]) return;
+    setStatusUpdateDraft({ orderId: id, status, note: statusUpdateNotes[status] || "" });
+  };
+
+  const submitOrderStatusUpdate = async () => {
+    if (!statusUpdateDraft || statusUpdating) return;
+    const { orderId: id, status, note } = statusUpdateDraft;
+    let sent = false;
+    setStatusUpdating(true);
     try {
-      const defaultNotes: Partial<Record<Order["status"], string>> = { confirmed: "饭局确认好啦，我会按时准备。", shopping: "正在挑新鲜食材，等你带着好胃口来。", preparing: "厨房已经开火，香味正在慢慢冒出来。", done: "开饭啦，愿今晚吃得开心。" };
-      if (status === "done" && !window.confirm("确认通知开饭？朋友的进度页会弹出全屏强提醒，这场饭会继续保留，直到你稍后确认归档。")) return;
-      const suggestedNote = defaultNotes[status] || (status === "cancelled" ? "这场饭局先暂停，等我们下次再好好约。" : "");
-      const promptResult = window.prompt(status === "done" ? "填写开饭强提醒内容（可直接确认默认内容）" : "填写朋友端弹窗提醒内容（可直接确认默认内容）", suggestedNote);
-      if (promptResult === null) return;
-      const progressNote = promptResult.trim() || suggestedNote;
+      const progressNote = note.trim() || statusUpdateNotes[status] || "";
       const response = await fetch("/api/orders", {
         method: "POST",
         credentials: "same-origin",
@@ -1363,9 +1374,13 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       if (status === "done" || status === "cancelled") setBanquetOrderId((current) => current === id ? "" : current);
       if (status === "done") setNotice("开饭强提醒已发出；饭局会保留在“待确认归档”中");
       else if (status === "cancelled") setNotice("取消通知已发出，订单已归档");
-      else setNotice("进度已更新，朋友端会弹窗提醒");
+      else setNotice(statusUpdateSuccessNotice[status] || "进度已更新，朋友端会弹窗提醒");
+      sent = true;
     } catch {
       setNotice("状态更新失败，请稍后重试");
+    } finally {
+      setStatusUpdating(false);
+      if (sent) setStatusUpdateDraft(null);
     }
   };
 
@@ -1428,6 +1443,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       </div>
       {order.note && <p className="order-note">“{order.note}”</p>}
       {order.progressNote && <p className="order-progress-note"><span>最近通知</span>{order.progressNote}</p>}
+      {order.statusUpdatedAt && <p className={`order-progress-read${order.statusReadAt === order.statusUpdatedAt ? " read" : ""}`}><span>{order.statusReadAt === order.statusUpdatedAt ? "✓ 朋友已读" : "○ 等待朋友确认"}</span>{order.statusReadAt === order.statusUpdatedAt ? "提醒已确认" : "朋友打开进度页后会在这里显示"}</p>}
       <div className="status-actions">
         {!archived && order.status === "new" && <button onClick={() => updateOrderStatus(order.id, "confirmed")}>确认接单</button>}
         {!archived && order.status === "confirmed" && <button onClick={() => updateOrderStatus(order.id, "shopping")}>开始买菜</button>}
@@ -1911,7 +1927,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               {activeOrders.map((order) => <option value={order.id} key={order.id}>{order.customerName} · {order.mealDate} · {parseItems(order).length} 道菜</option>)}
             </select>
             <button type="button" className="quiet banquet-free-menu-button" onClick={startFreeBanquet}>＋ 新建自由菜单</button>
-            {selectedBanquetOrder && <p className={parsePublishedMenu(selectedBanquetOrder) ? "banquet-publish-state published" : "banquet-publish-state"}><span>{parsePublishedMenu(selectedBanquetOrder) ? "✓" : "○"}</span>{parsePublishedMenu(selectedBanquetOrder) ? `已推送过正式菜单 · ${selectedBanquetOrder.publishedMenuUpdatedAt ? new Date(selectedBanquetOrder.publishedMenuUpdatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "可再次更新"}` : "这份订单还没有收到正式宴席菜单"}</p>}
+            {selectedBanquetOrder && <p className={parsePublishedMenu(selectedBanquetOrder) ? "banquet-publish-state published" : "banquet-publish-state"}><span>{parsePublishedMenu(selectedBanquetOrder) ? "✓" : "○"}</span>{parsePublishedMenu(selectedBanquetOrder) ? <>{`已推送过正式菜单 · ${selectedBanquetOrder.publishedMenuUpdatedAt ? new Date(selectedBanquetOrder.publishedMenuUpdatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "可再次更新"}`}<small className={selectedBanquetOrder.menuReadAt === selectedBanquetOrder.publishedMenuUpdatedAt ? "menu-read-state read" : "menu-read-state"}>{selectedBanquetOrder.menuReadAt === selectedBanquetOrder.publishedMenuUpdatedAt ? "✓ 朋友已读" : "○ 等待朋友查看"}</small></> : "这份订单还没有收到正式宴席菜单"}</p>}
             {activeOrders.length === 0 && <p className="banquet-hint">目前没有进行中的订单，也可以先从下方菜谱库加入菜品，做一张备用菜单。</p>}
           </div>
 
@@ -1990,6 +2006,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   }
 
   const today = new Date().toISOString().slice(0, 10);
+  const statusUpdateOrder = statusUpdateDraft ? orders.find((order) => order.id === statusUpdateDraft.orderId) : null;
 
   return (
     <main className={mode === "menu" ? "friend-menu" : "chef-shell"}>
@@ -2193,14 +2210,13 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 return <article className="cooking-order panel" key={order.id}>
                   <header className="cooking-order-head"><div><span>{order.mealDate}</span><h3>{order.customerName} 的饭局</h3><p>{order.guestCount} 人 · 订单 #{order.id.slice(-6).toUpperCase()}</p></div><em className={`status ${order.status}`}>{statusLabel[order.status]}</em></header>
                   {order.note && <div className="cooking-guest-note"><b>朋友的口味 / 忌口</b><p>{order.note}</p></div>}
-                  <div className="cooking-progress"><div>{cookingStages.map((stage, index) => <span className={statusProgressIndex[order.status] >= index ? "done" : ""} key={stage.id}><i>{statusProgressIndex[order.status] > index ? "✓" : index + 1}</i>{stage.label}</span>)}</div><div className="cooking-order-actions">{order.status === "new" && <button onClick={() => updateOrderStatus(order.id, "confirmed")}>确认接单</button>}{order.status === "confirmed" && <button onClick={() => updateOrderStatus(order.id, "shopping")}>开始买菜</button>}{order.status === "shopping" && <button onClick={() => updateOrderStatus(order.id, "preparing")}>开始制作</button>}{order.status === "preparing" && <button className="ready-alert" onClick={() => updateOrderStatus(order.id, "done")}>🔔 通知开饭</button>}<small>推进状态后，朋友端会弹窗强提醒</small></div></div>
+                  <div className="cooking-progress"><div>{cookingStages.map((stage, index) => <span className={statusProgressIndex[order.status] >= index ? "done" : ""} key={stage.id}><i>{statusProgressIndex[order.status] > index ? "✓" : index + 1}</i>{stage.label}</span>)}</div><div className="cooking-order-actions">{order.status === "new" && <button onClick={() => updateOrderStatus(order.id, "confirmed")}>确认接单</button>}{order.status === "confirmed" && <button onClick={() => updateOrderStatus(order.id, "shopping")}>开始买菜</button>}{order.status === "shopping" && <button onClick={() => updateOrderStatus(order.id, "preparing")}>开始制作</button>}{order.status === "preparing" && <button className="ready-alert" onClick={() => updateOrderStatus(order.id, "done")}>🔔 通知开饭</button>}<small>点击后先确认要发给朋友的提醒内容</small></div></div>
                   <div className="cooking-dishes">{parseItems(order).map((item, dishIndex) => {
                     const snapshot = snapshots.find((candidate) => candidate.dishId === item.dishId);
                     const dish = dishCatalog.find((candidate) => candidate.id === item.dishId);
                     const ingredients = snapshot?.ingredients?.length ? snapshot.ingredients : dish?.ingredients || [];
                     const steps = snapshot?.steps?.length ? snapshot.steps : dish?.steps || [];
                     // 每道菜严格按菜谱记录的原始分量制作，不按订单人数放大或缩小。
-                    const scale = Math.max(1, item.quantity);
                     const checkPrefix = `${order.id}:${item.dishId}`;
                     const completedSteps = steps.filter((_, index) => cookingChecks[`${checkPrefix}:${index}`]).length;
                     const schedule = cookingSchedule.find((entry) => entry.key === checkPrefix);
@@ -2210,7 +2226,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                       <div className="cooking-dish-head"><span>{String(dishIndex + 1).padStart(2, "0")}</span><div><h4>{snapshot?.name || dish?.name || "历史菜品"}</h4><p>{item.quantity} 份 · 按菜谱原始分量 · 约 {snapshot?.minutes || dish?.minutes || 30} 分钟</p></div><strong>{completedSteps}/{steps.length || 0} 步</strong></div>
                       {(snapshot?.recipeSummary || dish?.recipeSummary) && <p className="cooking-recipe-summary">{snapshot?.recipeSummary || dish?.recipeSummary}</p>}
                       <div className={`dish-timer${timerDeadline ? timerRemaining <= 0 ? " finished" : " running" : ""}`}><div><small>{schedule ? `建议 ${schedule.startTime} 开火` : "单菜计时器"}</small><strong>{timerDeadline ? timerRemaining > 0 ? formatCountdown(timerRemaining) : "时间到" : `${snapshot?.minutes || dish?.minutes || 30}:00`}</strong></div>{timerDeadline ? <button onClick={() => stopDishTimer(checkPrefix)}>{timerRemaining > 0 ? "停止计时" : "关闭提醒"}</button> : <button onClick={() => startDishTimer(checkPrefix, snapshot?.minutes || dish?.minutes || 30)}>开始计时</button>}</div>
-                      <div className="cooking-recipe-grid"><section><div className="cooking-section-title"><b>本单用料</b><small>菜谱原始分量</small></div>{ingredients.length ? <ul>{ingredients.map((ingredient) => <li key={`${item.dishId}-${ingredient.name}-${ingredient.unit}`}><span>{ingredient.name}</span><strong>{formatAmount(ingredient.amount * scale, ingredient.unit)}</strong></li>)}</ul> : <p className="cooking-missing">暂时没有记录用料。</p>}</section><section><div className="cooking-section-title"><b>具体做法</b><small>做完可勾选</small></div>{steps.length ? <ol>{steps.map((step, index) => { const checkKey = `${checkPrefix}:${index}`; return <li className={cookingChecks[checkKey] ? "checked" : ""} key={checkKey}><label><input type="checkbox" checked={Boolean(cookingChecks[checkKey])} onChange={(event) => setCookingStepChecked(checkKey, event.target.checked)} /><i>{index + 1}</i><span>{step}</span></label></li>; })}</ol> : <p className="cooking-missing">这道菜还没有记录步骤，可在“菜单管理”中补充。</p>}</section></div>
+                      <div className="cooking-recipe-grid"><section><div className="cooking-section-title"><b>本单用料</b><small>菜谱原始分量</small></div>{ingredients.length ? <ul>{ingredients.map((ingredient) => <li key={`${item.dishId}-${ingredient.name}-${ingredient.unit}`}><span>{ingredient.name}</span><strong>{formatAmount(ingredient.amount, ingredient.unit)}</strong></li>)}</ul> : <p className="cooking-missing">暂时没有记录用料。</p>}</section><section><div className="cooking-section-title"><b>具体做法</b><small>做完可勾选</small></div>{steps.length ? <ol>{steps.map((step, index) => { const checkKey = `${checkPrefix}:${index}`; return <li className={cookingChecks[checkKey] ? "checked" : ""} key={checkKey}><label><input type="checkbox" checked={Boolean(cookingChecks[checkKey])} onChange={(event) => setCookingStepChecked(checkKey, event.target.checked)} /><i>{index + 1}</i><span>{step}</span></label></li>; })}</ol> : <p className="cooking-missing">这道菜还没有记录步骤，可在“菜单管理”中补充。</p>}</section></div>
                       <footer>{(snapshot?.difficulty || dish?.difficulty) && <span>难度：{snapshot?.difficulty || dish?.difficulty}</span>}{(snapshot?.source || dish?.source) && <span>来源：{snapshot?.source || dish?.source}</span>}{dish?.gallery?.length ? <span>{dish.gallery.length} 张过程图可参考</span> : null}</footer>
                     </section>;
                   })}</div>
@@ -2541,6 +2557,22 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               <button type="button" className="order-delete-confirm" disabled={orderDeleting} onClick={() => void deleteArchivedOrder(orderPendingDelete)}>{orderDeleting ? "正在删除…" : "永久删除"}</button>
             </div>
           </section>
+        </div>
+      )}
+
+      {statusUpdateDraft && statusUpdateOrder && (
+        <div className="overlay checkout-overlay chef-status-overlay" onMouseDown={(event) => event.target === event.currentTarget && !statusUpdating && setStatusUpdateDraft(null)}>
+          <form className="checkout-card chef-status-dialog" onSubmit={(event) => { event.preventDefault(); void submitOrderStatusUpdate(); }}>
+            <button type="button" className="close" disabled={statusUpdating} onClick={() => setStatusUpdateDraft(null)} aria-label="关闭状态推送">×</button>
+            <div className={`chef-status-mark chef-status-mark-${statusUpdateDraft.status}`} aria-hidden="true">{statusUpdateDraft.status === "done" ? "🔔" : statusUpdateDraft.status === "cancelled" ? "⏸" : "→"}</div>
+            <span className="eyebrow">KITCHEN UPDATE · 推送给朋友</span>
+            <h2>{statusUpdateActionLabel[statusUpdateDraft.status]}</h2>
+            <p className="chef-status-recipient">{statusUpdateOrder.customerName} 的饭局 · {statusUpdateOrder.mealDate}</p>
+            <div className="chef-status-transition"><span>{statusLabel[statusUpdateOrder.status]}</span><b aria-hidden="true">→</b><strong>{statusLabel[statusUpdateDraft.status]}</strong></div>
+            {statusUpdateDraft.status === "done" && <div className="chef-status-warning"><b>这会向朋友端发送强提醒</b><span>对方当前打开的进度页会立即弹出“开饭啦”提醒；饭局仍会保留，稍后再由你确认归档。</span></div>}
+            <label className="chef-status-message"><div className="chef-status-message-head"><span>朋友端显示的提醒内容</span><button type="button" disabled={statusUpdating} onClick={() => setStatusUpdateDraft((current) => current ? { ...current, note: statusUpdateNotes[current.status] || "" } : current)}>恢复预设</button></div><textarea value={statusUpdateDraft.note} maxLength={180} onChange={(event) => setStatusUpdateDraft((current) => current ? { ...current, note: event.target.value } : current)} placeholder="写一句让朋友安心的话" /></label>
+            <div className="chef-status-actions"><button type="button" className="quiet" disabled={statusUpdating} onClick={() => setStatusUpdateDraft(null)}>先不推送</button><button type="submit" disabled={statusUpdating}>{statusUpdating ? "正在发送…" : `${statusUpdateActionLabel[statusUpdateDraft.status]}并推送`}</button></div>
+          </form>
         </div>
       )}
 

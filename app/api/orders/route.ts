@@ -72,7 +72,7 @@ async function mutateOrderForChef(payload: ChefOrderMutation) {
     }
     const publishedMenu = normalizePublishedMenu(payload.publishedMenu);
     const publishedMenuUpdatedAt = new Date().toISOString();
-    const [order] = await getDb().update(orders).set({ publishedMenu: JSON.stringify(publishedMenu), publishedMenuUpdatedAt }).where(eq(orders.id, payload.id)).returning();
+    const [order] = await getDb().update(orders).set({ publishedMenu: JSON.stringify(publishedMenu), publishedMenuUpdatedAt, menuReadAt: "" }).where(eq(orders.id, payload.id)).returning();
     return Response.json({ order });
   }
 
@@ -81,7 +81,7 @@ async function mutateOrderForChef(payload: ChefOrderMutation) {
     const progressNote = typeof payload.progressNote === "string" ? payload.progressNote.trim().slice(0, 160) : "";
     const statusUpdatedAt = new Date().toISOString();
     const archivedAt = payload.status === "cancelled" ? statusUpdatedAt : payload.status === "done" ? undefined : "";
-    const [order] = await getDb().update(orders).set({ status: payload.status, progressNote, statusUpdatedAt, ...(archivedAt === undefined ? {} : { archivedAt }) }).where(eq(orders.id, payload.id)).returning();
+    const [order] = await getDb().update(orders).set({ status: payload.status, progressNote, statusUpdatedAt, statusReadAt: "", ...(archivedAt === undefined ? {} : { archivedAt }) }).where(eq(orders.id, payload.id)).returning();
     if (!order) return Response.json({ error: "没有找到这份订单" }, { status: 404 });
     return Response.json({ order });
   }
