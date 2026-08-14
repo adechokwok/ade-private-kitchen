@@ -1,5 +1,5 @@
-import { eq, inArray } from "drizzle-orm";
-import { ensureCustomDishesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb, getSqlite, getUploads } from "../../../db";
+import { asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { ensureCustomDishesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb, getUploads } from "../../../db";
 import { customDishes, menuCategories, orders } from "../../../db/schema";
 import { chefApiGuard, isChefRequest } from "../../chef-auth";
 
@@ -14,17 +14,22 @@ const ingredientTypes = new Set(["生鲜", "蔬菜", "调料", "其他"]);
 const imageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 type DishMove = "up" | "down" | "top" | "bottom";
 
-function normalizeCategoryDishOrder(category: string) {
-  const sqlite = getSqlite();
-  sqlite.transaction(() => {
-    const rows = sqlite.prepare("SELECT id FROM custom_dishes WHERE category = ? ORDER BY active DESC, sort_order ASC, created_at ASC").all(category) as Array<{ id: string }>;
-    const update = sqlite.prepare("UPDATE custom_dishes SET sort_order = ? WHERE id = ?");
-    rows.forEach((row, index) => update.run(index, row.id));
-  })();
+async function normalizeCategoryDishOrder(category: string) {
+  const db = getDb();
+  const rows = await db.select({ id: customDishes.id }).from(customDishes)
+    .where(eq(customDishes.category, category))
+    .orderBy(desc(customDishes.active), asc(customDishes.sortOrder), asc(customDishes.createdAt));
+  await db.transaction(async (tx) => {
+    for (const [index, row] of rows.entries()) {
+      await tx.update(customDishes).set({ sortOrder: index }).where(eq(customDishes.id, row.id));
+    }
+  });
 }
 
-function nextCategoryDishOrder(category: string) {
-  return Number((getSqlite().prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM custom_dishes WHERE category = ?").get(category) as { value: number }).value);
+async function nextCategoryDishOrder(category: string) {
+  const [row] = await getDb().select({ value: sql<number>`coalesce(max(${customDishes.sortOrder}), -1) + 1` })
+    .from(customDishes).where(eq(customDishes.category, category));
+  return Number(row?.value || 0);
 }
 
 function errorMessage(error: unknown) {
@@ -203,14 +208,15 @@ export async function POST(request: Request) {
     }
 
     await ensureMenuLibrary();
-    const sortOrder = nextCategoryDishOrder(category);
-    const [dish] = await getDb().insert(customDishes).values({
+    const sortOrder = await nextCategoryDishOrder(category);
+    await getDb().insert(customDishes).values({
       id, name, category, description, slogan, flavor, minutes, baseServings, imageUrl, imagePosition, gallery: JSON.stringify(gallery),
       ingredients: JSON.stringify(ingredients), steps: JSON.stringify(steps), source, active: 1,
       featured: featured ? 1 : 0, available: available ? 1 : 0, soldOut: soldOut ? 1 : 0,
       seasons: JSON.stringify(seasons), occasions: JSON.stringify(occasions), dietary: JSON.stringify(dietary),
       difficulty, recipeSummary, substitutions, sortOrder,
-    }).returning();
+    });
+    const [dish] = await getDb().select().from(customDishes).where(eq(customDishes.id, id)).limit(1);
     return Response.json({ dish: presentDish(dish) }, { status: 201 });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
@@ -276,7 +282,7 @@ export async function PUT(request: Request) {
     }
 
     const categoryChanged = category !== existing.category;
-    const sortOrder = categoryChanged ? nextCategoryDishOrder(category) : existing.sortOrder;
+    const sortOrder = categoryChanged ? await nextCategoryDishOrder(category) : existing.sortOrder;
     await getDb().update(customDishes).set({
       name, category, description, slogan, flavor, minutes, baseServings, imageUrl, imagePosition, gallery: JSON.stringify(gallery),
       ingredients: JSON.stringify(ingredients), steps: JSON.stringify(steps), source,
@@ -285,7 +291,7 @@ export async function PUT(request: Request) {
       difficulty, recipeSummary, substitutions, sortOrder,
     }).where(eq(customDishes.id, id));
     if (categoryChanged) {
-      normalizeCategoryDishOrder(existing.category);
+      await normalizeCategoryDishOrder(existing.category);
       normalizeCategoryDishOrder(category);
     }
     const [dish] = await getDb().select().from(customDishes).where(eq(customDishes.id, id)).limit(1);
@@ -311,13 +317,13 @@ export async function PATCH(request: Request) {
       if (!target) return Response.json({ error: "目标大类不存在，请刷新后重试" }, { status: 404 });
       const selected = await getDb().select({ id: customDishes.id, category: customDishes.category }).from(customDishes).where(inArray(customDishes.id, ids));
       const sourceCategories = Array.from(new Set(selected.map((dish) => dish.category)));
-      const sqlite = getSqlite();
-      sqlite.transaction(() => {
-        let nextOrder = nextCategoryDishOrder(category);
-        const update = sqlite.prepare("UPDATE custom_dishes SET category = ?, sort_order = ? WHERE id = ?");
-        selected.forEach((dish) => update.run(category, nextOrder++, dish.id));
-      })();
-      Array.from(new Set([...sourceCategories, category])).forEach(normalizeCategoryDishOrder);
+      let nextOrder = await nextCategoryDishOrder(category);
+      await getDb().transaction(async (tx) => {
+        for (const dish of selected) {
+          await tx.update(customDishes).set({ category, sortOrder: nextOrder++ }).where(eq(customDishes.id, dish.id));
+        }
+      });
+      for (const sourceCategory of Array.from(new Set([...sourceCategories, category]))) await normalizeCategoryDishOrder(sourceCategory);
       return Response.json({ ok: true, updated: selected.length, category });
     }
     const id = typeof payload.id === "string" ? payload.id : "";
@@ -328,18 +334,21 @@ export async function PATCH(request: Request) {
     const move = typeof payload.move === "string" && ["up", "down", "top", "bottom"].includes(payload.move) ? payload.move as DishMove : null;
     if (move) {
       if (!current.active) return Response.json({ error: "归档菜品固定排在末尾，恢复后才能排序" }, { status: 409 });
-      const sqlite = getSqlite();
-      sqlite.transaction(() => {
-        const activeRows = sqlite.prepare("SELECT id FROM custom_dishes WHERE category = ? AND active = 1 ORDER BY sort_order ASC, created_at ASC").all(current.category) as Array<{ id: string }>;
-        const index = activeRows.findIndex((row) => row.id === id);
-        const targetIndex = move === "top" ? 0 : move === "bottom" ? activeRows.length - 1 : index + (move === "up" ? -1 : 1);
-        if (index < 0 || targetIndex < 0 || targetIndex >= activeRows.length || targetIndex === index) return;
-        const [moved] = activeRows.splice(index, 1);
-        activeRows.splice(targetIndex, 0, moved);
-        const archivedRows = sqlite.prepare("SELECT id FROM custom_dishes WHERE category = ? AND active = 0 ORDER BY sort_order ASC, created_at ASC").all(current.category) as Array<{ id: string }>;
-        const update = sqlite.prepare("UPDATE custom_dishes SET sort_order = ? WHERE id = ?");
-        [...activeRows, ...archivedRows].forEach((row, order) => update.run(order, row.id));
-      })();
+      const activeRows = await getDb().select({ id: customDishes.id }).from(customDishes)
+        .where(eq(customDishes.category, current.category))
+        .orderBy(desc(customDishes.active), asc(customDishes.sortOrder), asc(customDishes.createdAt));
+      const activeOnly = activeRows.filter((row) => current.active);
+      const index = activeOnly.findIndex((row) => row.id === id);
+      const targetIndex = move === "top" ? 0 : move === "bottom" ? activeOnly.length - 1 : index + (move === "up" ? -1 : 1);
+      if (index >= 0 && targetIndex >= 0 && targetIndex < activeOnly.length && targetIndex !== index) {
+        const [moved] = activeOnly.splice(index, 1);
+        activeOnly.splice(targetIndex, 0, moved);
+        await getDb().transaction(async (tx) => {
+          for (const [order, row] of activeOnly.entries()) await tx.update(customDishes).set({ sortOrder: order }).where(eq(customDishes.id, row.id));
+          const archivedRows = activeRows.filter((row) => !activeOnly.some((active) => active.id === row.id));
+          for (const [order, row] of archivedRows.entries()) await tx.update(customDishes).set({ sortOrder: activeOnly.length + order }).where(eq(customDishes.id, row.id));
+        });
+      }
       const [dish] = await getDb().select().from(customDishes).where(eq(customDishes.id, id)).limit(1);
       return Response.json({ dish: presentDish(dish) });
     }
@@ -354,7 +363,7 @@ export async function PATCH(request: Request) {
     if (Number.isInteger(payload.sortOrder)) updates.sortOrder = Number(payload.sortOrder);
     if (!Object.keys(updates).length) return Response.json({ error: "没有需要更新的状态" }, { status: 400 });
     await getDb().update(customDishes).set(updates).where(eq(customDishes.id, id));
-    if (typeof payload.active === "boolean") normalizeCategoryDishOrder(current.category);
+    if (typeof payload.active === "boolean") await normalizeCategoryDishOrder(current.category);
     const [dish] = await getDb().select().from(customDishes).where(eq(customDishes.id, id)).limit(1);
     return Response.json({ dish: presentDish(dish) });
   } catch (error) {
