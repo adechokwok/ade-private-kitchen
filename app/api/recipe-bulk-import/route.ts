@@ -1,10 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir } from "node:fs/promises";
-import path from "node:path";
-
 import { chefApiGuard } from "../../chef-auth";
-import { ensureMenuLibrary, getSqlite } from "../../../db";
-import { getDataDir } from "../../../storage/paths";
+import { ensureMenuLibrary, getDb } from "../../../db";
+import { customDishes, menuCategories } from "../../../db/schema";
+import { eq, sql } from "drizzle-orm";
 
 const maxFileBytes = 2 * 1024 * 1024;
 const maxRecipes = 500;
@@ -92,8 +90,9 @@ async function readImportFile(file: File) {
   return { recipes: normalized, fingerprint: createHash("sha256").update(bytes).digest("hex") };
 }
 
-function importPlan(recipes: NormalizedRecipe[]) {
-  const existingNames = new Set((getSqlite().prepare("SELECT name FROM custom_dishes").all() as Array<{ name: string }>).map((row) => row.name));
+async function importPlan(recipes: NormalizedRecipe[]) {
+  const existingRows = await getDb().select({ name: customDishes.name }).from(customDishes);
+  const existingNames = new Set(existingRows.map((row) => row.name));
   return {
     total: recipes.length,
     toInsert: recipes.filter((recipe) => !existingNames.has(recipe.name)).length,
@@ -104,65 +103,48 @@ function importPlan(recipes: NormalizedRecipe[]) {
 }
 
 async function importRecipes(recipes: NormalizedRecipe[]) {
-  const sqlite = getSqlite();
-  const backupDir = path.join(getDataDir(), "import-backups");
-  await mkdir(backupDir, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const backupFile = `ade-kitchen-before-bulk-import-${stamp}.sqlite`;
-  await sqlite.backup(path.join(backupDir, backupFile));
-
-  const findDish = sqlite.prepare("SELECT id, category, sort_order AS sortOrder FROM custom_dishes WHERE name = ? ORDER BY created_at LIMIT 1");
-  const updateDish = sqlite.prepare(`UPDATE custom_dishes SET
-    category = @category, description = @description, slogan = @slogan, flavor = @flavor,
-    minutes = @minutes, base_servings = @baseServings, ingredients = @ingredients,
-    steps = @steps, source = @source, difficulty = @difficulty, recipe_summary = @recipeSummary,
-    sort_order = @sortOrder
-    WHERE id = @id`);
-  const insertDish = sqlite.prepare(`INSERT INTO custom_dishes (
-    id, name, category, description, slogan, flavor, minutes, base_servings,
-    image_url, image_position, gallery, ingredients, steps, source,
-    active, featured, available, sold_out, seasons, occasions, dietary,
-    difficulty, recipe_summary, substitutions, sort_order
-  ) VALUES (
-    @id, @name, @category, @description, @slogan, @flavor, @minutes, @baseServings,
-    '', 'center', '[]', @ingredients, @steps, @source,
-    1, 0, 1, 0, '[]', '[]', '[]', @difficulty, @recipeSummary, '[]', @sortOrder
-  )`);
-  const insertCategory = sqlite.prepare("INSERT OR IGNORE INTO menu_categories (id, name, sort_order) VALUES (?, ?, ?)");
-  const existingCategories = new Set((sqlite.prepare("SELECT name FROM menu_categories").all() as Array<{ name: string }>).map((row) => row.name));
+  const db = getDb();
+  const existingDishes = await db.select().from(customDishes);
+  const dishesByName = new Map(existingDishes.map((dish) => [dish.name, dish]));
+  const categories = await db.select().from(menuCategories);
+  const existingCategories = new Set(categories.map((category) => category.name));
   const nextSortOrderByCategory = new Map<string, number>();
-  const nextDishOrder = (category: string) => {
-    const existing = nextSortOrderByCategory.get(category);
-    if (existing !== undefined) { nextSortOrderByCategory.set(category, existing + 1); return existing; }
-    const next = Number((sqlite.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM custom_dishes WHERE category = ?").get(category) as { value: number }).value);
-    nextSortOrderByCategory.set(category, next + 1);
-    return next;
-  };
-  let nextCategoryOrder = Number((sqlite.prepare("SELECT COALESCE(MAX(sort_order), 0) AS value FROM menu_categories").get() as { value: number }).value) + 1;
+  for (const category of categories) nextSortOrderByCategory.set(category.name, category.sortOrder);
+  const maxDishOrders = await db.select({ category: customDishes.category, sortOrder: customDishes.sortOrder }).from(customDishes);
+  for (const row of maxDishOrders) nextSortOrderByCategory.set(row.category, Math.max(nextSortOrderByCategory.get(row.category) ?? -1, row.sortOrder));
+  let nextCategoryOrder = Math.max(-1, ...categories.map((category) => category.sortOrder)) + 1;
   let inserted = 0;
   let updated = 0;
 
-  const transaction = sqlite.transaction(() => {
+  await db.transaction(async (tx) => {
     for (const recipe of recipes) {
-      const row = { ...recipe, ingredients: JSON.stringify(recipe.ingredients), steps: JSON.stringify(recipe.steps) };
-      const existing = findDish.get(recipe.name) as { id: string; category: string; sortOrder: number } | undefined;
+      const existing = dishesByName.get(recipe.name);
+      const currentOrder = nextSortOrderByCategory.get(recipe.category) ?? -1;
+      const sortOrder = existing && existing.category === recipe.category ? existing.sortOrder : currentOrder + 1;
+      nextSortOrderByCategory.set(recipe.category, Math.max(currentOrder, sortOrder));
+      const values = {
+        name: recipe.name, category: recipe.category, description: recipe.description, slogan: recipe.slogan, flavor: recipe.flavor,
+        minutes: recipe.minutes, baseServings: recipe.baseServings, ingredients: JSON.stringify(recipe.ingredients), steps: JSON.stringify(recipe.steps),
+        source: recipe.source, difficulty: recipe.difficulty, recipeSummary: recipe.recipeSummary, sortOrder,
+      };
       if (existing) {
-        updateDish.run({ ...row, id: existing.id, sortOrder: existing.category === recipe.category ? existing.sortOrder : nextDishOrder(recipe.category) });
+        await tx.update(customDishes).set(values).where(eq(customDishes.id, existing.id));
         updated += 1;
       } else {
-        insertDish.run({ ...row, id: randomUUID(), sortOrder: nextDishOrder(recipe.category) });
+        await tx.insert(customDishes).values({ id: randomUUID(), ...values, imageUrl: "", imagePosition: "center", gallery: "[]", active: 1, featured: 0, available: 1, soldOut: 0, seasons: "[]", occasions: "[]", dietary: "[]", substitutions: "[]" });
+        dishesByName.set(recipe.name, { ...values, id: "", imageUrl: "", imagePosition: "center", gallery: "[]", active: 1, featured: 0, available: 1, soldOut: 0, seasons: "[]", occasions: "[]", dietary: "[]", substitutions: "[]" } as typeof customDishes.$inferSelect);
         inserted += 1;
       }
       if (!existingCategories.has(recipe.category)) {
-        insertCategory.run(randomUUID(), recipe.category, nextCategoryOrder);
+        await tx.insert(menuCategories).values({ id: randomUUID(), name: recipe.category, sortOrder: nextCategoryOrder });
         existingCategories.add(recipe.category);
         nextCategoryOrder += 1;
       }
     }
   });
-  transaction();
-  const totalDishes = Number((sqlite.prepare("SELECT COUNT(*) AS value FROM custom_dishes").get() as { value: number }).value);
-  return { inserted, updated, totalDishes, backupFile };
+
+  const [{ value: totalDishes }] = await db.select({ value: sql<number>`count(*)` }).from(customDishes);
+  return { inserted, updated, totalDishes: Number(totalDishes), backupFile: null, database: "mysql" };
 }
 
 export async function POST(request: Request) {
@@ -176,7 +158,7 @@ export async function POST(request: Request) {
     if (action !== "preview" && action !== "import") throw new ImportInputError("无效的批量导入操作");
     await ensureMenuLibrary();
     const parsed = await readImportFile(file);
-    const plan = importPlan(parsed.recipes);
+    const plan = await importPlan(parsed.recipes);
     if (action === "preview") return Response.json({ preview: { ...plan, fingerprint: parsed.fingerprint, fileName: file.name } });
 
     const fingerprint = String(form.get("fingerprint") || "");
