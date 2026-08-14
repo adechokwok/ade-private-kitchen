@@ -67,6 +67,23 @@ class LocalUploadStore {
     }
   }
 
+  async list(prefix = "") {
+    const root = path.resolve(getUploadsDir(), prefix);
+    const output: string[] = [];
+    const walk = async (directory: string, relative: string): Promise<void> => {
+      let entries;
+      try { entries = await readdir(directory, { withFileTypes: true }); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return; throw error; }
+      for (const entry of entries) {
+        const nextRelative = relative ? `${relative}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) await walk(path.join(directory, entry.name), nextRelative);
+        else if (entry.isFile() && !entry.name.endsWith(".meta.json")) output.push(nextRelative);
+      }
+    };
+    await walk(root, "");
+    return output;
+  }
+
   async delete(key: string) {
     const filePath = safePath(key);
     await Promise.all([rm(filePath, { force: true }), rm(metadataPath(filePath), { force: true })]);
@@ -89,7 +106,7 @@ class CosUploadStore {
     this.client = new COS({ SecretId, SecretKey });
   }
 
-  private request<T>(method: "putObject" | "getObject" | "deleteObject", params: Record<string, unknown>) {
+  private request<T>(method: "putObject" | "getObject" | "deleteObject" | "getBucket", params: Record<string, unknown>) {
     return new Promise<T>((resolve, reject) => {
       (this.client[method] as unknown as (input: Record<string, unknown>, callback: (error: Error | null, data: T) => void) => void)(params, (error, data) => {
         if (error) reject(error);
@@ -135,6 +152,18 @@ class CosUploadStore {
       if (code === "NoSuchKey" || code === "NotFound" || code === "NoSuchResource") return null;
       throw error;
     }
+  }
+
+  async list(prefix = "") {
+    type CosList = { Contents?: Array<{ Key?: string }>; IsTruncated?: boolean; NextMarker?: string };
+    const keys: string[] = [];
+    let marker = "";
+    do {
+      const result = await this.request<CosList>("getBucket", { Bucket: this.bucket, Region: this.region, Prefix: prefix, Marker: marker, MaxKeys: "1000" });
+      for (const item of result.Contents || []) if (item.Key) keys.push(item.Key);
+      marker = result.IsTruncated ? (result.NextMarker || "") : "";
+    } while (marker);
+    return keys;
   }
 
   async delete(key: string) {
