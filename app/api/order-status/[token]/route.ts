@@ -36,7 +36,8 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     if (!order) return Response.json({ error: "没有找到这份点单" }, { status: 404 });
     const currentKey = action === "read-status" ? order.statusUpdatedAt : order.publishedMenuUpdatedAt;
     if (!currentKey || updateKey !== currentKey) return Response.json({ error: "这条提醒已经更新，请刷新后再确认" }, { status: 409 });
-    const [updated] = await getDb().update(orders).set(action === "read-status" ? { statusReadAt: currentKey } : { menuReadAt: currentKey }).where(eq(orders.id, order.id)).returning({ id: orders.id });
+    await getDb().update(orders).set(action === "read-status" ? { statusReadAt: currentKey } : { menuReadAt: currentKey }).where(eq(orders.id, order.id));
+    const [updated] = await getDb().select({ id: orders.id }).from(orders).where(eq(orders.id, order.id)).limit(1);
     if (!updated) return Response.json({ error: "已读状态保存失败" }, { status: 500 });
     return Response.json({ ok: true, action, updateKey: currentKey });
   } catch {
