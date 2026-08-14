@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { pipeline } from "node:stream/promises";
@@ -16,6 +16,7 @@ import { ensureDataDirectories, getDataDir, getUploadsDir } from "../../../../st
 export const runtime = "nodejs";
 
 const maxZipBytes = 300 * 1024 * 1024;
+const importChunkBytes = 2 * 1024 * 1024;
 const maxExpandedBytes = 600 * 1024 * 1024;
 const maxEntries = 5000;
 const protectedSettingKey = /(session|secret|password|token|api[_-]?key)/i;
@@ -25,7 +26,66 @@ const tableKeys = [
 ] as const;
 type TableKey = typeof tableKeys[number];
 type ExportPayload = { version: number; exportedAt: string; tables: Record<TableKey, unknown> };
+type ImportUploadManifest = { totalBytes: number; totalChunks: number; received: number[]; createdAt: string };
 class ImportInputError extends Error {}
+
+function importUploadPath(uploadId: string) {
+  if (!/^[a-f0-9-]{20,80}$/i.test(uploadId)) throw new ImportInputError("导入上传会话无效");
+  return path.join(getDataDir(), "import-staging", uploadId);
+}
+
+async function readImportUploadManifest(uploadDir: string) {
+  try {
+    return JSON.parse(await readFile(path.join(uploadDir, "manifest.json"), "utf8")) as ImportUploadManifest;
+  } catch {
+    throw new ImportInputError("导入上传会话已失效，请重新选择 ZIP");
+  }
+}
+
+async function receiveImportChunk(request: Request) {
+  const uploadId = request.headers.get("x-import-upload-id") || "";
+  const uploadDir = importUploadPath(uploadId);
+  const index = Number(request.headers.get("x-import-chunk-index"));
+  const totalChunks = Number(request.headers.get("x-import-total-chunks"));
+  const totalBytes = Number(request.headers.get("x-import-total-bytes"));
+  if (!Number.isInteger(index) || !Number.isInteger(totalChunks) || !Number.isInteger(totalBytes) || index < 0 || totalChunks < 1 || totalBytes < 1 || totalBytes > maxZipBytes || totalChunks > Math.ceil(maxZipBytes / importChunkBytes)) {
+    throw new ImportInputError("导入分块参数无效");
+  }
+  if (index >= totalChunks) throw new ImportInputError("导入分块序号无效");
+  const bytes = Buffer.from(await request.arrayBuffer());
+  if (!bytes.length || bytes.length > importChunkBytes) throw new ImportInputError("导入分块大小无效");
+  await mkdir(uploadDir, { recursive: true });
+  const manifestPath = path.join(uploadDir, "manifest.json");
+  let manifest: ImportUploadManifest;
+  try {
+    manifest = await readImportUploadManifest(uploadDir);
+    if (manifest.totalBytes !== totalBytes || manifest.totalChunks !== totalChunks) throw new ImportInputError("导入分块与当前文件不匹配");
+  } catch (error) {
+    if (!(error instanceof ImportInputError) || error.message.includes("会话已失效")) {
+      manifest = { totalBytes, totalChunks, received: [], createdAt: new Date().toISOString() };
+    } else throw error;
+  }
+  await writeFile(path.join(uploadDir, `chunk-${String(index).padStart(6, "0")}.part`), bytes, { mode: 0o600 });
+  manifest.received = Array.from(new Set([...manifest.received, index])).sort((left, right) => left - right);
+  await writeFile(manifestPath, JSON.stringify(manifest), { mode: 0o600 });
+  return Response.json({ ok: true, received: manifest.received.length, total: manifest.totalChunks });
+}
+
+async function assembleImportChunks(uploadDir: string, manifest: ImportUploadManifest) {
+  if (manifest.received.length !== manifest.totalChunks) throw new ImportInputError("导入文件尚未上传完整，请重试");
+  const assembledPath = path.join(uploadDir, "archive.zip");
+  let total = 0;
+  for (let index = 0; index < manifest.totalChunks; index += 1) {
+    const chunkPath = path.join(uploadDir, `chunk-${String(index).padStart(6, "0")}.part`);
+    const chunkStat = await stat(chunkPath).catch(() => null);
+    if (!chunkStat) throw new ImportInputError("导入文件缺少分块，请重新上传");
+    total += chunkStat.size;
+    if (total > manifest.totalBytes) throw new ImportInputError("导入文件大小校验失败");
+    await pipeline(createReadStream(chunkPath), createWriteStream(assembledPath, { flags: index === 0 ? "w" : "a", mode: 0o600 }));
+  }
+  if (total !== manifest.totalBytes) throw new ImportInputError("导入文件大小校验失败");
+  return readFile(assembledPath);
+}
 
 function relativeKey(value: string) {
   if (!value || value.includes("\\") || path.posix.isAbsolute(value)) throw new ImportInputError("压缩包包含无效的图片路径");
@@ -191,12 +251,25 @@ export async function POST(request: Request) {
   let stagingDir = "";
   let oldUploadsDir = "";
   let uploadsBackupReady = false;
+  let chunkUploadDir = "";
   try {
     ensureDataDirectories();
     await ensureAllSchema();
-    const form = await request.formData();
-    const file = form.get("file");
-    if (!(file instanceof File)) throw new ImportInputError("请选择数据导出 ZIP 文件");
+    const chunkUploadId = request.headers.get("x-import-upload-id") || "";
+    const isFinalChunk = request.headers.get("x-import-finalize") === "1";
+    if (chunkUploadId && !isFinalChunk) return receiveImportChunk(request);
+    let file: File;
+    if (chunkUploadId && isFinalChunk) {
+      chunkUploadDir = importUploadPath(chunkUploadId);
+      const manifest = await readImportUploadManifest(chunkUploadDir);
+      const archive = await assembleImportChunks(chunkUploadDir, manifest);
+      file = new File([archive], "import.zip", { type: "application/zip" });
+    } else {
+      const form = await request.formData();
+      const formFile = form.get("file");
+      if (!(formFile instanceof File)) throw new ImportInputError("请选择数据导出 ZIP 文件");
+      file = formFile;
+    }
     stagingDir = await mkdtemp(path.join(tmpdir(), "ade-import-"));
     const parsed = await readArchive(file, stagingDir);
     const sqlite = getSqlite();
@@ -227,7 +300,10 @@ export async function POST(request: Request) {
       await rm(oldUploadsDir, { recursive: true, force: true }).catch(() => undefined);
     }
     if (stagingDir) await rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
+    if (chunkUploadDir) await rm(chunkUploadDir, { recursive: true, force: true }).catch(() => undefined);
     const message = error instanceof Error ? error.message : "数据导入失败，已恢复原数据";
     return Response.json({ error: message }, { status: error instanceof ImportInputError ? 400 : 500 });
+  } finally {
+    if (chunkUploadDir) await rm(chunkUploadDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
