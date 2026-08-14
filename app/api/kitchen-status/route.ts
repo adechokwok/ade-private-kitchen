@@ -18,6 +18,6 @@ export async function PUT(request: Request) {
   if (typeof payload.open !== "boolean") return Response.json({ error: "营业状态不正确" }, { status: 400 });
   await ensureMenuLibrary();
   const value = payload.open ? "open" : "closed";
-  await getDb().insert(appSettings).values({ key, value }).onConflictDoUpdate({ target: appSettings.key, set: { value } });
+  await getDb().insert(appSettings).values({ key, value }).onDuplicateKeyUpdate({ set: { value } });
   return Response.json({ open: payload.open });
 }
