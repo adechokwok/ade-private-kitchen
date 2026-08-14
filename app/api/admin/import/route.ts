@@ -1,7 +1,7 @@
 import "server-only";
 
 import unzipper from "unzipper";
-import { and, eq, sql } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 
 import { chefApiGuard } from "../../../chef-auth";
 import { ensureAllSchema, getDb, getUploads } from "../../../../db";
@@ -131,11 +131,22 @@ async function replaceDatabase(payload: ExportPayload) {
     }
   });
 
-  const count = async <T>(table: T) => Number((await db.select({ value: sql<number>`count(*)` }).from(table as never))[0]?.value || 0);
-  const [dishes, categories, orders, invites, journals, pantryItems, shoppingChecks] = await Promise.all([
-    count(schema.customDishes), count(schema.menuCategories), count(schema.orders), count(schema.dinnerInvites),
-    count(schema.dinnerJournals), count(schema.pantryItems), count(schema.shoppingChecks),
+  const [dishRows, categoryRows, orderRows, inviteRows, journalRows, pantryRows, shoppingCheckRows] = await Promise.all([
+    db.select({ value: count() }).from(schema.customDishes),
+    db.select({ value: count() }).from(schema.menuCategories),
+    db.select({ value: count() }).from(schema.orders),
+    db.select({ value: count() }).from(schema.dinnerInvites),
+    db.select({ value: count() }).from(schema.dinnerJournals),
+    db.select({ value: count() }).from(schema.pantryItems),
+    db.select({ value: count() }).from(schema.shoppingChecks),
   ]);
+  const dishes = Number(dishRows[0]?.value || 0);
+  const categories = Number(categoryRows[0]?.value || 0);
+  const orders = Number(orderRows[0]?.value || 0);
+  const invites = Number(inviteRows[0]?.value || 0);
+  const journals = Number(journalRows[0]?.value || 0);
+  const pantryItems = Number(pantryRows[0]?.value || 0);
+  const shoppingChecks = Number(shoppingCheckRows[0]?.value || 0);
   const expected = {
     dishes: tableRows.customDishes.length, categories: tableRows.menuCategories.length, orders: tableRows.orders.length,
     invites: tableRows.dinnerInvites.length, journals: tableRows.dinnerJournals.length,
