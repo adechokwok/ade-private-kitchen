@@ -292,7 +292,7 @@ export async function PUT(request: Request) {
     }).where(eq(customDishes.id, id));
     if (categoryChanged) {
       await normalizeCategoryDishOrder(existing.category);
-      normalizeCategoryDishOrder(category);
+      await normalizeCategoryDishOrder(category);
     }
     const [dish] = await getDb().select().from(customDishes).where(eq(customDishes.id, id)).limit(1);
     return Response.json({ dish: presentDish(dish) });
@@ -337,7 +337,7 @@ export async function PATCH(request: Request) {
       const activeRows = await getDb().select({ id: customDishes.id }).from(customDishes)
         .where(eq(customDishes.category, current.category))
         .orderBy(desc(customDishes.active), asc(customDishes.sortOrder), asc(customDishes.createdAt));
-      const activeOnly = activeRows.filter((row) => current.active);
+      const activeOnly = activeRows.filter((row) => row.active === 1);
       const index = activeOnly.findIndex((row) => row.id === id);
       const targetIndex = move === "top" ? 0 : move === "bottom" ? activeOnly.length - 1 : index + (move === "up" ? -1 : 1);
       if (index >= 0 && targetIndex >= 0 && targetIndex < activeOnly.length && targetIndex !== index) {
@@ -355,7 +355,7 @@ export async function PATCH(request: Request) {
     const updates: Partial<typeof customDishes.$inferInsert> = {};
     if (typeof payload.active === "boolean") {
       updates.active = payload.active ? 1 : 0;
-      if (!payload.active) updates.sortOrder = nextCategoryDishOrder(current.category);
+      if (!payload.active) updates.sortOrder = await nextCategoryDishOrder(current.category);
     }
     if (typeof payload.featured === "boolean") updates.featured = payload.featured ? 1 : 0;
     if (typeof payload.available === "boolean") updates.available = payload.available ? 1 : 0;
@@ -400,7 +400,7 @@ export async function DELETE(request: Request) {
     const gallery = (() => { try { return JSON.parse(existing.gallery) as string[]; } catch { return []; } })();
     for (let index = 0; index < gallery.length; index += 1) await getUploads().delete(`dish-gallery/${id}/${index}`);
     await getDb().delete(customDishes).where(eq(customDishes.id, id));
-    normalizeCategoryDishOrder(existing.category);
+    await normalizeCategoryDishOrder(existing.category);
     return Response.json({ ok: true });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
