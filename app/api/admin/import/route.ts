@@ -1,8 +1,10 @@
 import "server-only";
 
-import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { pipeline } from "node:stream/promises";
 import unzipper from "unzipper";
 
 import { chefApiGuard } from "../../../chef-auth";
@@ -89,9 +91,14 @@ async function readArchive(file: File, stagingDir: string) {
   return { payload, imageCount: keys.size };
 }
 
-// COS/FUSE mounts often reject directory rename even though normal file
-// reads, writes and deletes work. Keep import/rollback compatible with those
-// mounts by copying regular files one by one instead of swapping directories.
+// Keep staging and rollback copies on the container's local filesystem. COS/FUSE
+// mounts can handle ordinary streamed file writes, but may reject rename,
+// copy_file_range and other filesystem-level optimizations.
+async function copyRegularFile(source: string, target: string) {
+  await mkdir(path.dirname(target), { recursive: true });
+  await pipeline(createReadStream(source), createWriteStream(target, { mode: 0o640 }));
+}
+
 async function copyDirectoryContents(source: string, target: string) {
   await mkdir(target, { recursive: true });
   const entries = await readdir(source, { withFileTypes: true });
@@ -102,9 +109,7 @@ async function copyDirectoryContents(source: string, target: string) {
       await copyDirectoryContents(sourcePath, targetPath);
       continue;
     }
-    if (!entry.isFile()) throw new ImportInputError("上传目录中包含不支持的文件类型");
-    await mkdir(path.dirname(targetPath), { recursive: true });
-    await copyFile(sourcePath, targetPath);
+    await copyRegularFile(sourcePath, targetPath);
   }
 }
 
@@ -192,17 +197,19 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get("file");
     if (!(file instanceof File)) throw new ImportInputError("请选择数据导出 ZIP 文件");
-    stagingDir = await mkdtemp(path.join(getDataDir(), ".ade-import-"));
+    stagingDir = await mkdtemp(path.join(tmpdir(), "ade-import-"));
     const parsed = await readArchive(file, stagingDir);
     const sqlite = getSqlite();
     const backupDir = path.join(getDataDir(), "import-backups");
     await mkdir(backupDir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const backupFile = path.join(backupDir, `ade-kitchen-before-export-import-${stamp}.sqlite`);
-    await sqlite.backup(backupFile);
+    const backupTempFile = path.join(stagingDir, "before-import.sqlite");
+    await sqlite.backup(backupTempFile);
+    await copyRegularFile(backupTempFile, backupFile);
 
     const currentUploads = getUploadsDir();
-    oldUploadsDir = path.join(getDataDir(), `.uploads-before-import-${randomUUID()}`);
+    oldUploadsDir = await mkdtemp(path.join(tmpdir(), "ade-uploads-before-import-"));
     await copyDirectoryContents(currentUploads, oldUploadsDir);
     uploadsBackupReady = true;
     await clearDirectoryContents(currentUploads);
