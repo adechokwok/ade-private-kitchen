@@ -5,7 +5,6 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { pipeline } from "node:stream/promises";
-import { randomUUID } from "node:crypto";
 import unzipper from "unzipper";
 
 import { chefApiGuard } from "../../../chef-auth";
