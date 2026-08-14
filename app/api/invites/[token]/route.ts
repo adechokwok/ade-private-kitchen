@@ -6,7 +6,7 @@ const parseList = (value: string) => { try { return JSON.parse(value); } catch {
 
 export async function GET(_request: Request, context: { params: Promise<{ token: string }> }) {
   const { token } = await context.params;
-  if (!/^[a-f0-9]{20}$/i.test(token)) return Response.json({ error: "邀请链接无效" }, { status: 404 });
+  if (!/^(?:[a-f0-9]{20}|[a-f0-9]{32})$/i.test(token)) return Response.json({ error: "邀请链接无效" }, { status: 404 });
   await Promise.all([ensureDinnerInvitesSchema(), ensureMenuLibrary()]);
   const [invite] = await getDb().select().from(dinnerInvites).where(and(eq(dinnerInvites.token, token), eq(dinnerInvites.active, 1))).limit(1);
   if (!invite) return Response.json({ error: "这份邀请已结束或不存在" }, { status: 404 });
@@ -46,7 +46,7 @@ export async function GET(_request: Request, context: { params: Promise<{ token:
 
 export async function POST(request: Request, context: { params: Promise<{ token: string }> }) {
   const { token } = await context.params;
-  if (!/^[a-f0-9]{20}$/i.test(token)) return Response.json({ error: "邀请链接无效" }, { status: 404 });
+  if (!/^(?:[a-f0-9]{20}|[a-f0-9]{32})$/i.test(token)) return Response.json({ error: "邀请链接无效" }, { status: 404 });
   const payload = await request.json() as { action?: unknown; guestToken?: unknown; displayName?: unknown; dishId?: unknown; quantity?: unknown; customerName?: unknown; mealDate?: unknown; guestCount?: unknown; note?: unknown };
   await Promise.all([ensureDinnerInvitesSchema(), ensureMenuLibrary(), ensureOrdersSchema()]);
   const [invite] = await getDb().select().from(dinnerInvites).where(and(eq(dinnerInvites.token, token), eq(dinnerInvites.active, 1))).limit(1);
