@@ -155,9 +155,35 @@ export async function ensureDinnerInvitesSchema() {
     theme TEXT NOT NULL DEFAULT 'warm',
     dish_ids TEXT NOT NULL DEFAULT '[]',
     recommended_dish_ids TEXT NOT NULL DEFAULT '[]',
+    mode TEXT NOT NULL DEFAULT 'single',
+    shared_order_id TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+  const inviteColumns = tableColumns("dinner_invites");
+  addColumn("dinner_invites", inviteColumns, "mode", "TEXT NOT NULL DEFAULT 'single'");
+  addColumn("dinner_invites", inviteColumns, "shared_order_id", "TEXT NOT NULL DEFAULT ''");
+  addColumn("dinner_invites", inviteColumns, "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
+  getSqlite().exec(`CREATE TABLE IF NOT EXISTS dinner_invite_guests (
+    id TEXT PRIMARY KEY NOT NULL,
+    invite_id TEXT NOT NULL,
+    guest_token TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL DEFAULT '朋友',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  getSqlite().exec("CREATE INDEX IF NOT EXISTS dinner_invite_guests_invite_idx ON dinner_invite_guests (invite_id)");
+  getSqlite().exec(`CREATE TABLE IF NOT EXISTS dinner_invite_selections (
+    id TEXT PRIMARY KEY NOT NULL,
+    invite_id TEXT NOT NULL,
+    guest_id TEXT NOT NULL,
+    dish_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(invite_id, guest_id, dish_id)
+  )`);
+  getSqlite().exec("CREATE INDEX IF NOT EXISTS dinner_invite_selections_invite_idx ON dinner_invite_selections (invite_id)");
   getSqlite().exec(`CREATE TABLE IF NOT EXISTS dinner_journals (
     id TEXT PRIMARY KEY NOT NULL,
     invite_id TEXT NOT NULL DEFAULT '',
