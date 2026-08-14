@@ -1,6 +1,6 @@
 import "server-only";
 
-import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import unzipper from "unzipper";
@@ -89,6 +89,33 @@ async function readArchive(file: File, stagingDir: string) {
   return { payload, imageCount: keys.size };
 }
 
+// COS/FUSE mounts often reject directory rename even though normal file
+// reads, writes and deletes work. Keep import/rollback compatible with those
+// mounts by copying regular files one by one instead of swapping directories.
+async function copyDirectoryContents(source: string, target: string) {
+  await mkdir(target, { recursive: true });
+  const entries = await readdir(source, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = path.join(source, entry.name);
+    const targetPath = path.join(target, entry.name);
+    if (entry.isDirectory()) {
+      await copyDirectoryContents(sourcePath, targetPath);
+      continue;
+    }
+    if (!entry.isFile()) throw new ImportInputError("上传目录中包含不支持的文件类型");
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    await copyFile(sourcePath, targetPath);
+  }
+}
+
+async function clearDirectoryContents(directory: string) {
+  await mkdir(directory, { recursive: true });
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    await rm(path.join(directory, entry.name), { recursive: true, force: true });
+  }
+}
+
 function replaceDatabase(payload: ExportPayload) {
   const db = getDb();
   const sqlite = getSqlite();
@@ -158,7 +185,7 @@ export async function POST(request: Request) {
   if (denied) return denied;
   let stagingDir = "";
   let oldUploadsDir = "";
-  let uploadsMoved = false;
+  let uploadsBackupReady = false;
   try {
     ensureDataDirectories();
     await ensureAllSchema();
@@ -176,9 +203,10 @@ export async function POST(request: Request) {
 
     const currentUploads = getUploadsDir();
     oldUploadsDir = path.join(getDataDir(), `.uploads-before-import-${randomUUID()}`);
-    await rename(currentUploads, oldUploadsDir);
-    uploadsMoved = true;
-    await rename(path.join(stagingDir, "uploads"), currentUploads);
+    await copyDirectoryContents(currentUploads, oldUploadsDir);
+    uploadsBackupReady = true;
+    await clearDirectoryContents(currentUploads);
+    await copyDirectoryContents(path.join(stagingDir, "uploads"), currentUploads);
     const result = replaceDatabase(parsed.payload);
     await rm(oldUploadsDir, { recursive: true, force: true }).catch(() => undefined);
     oldUploadsDir = "";
@@ -186,9 +214,10 @@ export async function POST(request: Request) {
     stagingDir = "";
     return Response.json({ ok: true, result: { ...result, images: parsed.imageCount, backupFile: path.basename(backupFile) } });
   } catch (error) {
-    if (uploadsMoved && oldUploadsDir) {
-      await rm(getUploadsDir(), { recursive: true, force: true }).catch(() => undefined);
-      await rename(oldUploadsDir, getUploadsDir()).catch(() => undefined);
+    if (uploadsBackupReady && oldUploadsDir) {
+      await clearDirectoryContents(getUploadsDir()).catch(() => undefined);
+      await copyDirectoryContents(oldUploadsDir, getUploadsDir()).catch(() => undefined);
+      await rm(oldUploadsDir, { recursive: true, force: true }).catch(() => undefined);
     }
     if (stagingDir) await rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
     const message = error instanceof Error ? error.message : "数据导入失败，已恢复原数据";
