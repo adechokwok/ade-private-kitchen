@@ -73,7 +73,7 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     if (!dishId || !ids.includes(dishId) || !dish || !dish.active || !dish.available || dish.soldOut) return Response.json({ error: "这道菜现在暂时不能点" }, { status: 409 });
     if (!Number.isInteger(quantity) || quantity < 0 || quantity > 10) return Response.json({ error: "菜品数量不正确" }, { status: 400 });
     if (quantity === 0) await getDb().delete(dinnerInviteSelections).where(and(eq(dinnerInviteSelections.inviteId, invite.id), eq(dinnerInviteSelections.guestId, guest.id), eq(dinnerInviteSelections.dishId, dishId)));
-    else await getDb().insert(dinnerInviteSelections).values({ id: crypto.randomUUID(), inviteId: invite.id, guestId: guest.id, dishId, quantity, updatedAt: new Date().toISOString() }).onConflictDoUpdate({ target: [dinnerInviteSelections.inviteId, dinnerInviteSelections.guestId, dinnerInviteSelections.dishId], set: { quantity, updatedAt: new Date().toISOString() } });
+    else await getDb().insert(dinnerInviteSelections).values({ id: crypto.randomUUID(), inviteId: invite.id, guestId: guest.id, dishId, quantity, updatedAt: new Date().toISOString() }).onDuplicateKeyUpdate({ set: { quantity, updatedAt: new Date().toISOString() } });
     await getDb().update(dinnerInviteGuests).set({ updatedAt: new Date().toISOString() }).where(eq(dinnerInviteGuests.id, guest.id));
     return Response.json({ ok: true, guestToken });
   }
