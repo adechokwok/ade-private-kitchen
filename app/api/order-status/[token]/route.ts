@@ -15,7 +15,7 @@ export async function GET(_request: Request, context: { params: Promise<{ token:
   await ensureDinnerInvitesSchema();
   if (order.inviteId) {
     const [inviteRow] = await getDb().select().from(dinnerInvites).where(eq(dinnerInvites.id, order.inviteId)).limit(1);
-    if (inviteRow) invite = { title: inviteRow.title, message: inviteRow.message, mealDate: inviteRow.mealDate, theme: inviteRow.theme };
+    if (inviteRow) invite = { token: inviteRow.token, title: inviteRow.title, message: inviteRow.message, mealDate: inviteRow.mealDate, theme: inviteRow.theme };
   }
   let [journalRow] = await getDb().select().from(dinnerJournals).where(eq(dinnerJournals.orderId, order.id)).limit(1);
   if (!journalRow && order.inviteId) [journalRow] = await getDb().select().from(dinnerJournals).where(and(eq(dinnerJournals.inviteId, order.inviteId), eq(dinnerJournals.orderId, ""))).limit(1);

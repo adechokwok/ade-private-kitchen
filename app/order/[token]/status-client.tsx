@@ -23,7 +23,7 @@ const statusNotices: Record<string, { mark: string; title: string; description: 
 
 type StatusData = {
   order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; statusReadAt: string; publishedMenuUpdatedAt: string; menuReadAt: string; archivedAt: string; publishedMenu?: { title: string; date: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; guestCount?: number; chefCredit?: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
-  invite?: { title: string; message: string; theme: string } | null;
+  invite?: { token: string; title: string; message: string; theme: string } | null;
   journal?: { title: string; note: string; imageUrls: string[] } | null;
 };
 type PendingReadReceipt = { action: "read-status" | "read-menu"; updateKey: string };
@@ -185,6 +185,7 @@ export default function OrderStatusClient({ token }: { token: string }) {
       </section>}
       {!data.order.publishedMenu && <div className="status-dishes"><small>今晚菜单</small><p>{data.order.dishSnapshot.map((dish) => dish.name).join(" · ")}</p><span>主厨排好正式菜单后，会在这里自动替换成完整菜单卡。</span></div>}
       {data.journal && <section className="guest-journal"><span>AFTER DINNER</span><h2>{data.journal.title}</h2><p>{data.journal.note}</p>{data.journal.imageUrls.length > 0 && <div>{data.journal.imageUrls.map((url, index) => <img src={url} alt={`饭局照片 ${index + 1}`} key={url} />)}</div>}</section>}
+      {data.invite?.token && !data.order.archivedAt && data.order.status !== "cancelled" && <Link className="status-add-dishes" href={`/invite/${data.invite.token}?add=1`}><strong>我还想加菜</strong><span>回到这桌点菜页面 →</span></Link>}
       <button onClick={() => void load()} disabled={refreshing}>{refreshing ? "正在同步厨房进度…" : "立即刷新厨房进度"}</button>
     </section>
   </main>;
