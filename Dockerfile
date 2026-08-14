@@ -6,7 +6,8 @@ RUN npm install --global pnpm@11.9.0
 FROM base AS dependencies
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+# CloudBase 分支在迁移期间由 pnpm 根据 package.json 同步锁文件。
+RUN pnpm install --no-frozen-lockfile
 
 FROM base AS builder
 WORKDIR /app
