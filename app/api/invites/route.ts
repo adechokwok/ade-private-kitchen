@@ -1,5 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import { ensureDinnerInvitesSchema, ensureMenuLibrary, getDb } from "../../../db";
+import { ensureDinnerInvitesSchema, ensureMenuLibrary, getDb, getSqlite } from "../../../db";
 import { customDishes, dinnerInvites, dinnerJournals } from "../../../db/schema";
 import { chefApiGuard } from "../../chef-auth";
 
@@ -61,4 +61,21 @@ export async function PATCH(request: Request) {
   await ensureDinnerInvitesSchema();
   const [invite] = await getDb().update(dinnerInvites).set({ active: payload.active ? 1 : 0, updatedAt: new Date().toISOString() }).where(eq(dinnerInvites.id, payload.id)).returning();
   return invite ? Response.json({ invite: presentInvite(invite) }) : Response.json({ error: "没有找到这份邀请" }, { status: 404 });
+}
+
+export async function DELETE(request: Request) {
+  const denied = chefApiGuard(request);
+  if (denied) return denied;
+  const id = new URL(request.url).searchParams.get("id")?.trim();
+  if (!id) return Response.json({ error: "缺少邀请 ID" }, { status: 400 });
+  await ensureDinnerInvitesSchema();
+  const sqlite = getSqlite();
+  const deleted = sqlite.transaction(() => {
+    const existing = sqlite.prepare("SELECT id FROM dinner_invites WHERE id = ?").get(id);
+    if (!existing) return false;
+    sqlite.prepare("DELETE FROM dinner_invite_selections WHERE invite_id = ?").run(id);
+    sqlite.prepare("DELETE FROM dinner_invite_guests WHERE invite_id = ?").run(id);
+    return sqlite.prepare("DELETE FROM dinner_invites WHERE id = ?").run(id).changes > 0;
+  })();
+  return deleted ? Response.json({ ok: true }) : Response.json({ error: "没有找到这份邀请" }, { status: 404 });
 }
