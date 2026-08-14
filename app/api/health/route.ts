@@ -1,17 +1,16 @@
-import { ensureAllSchema, getSqlite } from "../../../db";
-import { ensureDataDirectories } from "../../../storage/paths";
+import { ensureAllSchema, getMysqlPool } from "../../../db";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    ensureDataDirectories();
     await ensureAllSchema();
-    getSqlite().prepare("SELECT 1").get();
+    await getMysqlPool().query("SELECT 1");
     return Response.json({
       ok: true,
       service: "ade-private-kitchen",
-      storage: "nas-local",
+      database: "mysql",
+      storage: "cos",
       time: new Date().toISOString(),
     }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
