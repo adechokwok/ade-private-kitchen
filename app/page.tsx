@@ -953,9 +953,35 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     if (!window.confirm("导入后会整体替换当前菜谱、饭局、邀请、库存和照片。当前会话密钥会保留，确定继续吗？")) return;
     setDataImporting(true);
     try {
-      const form = new FormData();
-      form.set("file", file);
-      const response = await fetch("/api/admin/import", { method: "POST", body: form });
+      const chunkSize = 2 * 1024 * 1024;
+      const uploadId = createClientRowId();
+      let response: Response;
+      if (file.size <= chunkSize) {
+        const form = new FormData();
+        form.set("file", file);
+        response = await fetch("/api/admin/import", { method: "POST", body: form });
+      } else {
+        const totalChunks = Math.ceil(file.size / chunkSize);
+        for (let index = 0; index < totalChunks; index += 1) {
+          const start = index * chunkSize;
+          const chunk = file.slice(start, Math.min(file.size, start + chunkSize));
+          response = await fetch("/api/admin/import", {
+            method: "POST",
+            headers: {
+              "content-type": "application/octet-stream",
+              "x-import-upload-id": uploadId,
+              "x-import-chunk-index": String(index),
+              "x-import-total-chunks": String(totalChunks),
+              "x-import-total-bytes": String(file.size),
+            },
+            body: chunk,
+          });
+          const chunkData = await response.json().catch(() => ({})) as { error?: string };
+          if (!response.ok) throw new Error(chunkData.error || `备份上传失败（第 ${index + 1}/${totalChunks} 段）`);
+          setNotice(`正在上传备份…${index + 1}/${totalChunks}`);
+        }
+        response = await fetch("/api/admin/import", { method: "POST", headers: { "x-import-upload-id": uploadId, "x-import-finalize": "1" } });
+      }
       const data = await response.json().catch(() => ({})) as { result?: { dishes?: number; orders?: number; images?: number }; error?: string };
       if (!response.ok) throw new Error(data.error || "数据导入失败");
       await Promise.all([loadOrders(), loadDishes(), loadShoppingChecks(), loadCategories(), loadPantry(), loadInvites(), loadRecipePreferences()]);
