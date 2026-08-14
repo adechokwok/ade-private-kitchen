@@ -8,7 +8,7 @@ import { ensureDataDirectories, getUploadsDir } from "./paths";
 type UploadMetadata = { contentType?: string; cacheControl?: string };
 type PutOptions = { httpMetadata?: UploadMetadata };
 
-function safePath(key: string) {
+export function safePath(key: string) {
   if (!key || key.includes("\\") || key.split("/").some((part) => !part || part === "." || part === "..")) throw new Error("无效的图片路径");
   const root = getUploadsDir();
   const filePath = path.resolve(root, key);
