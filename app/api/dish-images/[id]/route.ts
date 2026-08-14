@@ -35,7 +35,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     if (request.headers.get("if-none-match") === object.httpEtag) {
       return new Response(null, { status: 304, headers });
     }
-    return new Response(object.body, { headers });
+    return new Response(new Uint8Array(object.body), { headers });
   } catch {
     return new Response("Image unavailable", { status: 503 });
   }
