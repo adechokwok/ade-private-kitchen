@@ -1,295 +1,260 @@
 import "server-only";
 
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { eq } from "drizzle-orm";
+import mysql from "mysql2/promise";
+import { drizzle, type MySql2Database } from "drizzle-orm/mysql2";
+import { and, eq } from "drizzle-orm";
 import * as schema from "./schema";
 import { dishes as seedDishes } from "../app/menu";
-import { ensureDataDirectories, getDatabasePath } from "../storage/paths";
-import { getUploads as getLocalUploads } from "../storage/uploads";
+import { getUploads as getConfiguredUploads } from "../storage/uploads";
+
+type SqliteCompatibility = {
+  exec(sql: string): void;
+  prepare(sql: string): {
+    all(...params: unknown[]): unknown[];
+    get(...params: unknown[]): unknown;
+    run(...params: unknown[]): { changes: number };
+  };
+  transaction<T>(callback: () => T): () => T;
+  backup(destination: string): Promise<void>;
+};
 
 type RuntimeState = {
-  sqlite?: Database.Database;
-  db?: BetterSQLite3Database<typeof schema>;
+  pool?: mysql.Pool;
+  db?: MySql2Database<typeof schema>;
+  schemaReady?: Promise<void>;
 };
 
 const runtime = globalThis as typeof globalThis & { __adeKitchen?: RuntimeState };
 runtime.__adeKitchen ??= {};
 
-export function getSqlite() {
-  if (!runtime.__adeKitchen!.sqlite) {
-    ensureDataDirectories();
-    const sqlite = new Database(getDatabasePath());
-    sqlite.pragma("journal_mode = WAL");
-    sqlite.pragma("synchronous = NORMAL");
-    sqlite.pragma("foreign_keys = ON");
-    sqlite.pragma("busy_timeout = 5000");
-    runtime.__adeKitchen!.sqlite = sqlite;
+function databaseUrl() {
+  const value = process.env.DATABASE_URL?.trim();
+  if (!value) throw new Error("CloudBase 云版需要配置 DATABASE_URL（腾讯云 MySQL 内网连接串）");
+  return value;
+}
+
+export function getMysqlPool() {
+  if (!runtime.__adeKitchen!.pool) {
+    runtime.__adeKitchen!.pool = mysql.createPool({
+      uri: databaseUrl(),
+      waitForConnections: true,
+      connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT || 8),
+      maxIdle: Number(process.env.MYSQL_MAX_IDLE || 8),
+      idleTimeout: 60000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 0,
+      namedPlaceholders: false,
+    });
   }
-  return runtime.__adeKitchen!.sqlite;
+  return runtime.__adeKitchen!.pool;
 }
 
 export function getDb() {
-  runtime.__adeKitchen!.db ??= drizzle(getSqlite(), { schema });
+  runtime.__adeKitchen!.db ??= drizzle(getMysqlPool(), { schema });
   return runtime.__adeKitchen!.db;
 }
 
 export function getUploads() {
-  return getLocalUploads();
+  return getConfiguredUploads();
 }
 
-function tableColumns(table: string) {
-  return new Set(getSqlite().prepare(`PRAGMA table_info(${table})`).all().map((column) => String((column as { name: unknown }).name)));
-}
+const schemaStatements = [
+  `CREATE TABLE IF NOT EXISTS orders (
+    id VARCHAR(96) NOT NULL PRIMARY KEY,
+    customer_name VARCHAR(512) NOT NULL,
+    meal_date VARCHAR(512) NOT NULL,
+    guest_count INT NOT NULL,
+    note LONGTEXT NOT NULL DEFAULT (''),
+    dishes LONGTEXT NOT NULL,
+    dish_snapshot LONGTEXT NOT NULL DEFAULT ('[]'),
+    invite_id VARCHAR(96) NOT NULL DEFAULT (''),
+    guest_token VARCHAR(96) NOT NULL DEFAULT (''),
+    progress_note LONGTEXT NOT NULL DEFAULT (''),
+    status_updated_at VARCHAR(512) NOT NULL DEFAULT (''),
+    status_read_at VARCHAR(512) NOT NULL DEFAULT (''),
+    published_menu LONGTEXT NOT NULL DEFAULT (''),
+    published_menu_updated_at VARCHAR(512) NOT NULL DEFAULT (''),
+    menu_read_at VARCHAR(512) NOT NULL DEFAULT (''),
+    archived_at VARCHAR(512) NOT NULL DEFAULT (''),
+    status VARCHAR(512) NOT NULL DEFAULT ('new'),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS custom_dishes (
+    id VARCHAR(96) NOT NULL PRIMARY KEY,
+    name VARCHAR(512) NOT NULL,
+    category VARCHAR(512) NOT NULL,
+    description LONGTEXT NOT NULL DEFAULT (''),
+    slogan LONGTEXT NOT NULL DEFAULT (''),
+    flavor VARCHAR(512) NOT NULL DEFAULT ('家常风味'),
+    minutes INT NOT NULL DEFAULT 30,
+    base_servings INT NOT NULL DEFAULT 4,
+    image_url LONGTEXT NOT NULL DEFAULT (''),
+    image_position VARCHAR(512) NOT NULL DEFAULT ('center'),
+    gallery LONGTEXT NOT NULL DEFAULT ('[]'),
+    ingredients LONGTEXT NOT NULL,
+    steps LONGTEXT NOT NULL DEFAULT ('[]'),
+    source LONGTEXT NOT NULL DEFAULT (''),
+    active INT NOT NULL DEFAULT 1,
+    featured INT NOT NULL DEFAULT 0,
+    available INT NOT NULL DEFAULT 1,
+    sold_out INT NOT NULL DEFAULT 0,
+    seasons LONGTEXT NOT NULL DEFAULT ('[]'),
+    occasions LONGTEXT NOT NULL DEFAULT ('[]'),
+    dietary LONGTEXT NOT NULL DEFAULT ('[]'),
+    difficulty VARCHAR(512) NOT NULL DEFAULT ('适中'),
+    recipe_summary LONGTEXT NOT NULL DEFAULT (''),
+    substitutions LONGTEXT NOT NULL DEFAULT ('[]'),
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS shopping_checks (
+    item_key VARCHAR(96) NOT NULL PRIMARY KEY,
+    checked INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS menu_categories (
+    id VARCHAR(96) NOT NULL PRIMARY KEY,
+    name VARCHAR(512) NOT NULL UNIQUE,
+    emoji VARCHAR(512) NOT NULL DEFAULT (''),
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS pantry_items (
+    id VARCHAR(96) NOT NULL PRIMARY KEY,
+    name VARCHAR(512) NOT NULL,
+    amount DOUBLE NOT NULL,
+    unit VARCHAR(512) NOT NULL,
+    type VARCHAR(512) NOT NULL DEFAULT ('其他'),
+    location VARCHAR(512) NOT NULL DEFAULT ('家中库存'),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS app_settings (
+    `key` VARCHAR(96) NOT NULL PRIMARY KEY,
+    value LONGTEXT NOT NULL DEFAULT ('')
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS dinner_invites (
+    id VARCHAR(96) NOT NULL PRIMARY KEY,
+    token VARCHAR(96) NOT NULL UNIQUE,
+    title VARCHAR(512) NOT NULL,
+    message LONGTEXT NOT NULL DEFAULT (''),
+    meal_date VARCHAR(512) NOT NULL,
+    theme VARCHAR(512) NOT NULL DEFAULT ('warm'),
+    dish_ids LONGTEXT NOT NULL DEFAULT ('[]'),
+    recommended_dish_ids LONGTEXT NOT NULL DEFAULT ('[]'),
+    mode VARCHAR(512) NOT NULL DEFAULT ('single'),
+    shared_order_id VARCHAR(96) NOT NULL DEFAULT (''),
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    active INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS dinner_invite_guests (
+    id VARCHAR(96) NOT NULL PRIMARY KEY,
+    invite_id VARCHAR(96) NOT NULL,
+    guest_token VARCHAR(96) NOT NULL UNIQUE,
+    display_name VARCHAR(512) NOT NULL DEFAULT ('朋友'),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY dinner_invite_guests_invite_idx (invite_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS dinner_invite_selections (
+    id VARCHAR(96) NOT NULL PRIMARY KEY,
+    invite_id VARCHAR(96) NOT NULL,
+    guest_id VARCHAR(96) NOT NULL,
+    dish_id VARCHAR(96) NOT NULL,
+    quantity INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY dinner_invite_selections_unique (invite_id, guest_id, dish_id),
+    KEY dinner_invite_selections_invite_idx (invite_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS dinner_journals (
+    id VARCHAR(96) NOT NULL PRIMARY KEY,
+    invite_id VARCHAR(96) NOT NULL DEFAULT (''),
+    order_id VARCHAR(96) NOT NULL DEFAULT (''),
+    title VARCHAR(512) NOT NULL DEFAULT ('今晚的餐桌日记'),
+    note LONGTEXT NOT NULL DEFAULT (''),
+    image_urls LONGTEXT NOT NULL DEFAULT ('[]'),
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY dinner_journals_invite_id_idx (invite_id),
+    KEY dinner_journals_order_id_idx (order_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+] as const;
 
-function addColumn(table: string, columns: Set<string>, name: string, definition: string) {
-  if (!columns.has(name)) getSqlite().exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
-}
-
-export async function ensureOrdersSchema() {
-  getSqlite().exec(`CREATE TABLE IF NOT EXISTS orders (
-    id TEXT PRIMARY KEY NOT NULL,
-    customer_name TEXT NOT NULL,
-    meal_date TEXT NOT NULL,
-    guest_count INTEGER NOT NULL,
-    note TEXT NOT NULL DEFAULT '',
-    dishes TEXT NOT NULL,
-    dish_snapshot TEXT NOT NULL DEFAULT '[]',
-    invite_id TEXT NOT NULL DEFAULT '',
-    guest_token TEXT NOT NULL DEFAULT '',
-    progress_note TEXT NOT NULL DEFAULT '',
-    status_updated_at TEXT NOT NULL DEFAULT '',
-    status_read_at TEXT NOT NULL DEFAULT '',
-    published_menu TEXT NOT NULL DEFAULT '',
-    published_menu_updated_at TEXT NOT NULL DEFAULT '',
-    menu_read_at TEXT NOT NULL DEFAULT '',
-    archived_at TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'new',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
-  const columns = tableColumns("orders");
-  const hadArchivedAt = columns.has("archived_at");
-  addColumn("orders", columns, "dish_snapshot", "TEXT NOT NULL DEFAULT '[]'");
-  addColumn("orders", columns, "invite_id", "TEXT NOT NULL DEFAULT ''");
-  addColumn("orders", columns, "guest_token", "TEXT NOT NULL DEFAULT ''");
-  addColumn("orders", columns, "progress_note", "TEXT NOT NULL DEFAULT ''");
-  addColumn("orders", columns, "status_updated_at", "TEXT NOT NULL DEFAULT ''");
-  addColumn("orders", columns, "status_read_at", "TEXT NOT NULL DEFAULT ''");
-  addColumn("orders", columns, "published_menu", "TEXT NOT NULL DEFAULT ''");
-  addColumn("orders", columns, "published_menu_updated_at", "TEXT NOT NULL DEFAULT ''");
-  addColumn("orders", columns, "menu_read_at", "TEXT NOT NULL DEFAULT ''");
-  addColumn("orders", columns, "archived_at", "TEXT NOT NULL DEFAULT ''");
-  if (!hadArchivedAt) {
-    getSqlite().exec(`UPDATE orders
-      SET archived_at = CASE
-        WHEN status_updated_at <> '' THEN status_updated_at
-        ELSE created_at
-      END
-      WHERE status IN ('done', 'cancelled')`);
-  }
-}
-
-export async function ensureCustomDishesSchema() {
-  getSqlite().exec(`CREATE TABLE IF NOT EXISTS custom_dishes (
-    id TEXT PRIMARY KEY NOT NULL,
-    name TEXT NOT NULL,
-    category TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    slogan TEXT NOT NULL DEFAULT '',
-    flavor TEXT NOT NULL DEFAULT '家常风味',
-    minutes INTEGER NOT NULL DEFAULT 30,
-    base_servings INTEGER NOT NULL DEFAULT 4,
-    image_url TEXT NOT NULL DEFAULT '',
-    image_position TEXT NOT NULL DEFAULT 'center',
-    gallery TEXT NOT NULL DEFAULT '[]',
-    ingredients TEXT NOT NULL,
-    steps TEXT NOT NULL DEFAULT '[]',
-    source TEXT NOT NULL DEFAULT '',
-    active INTEGER NOT NULL DEFAULT 1,
-    featured INTEGER NOT NULL DEFAULT 0,
-    available INTEGER NOT NULL DEFAULT 1,
-    sold_out INTEGER NOT NULL DEFAULT 0,
-    seasons TEXT NOT NULL DEFAULT '[]',
-    occasions TEXT NOT NULL DEFAULT '[]',
-    dietary TEXT NOT NULL DEFAULT '[]',
-    difficulty TEXT NOT NULL DEFAULT '适中',
-    recipe_summary TEXT NOT NULL DEFAULT '',
-    substitutions TEXT NOT NULL DEFAULT '[]',
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
-  const columns = tableColumns("custom_dishes");
-  addColumn("custom_dishes", columns, "slogan", "TEXT NOT NULL DEFAULT ''");
-  addColumn("custom_dishes", columns, "steps", "TEXT NOT NULL DEFAULT '[]'");
-  addColumn("custom_dishes", columns, "source", "TEXT NOT NULL DEFAULT ''");
-  addColumn("custom_dishes", columns, "base_servings", "INTEGER NOT NULL DEFAULT 4");
-  addColumn("custom_dishes", columns, "image_position", "TEXT NOT NULL DEFAULT 'center'");
-  addColumn("custom_dishes", columns, "gallery", "TEXT NOT NULL DEFAULT '[]'");
-  addColumn("custom_dishes", columns, "featured", "INTEGER NOT NULL DEFAULT 0");
-  addColumn("custom_dishes", columns, "available", "INTEGER NOT NULL DEFAULT 1");
-  addColumn("custom_dishes", columns, "sold_out", "INTEGER NOT NULL DEFAULT 0");
-  addColumn("custom_dishes", columns, "seasons", "TEXT NOT NULL DEFAULT '[]'");
-  addColumn("custom_dishes", columns, "occasions", "TEXT NOT NULL DEFAULT '[]'");
-  addColumn("custom_dishes", columns, "dietary", "TEXT NOT NULL DEFAULT '[]'");
-  addColumn("custom_dishes", columns, "sort_order", "INTEGER NOT NULL DEFAULT 0");
-  addColumn("custom_dishes", columns, "difficulty", "TEXT NOT NULL DEFAULT '适中'");
-  addColumn("custom_dishes", columns, "recipe_summary", "TEXT NOT NULL DEFAULT ''");
-  addColumn("custom_dishes", columns, "substitutions", "TEXT NOT NULL DEFAULT '[]'");
-  getSqlite().prepare(`
-    UPDATE custom_dishes
-    SET image_url = image_url || '?v=cache-refresh-20260723'
-    WHERE image_url LIKE '/api/dish-images/%'
-      AND instr(image_url, '?') = 0
-  `).run();
-}
-
-export async function ensureDinnerInvitesSchema() {
-  await ensureOrdersSchema();
-  getSqlite().exec(`CREATE TABLE IF NOT EXISTS dinner_invites (
-    id TEXT PRIMARY KEY NOT NULL,
-    token TEXT NOT NULL UNIQUE,
-    title TEXT NOT NULL,
-    message TEXT NOT NULL DEFAULT '',
-    meal_date TEXT NOT NULL,
-    theme TEXT NOT NULL DEFAULT 'warm',
-    dish_ids TEXT NOT NULL DEFAULT '[]',
-    recommended_dish_ids TEXT NOT NULL DEFAULT '[]',
-    mode TEXT NOT NULL DEFAULT 'single',
-    shared_order_id TEXT NOT NULL DEFAULT '',
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
-  const inviteColumns = tableColumns("dinner_invites");
-  addColumn("dinner_invites", inviteColumns, "mode", "TEXT NOT NULL DEFAULT 'single'");
-  addColumn("dinner_invites", inviteColumns, "shared_order_id", "TEXT NOT NULL DEFAULT ''");
-  const hadUpdatedAt = inviteColumns.has("updated_at");
-  // SQLite rejects non-constant defaults when ALTER TABLE adds a column.
-  // Keep the CREATE TABLE default for new databases, but use a constant value
-  // for legacy tables and backfill it immediately below.
-  addColumn("dinner_invites", inviteColumns, "updated_at", "TEXT NOT NULL DEFAULT ''");
-  if (!hadUpdatedAt) {
-    getSqlite().exec(`UPDATE dinner_invites
-      SET updated_at = COALESCE(NULLIF(created_at, ''), CURRENT_TIMESTAMP)
-      WHERE updated_at = ''`);
-  }
-  getSqlite().exec(`CREATE TABLE IF NOT EXISTS dinner_invite_guests (
-    id TEXT PRIMARY KEY NOT NULL,
-    invite_id TEXT NOT NULL,
-    guest_token TEXT NOT NULL UNIQUE,
-    display_name TEXT NOT NULL DEFAULT '朋友',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
-  getSqlite().exec("CREATE INDEX IF NOT EXISTS dinner_invite_guests_invite_idx ON dinner_invite_guests (invite_id)");
-  getSqlite().exec(`CREATE TABLE IF NOT EXISTS dinner_invite_selections (
-    id TEXT PRIMARY KEY NOT NULL,
-    invite_id TEXT NOT NULL,
-    guest_id TEXT NOT NULL,
-    dish_id TEXT NOT NULL,
-    quantity INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(invite_id, guest_id, dish_id)
-  )`);
-  getSqlite().exec("CREATE INDEX IF NOT EXISTS dinner_invite_selections_invite_idx ON dinner_invite_selections (invite_id)");
-  getSqlite().exec(`CREATE TABLE IF NOT EXISTS dinner_journals (
-    id TEXT PRIMARY KEY NOT NULL,
-    invite_id TEXT NOT NULL DEFAULT '',
-    order_id TEXT NOT NULL DEFAULT '',
-    title TEXT NOT NULL DEFAULT '今晚的餐桌日记',
-    note TEXT NOT NULL DEFAULT '',
-    image_urls TEXT NOT NULL DEFAULT '[]',
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
-  const journalColumns = tableColumns("dinner_journals");
-  addColumn("dinner_journals", journalColumns, "order_id", "TEXT NOT NULL DEFAULT ''");
-  addColumn("dinner_journals", journalColumns, "updated_at", "TEXT NOT NULL DEFAULT ''");
-  getSqlite().exec("CREATE INDEX IF NOT EXISTS dinner_journals_invite_id_idx ON dinner_journals (invite_id)");
-  getSqlite().exec("CREATE INDEX IF NOT EXISTS dinner_journals_order_id_idx ON dinner_journals (order_id)");
-  getSqlite().exec(`UPDATE dinner_journals
-    SET order_id = COALESCE((
-      SELECT orders.id FROM orders
-      WHERE orders.invite_id = dinner_journals.invite_id AND orders.status = 'done'
-      ORDER BY orders.created_at DESC LIMIT 1
-    ), '')
-    WHERE order_id = '' AND invite_id <> ''
-      AND id = (SELECT latest.id FROM dinner_journals AS latest WHERE latest.invite_id = dinner_journals.invite_id ORDER BY latest.created_at DESC LIMIT 1)`);
-  getSqlite().exec("CREATE UNIQUE INDEX IF NOT EXISTS dinner_journals_order_id_unique_idx ON dinner_journals (order_id) WHERE order_id <> ''");
-}
-
-export async function ensureShoppingChecksSchema() {
-  getSqlite().exec(`CREATE TABLE IF NOT EXISTS shopping_checks (
-    item_key TEXT PRIMARY KEY NOT NULL,
-    checked INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
-}
-
-export async function ensureMenuLibrary() {
-  await ensureCustomDishesSchema();
-  getSqlite().exec(`CREATE TABLE IF NOT EXISTS app_settings (
-    key TEXT PRIMARY KEY NOT NULL,
-    value TEXT NOT NULL DEFAULT ''
-  )`);
-  getSqlite().exec(`CREATE TABLE IF NOT EXISTS menu_categories (
-    id TEXT PRIMARY KEY NOT NULL,
-    name TEXT NOT NULL UNIQUE,
-    emoji TEXT NOT NULL DEFAULT '',
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
-  const categoryColumns = tableColumns("menu_categories");
-  addColumn("menu_categories", categoryColumns, "emoji", "TEXT NOT NULL DEFAULT ''");
-
-  const seeded = await getDb().select().from(schema.appSettings).where(eq(schema.appSettings.key, "classic_menu_v1")).limit(1);
+async function seedMenu() {
+  const db = getDb();
+  const seeded = await db.select({ key: schema.appSettings.key }).from(schema.appSettings).where(eq(schema.appSettings.key, "classic_menu_v1")).limit(1);
   if (!seeded.length) {
-    const insertSeed = getSqlite().transaction(() => {
-      for (const [index, dish] of seedDishes.entries()) {
-        getDb().insert(schema.customDishes).values({
-          id: dish.id, name: dish.name, category: dish.category, description: dish.description, slogan: dish.slogan || "",
-          flavor: dish.flavor, minutes: dish.minutes, baseServings: dish.baseServings || 4,
-          imageUrl: dish.imageUrl || "", imagePosition: dish.imagePosition || "center", gallery: JSON.stringify(dish.gallery || []), ingredients: JSON.stringify(dish.ingredients), steps: JSON.stringify(dish.steps || []),
-          source: dish.source || "阿德经典菜单", active: 1, featured: dish.tag ? 1 : 0, available: 1, soldOut: 0,
-          seasons: "[]", occasions: "[]", dietary: "[]", sortOrder: index,
-        }).onConflictDoNothing().run();
-      }
-      getDb().insert(schema.appSettings).values({ key: "classic_menu_v1", value: new Date().toISOString() }).onConflictDoNothing().run();
-    });
-    insertSeed();
+    for (const [index, dish] of seedDishes.entries()) {
+      await db.insert(schema.customDishes).values({
+        id: dish.id,
+        name: dish.name,
+        category: dish.category,
+        description: dish.description,
+        slogan: dish.slogan || "",
+        flavor: dish.flavor,
+        minutes: dish.minutes,
+        baseServings: dish.baseServings || 4,
+        imageUrl: dish.imageUrl || "",
+        imagePosition: dish.imagePosition || "center",
+        gallery: JSON.stringify(dish.gallery || []),
+        ingredients: JSON.stringify(dish.ingredients),
+        steps: JSON.stringify(dish.steps || []),
+        source: dish.source || "阿德经典菜单",
+        active: 1,
+        featured: dish.tag ? 1 : 0,
+        available: 1,
+        soldOut: 0,
+        seasons: "[]",
+        occasions: "[]",
+        dietary: "[]",
+        difficulty: "适中",
+        recipeSummary: dish.recipeSummary || "",
+        substitutions: "[]",
+        sortOrder: index,
+      }).onDuplicateKeyUpdate({ set: { name: dish.name } });
+    }
+    await db.insert(schema.appSettings).values({ key: "classic_menu_v1", value: new Date().toISOString() }).onDuplicateKeyUpdate({ set: { value: new Date().toISOString() } });
   }
 
   for (const dish of seedDishes) {
-    if (dish.slogan) getSqlite().prepare("UPDATE custom_dishes SET slogan = ? WHERE id = ? AND slogan = ''").run(dish.slogan, dish.id);
-    if (dish.recipeSummary) getSqlite().prepare("UPDATE custom_dishes SET recipe_summary = ? WHERE id = ? AND recipe_summary = ''").run(dish.recipeSummary, dish.id);
-    if (dish.steps?.length) getSqlite().prepare("UPDATE custom_dishes SET steps = ? WHERE id = ? AND (steps = '' OR steps = '[]')").run(JSON.stringify(dish.steps), dish.id);
+    if (dish.slogan) await db.update(schema.customDishes).set({ slogan: dish.slogan }).where(and(eq(schema.customDishes.id, dish.id), eq(schema.customDishes.slogan, "")));
+    if (dish.recipeSummary) await db.update(schema.customDishes).set({ recipeSummary: dish.recipeSummary }).where(and(eq(schema.customDishes.id, dish.id), eq(schema.customDishes.recipeSummary, "")));
+    if (dish.steps?.length) await db.update(schema.customDishes).set({ steps: JSON.stringify(dish.steps) }).where(and(eq(schema.customDishes.id, dish.id), eq(schema.customDishes.steps, "[]")));
   }
 
-  const dishCategories = getSqlite().prepare("SELECT DISTINCT category AS name FROM custom_dishes WHERE category <> ''").all() as Array<{ name: string }>;
-  const names = Array.from(new Set(dishCategories.map((item) => item.name)));
-  const nextCategoryOrder = Number((getSqlite().prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM menu_categories").get() as { value: number }).value);
+  const dishCategories = await db.select({ name: schema.customDishes.category }).from(schema.customDishes);
+  const names = Array.from(new Set(dishCategories.map((item) => item.name).filter(Boolean)));
+  const categoryRows = await db.select({ name: schema.menuCategories.name }).from(schema.menuCategories);
+  const existingNames = new Set(categoryRows.map((item) => item.name));
   for (const [index, name] of names.entries()) {
-    await getDb().insert(schema.menuCategories).values({ id: crypto.randomUUID(), name, sortOrder: nextCategoryOrder + index }).onConflictDoNothing();
+    if (!existingNames.has(name)) {
+      await db.insert(schema.menuCategories).values({ id: crypto.randomUUID(), name, sortOrder: index }).onDuplicateKeyUpdate({ set: { name } });
+    }
   }
 }
 
-export async function ensurePantrySchema() {
-  getSqlite().exec(`CREATE TABLE IF NOT EXISTS pantry_items (
-    id TEXT PRIMARY KEY NOT NULL,
-    name TEXT NOT NULL,
-    amount REAL NOT NULL,
-    unit TEXT NOT NULL,
-    type TEXT NOT NULL DEFAULT '其他',
-    location TEXT NOT NULL DEFAULT '家中库存',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
+async function ensureReady() {
+  if (!runtime.__adeKitchen!.schemaReady) {
+    runtime.__adeKitchen!.schemaReady = (async () => {
+      const pool = getMysqlPool();
+      for (const statement of schemaStatements) await pool.query(statement);
+      await seedMenu();
+    })().catch((error) => {
+      runtime.__adeKitchen!.schemaReady = undefined;
+      throw error;
+    });
+  }
+  await runtime.__adeKitchen!.schemaReady;
 }
 
-export async function ensureAllSchema() {
-  await ensureOrdersSchema();
-  await ensureMenuLibrary();
-  await ensureShoppingChecksSchema();
-  await ensurePantrySchema();
-  await ensureDinnerInvitesSchema();
+export async function ensureOrdersSchema() { await ensureReady(); }
+export async function ensureCustomDishesSchema() { await ensureReady(); }
+export async function ensureDinnerInvitesSchema() { await ensureReady(); }
+export async function ensureShoppingChecksSchema() { await ensureReady(); }
+export async function ensureMenuLibrary() { await ensureReady(); }
+export async function ensurePantrySchema() { await ensureReady(); }
+export async function ensureAllSchema() { await ensureReady(); }
+
+export function getSqlite(): SqliteCompatibility {
+  throw new Error("CloudBase 云版已切换到 MySQL；该接口只允许由尚未迁移的 NAS 兼容路由调用");
 }
