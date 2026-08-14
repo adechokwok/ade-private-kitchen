@@ -2470,8 +2470,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   <div className="dinner-overview-list">
                     {invites.filter((invite) => invite.active).slice(0, 6).map((invite) => (
                       <article className="dinner-overview-card" key={invite.id}>
-                        <div><span>{invite.mealDate}</span><strong>{invite.title}</strong><small>{invite.mode === "shared" ? "多人共享一张单" : "专属点菜单"}</small></div>
-                        <div className="dinner-overview-actions"><button type="button" onClick={() => { setCreatedInvite(invite); setCreatedInviteUrl(`${window.location.origin}/invite/${invite.token}`); setChefView("invitations"); }}>管理</button><a href={`/invite/${invite.token}`} target="_blank" rel="noreferrer">打开点菜页</a><button type="button" className="quiet" onClick={() => void shareInvite(invite)}>分享</button></div>
+                        <div className="dinner-overview-date"><span>{invite.mealDate}</span><b aria-hidden="true">{invite.mode === "shared" ? "多人" : "专属"}</b></div>
+                        <div className="dinner-overview-copy"><div className="dinner-overview-title"><strong>{invite.title}</strong><em><i aria-hidden="true" />进行中</em></div><small>{invite.mode === "shared" ? "多人共享一张单 · 朋友的选择会同步汇总" : "专属点菜单 · 等待朋友确认"}</small><span>{invite.dishIds.length} 道开放菜品</span></div>
+                        <div className="dinner-overview-actions"><button type="button" onClick={() => { setCreatedInvite(invite); setCreatedInviteUrl(window.location.origin + "/invite/" + invite.token); setChefView("invitations"); }}>管理饭局</button><a href={"/invite/" + invite.token} target="_blank" rel="noreferrer">打开点菜页</a><button type="button" className="quiet" onClick={() => void shareInvite(invite)}>分享</button></div>
                       </article>
                     ))}
                   </div>
