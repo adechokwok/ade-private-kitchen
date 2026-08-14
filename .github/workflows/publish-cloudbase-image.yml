@@ -1,0 +1,70 @@
+name: 测试并构建 CloudBase 云托管镜像
+
+on:
+  push:
+    branches:
+      - cloud/tencent-cloudbase
+  workflow_dispatch:
+
+concurrency:
+  group: cloudbase-image
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-cloudbase
+
+jobs:
+  publish:
+    name: 测试并构建 CloudBase 镜像
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 读取代码
+        uses: actions/checkout@v6
+
+      - name: 准备 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+
+      - name: 准备 pnpm
+        run: npm install --global pnpm@11.9.0
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 自动检查
+        run: pnpm test
+
+      - name: 准备 Docker 构建器
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GitHub 容器仓库
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 构建并发布 CloudBase 边缘镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            DEPLOYMENT_TARGET=cloudbase
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:edge
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=阿德小厨房 CloudBase 云托管版
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
