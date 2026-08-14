@@ -41,9 +41,12 @@ export async function POST(request: Request) {
     }
   }
   const updatedAt = new Date().toISOString();
-  const [journal] = existingRows[0]
-    ? await getDb().update(dinnerJournals).set({ orderId, inviteId, title, note, imageUrls: JSON.stringify(imageUrls), updatedAt }).where(eq(dinnerJournals.id, id)).returning()
-    : await getDb().insert(dinnerJournals).values({ id, orderId, inviteId, title, note, imageUrls: JSON.stringify(imageUrls), updatedAt }).returning();
+  if (existingRows[0]) {
+    await getDb().update(dinnerJournals).set({ orderId, inviteId, title, note, imageUrls: JSON.stringify(imageUrls), updatedAt }).where(eq(dinnerJournals.id, id));
+  } else {
+    await getDb().insert(dinnerJournals).values({ id, orderId, inviteId, title, note, imageUrls: JSON.stringify(imageUrls), updatedAt });
+  }
+  const [journal] = await getDb().select().from(dinnerJournals).where(eq(dinnerJournals.id, id)).limit(1);
   return Response.json({ journal: { ...journal, imageUrls } });
 }
 
