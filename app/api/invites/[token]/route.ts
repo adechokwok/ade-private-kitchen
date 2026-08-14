@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { ensureDinnerInvitesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb, getSqlite } from "../../../../db";
+import { ensureDinnerInvitesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb } from "../../../../db";
 import { appSettings, customDishes, dinnerInviteGuests, dinnerInviteSelections, dinnerInvites, dinnerJournals, orders } from "../../../../db/schema";
 
 const parseList = (value: string) => { try { return JSON.parse(value); } catch { return []; } };
@@ -57,9 +57,12 @@ export async function POST(request: Request, context: { params: Promise<{ token:
   if (!guest) {
     guestToken = crypto.randomUUID().replaceAll("-", "");
     const displayName = typeof payload.displayName === "string" && payload.displayName.trim() ? payload.displayName.trim().slice(0, 30) : "朋友";
-    [guest] = await getDb().insert(dinnerInviteGuests).values({ id: crypto.randomUUID(), inviteId: invite.id, guestToken, displayName }).returning();
+    const guestId = crypto.randomUUID();
+    await getDb().insert(dinnerInviteGuests).values({ id: guestId, inviteId: invite.id, guestToken, displayName });
+    [guest] = await getDb().select().from(dinnerInviteGuests).where(eq(dinnerInviteGuests.id, guestId)).limit(1);
   } else if (typeof payload.displayName === "string" && payload.displayName.trim()) {
-    [guest] = await getDb().update(dinnerInviteGuests).set({ displayName: payload.displayName.trim().slice(0, 30), updatedAt: new Date().toISOString() }).where(eq(dinnerInviteGuests.id, guest.id)).returning();
+    await getDb().update(dinnerInviteGuests).set({ displayName: payload.displayName.trim().slice(0, 30), updatedAt: new Date().toISOString() }).where(eq(dinnerInviteGuests.id, guest.id));
+    [guest] = await getDb().select().from(dinnerInviteGuests).where(eq(dinnerInviteGuests.id, guest.id)).limit(1);
   }
   if (!guest) return Response.json({ error: "共享饭局成员创建失败" }, { status: 500 });
   if (action === "set-selection") {
@@ -96,22 +99,21 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     const requestedCount = Number.isInteger(guestCount) && guestCount > 0 && guestCount <= 20 ? guestCount : 0;
     const count = Math.min(20, Math.max(1, requestedCount, participantCount));
     const note = typeof payload.note === "string" ? payload.note.trim().slice(0, 200) : "";
-    let order;
-    if (invite.sharedOrderId) {
-      [order] = await getDb().update(orders).set({ customerName, mealDate, guestCount: count, note, dishes: JSON.stringify(normalized), dishSnapshot: JSON.stringify(dishSnapshot) }).where(eq(orders.id, invite.sharedOrderId)).returning();
-    } else {
-      const id = crypto.randomUUID();
-      const orderGuestToken = crypto.randomUUID().replaceAll("-", "");
-      [order] = await getDb().insert(orders).values({ id, customerName, mealDate, guestCount: count, note, dishes: JSON.stringify(normalized), dishSnapshot: JSON.stringify(dishSnapshot), inviteId: invite.id, guestToken: orderGuestToken }).returning();
-      const claim = getSqlite().prepare("UPDATE dinner_invites SET shared_order_id = ?, updated_at = ? WHERE id = ? AND shared_order_id = ''").run(order.id, new Date().toISOString(), invite.id);
-      if (claim.changes === 0) {
-        const winnerId = (getSqlite().prepare("SELECT shared_order_id AS value FROM dinner_invites WHERE id = ?").get(invite.id) as { value?: string } | undefined)?.value || order.id;
-        if (winnerId !== order.id) {
-          await getDb().delete(orders).where(eq(orders.id, order.id));
-          [order] = await getDb().update(orders).set({ customerName, mealDate, guestCount: count, note, dishes: JSON.stringify(normalized), dishSnapshot: JSON.stringify(dishSnapshot) }).where(eq(orders.id, winnerId)).returning();
-        }
+    const order = await getDb().transaction(async (tx) => {
+      const [lockedInvite] = await tx.select().from(dinnerInvites).where(eq(dinnerInvites.id, invite.id)).limit(1);
+      if (!lockedInvite) throw new Error("饭局邀请不存在");
+      let orderId = lockedInvite.sharedOrderId;
+      if (!orderId) {
+        orderId = crypto.randomUUID();
+        const orderGuestToken = crypto.randomUUID().replaceAll("-", "");
+        await tx.insert(orders).values({ id: orderId, customerName, mealDate, guestCount: count, note, dishes: JSON.stringify(normalized), dishSnapshot: JSON.stringify(dishSnapshot), inviteId: invite.id, guestToken: orderGuestToken });
+        await tx.update(dinnerInvites).set({ sharedOrderId: orderId, updatedAt: new Date().toISOString() }).where(eq(dinnerInvites.id, invite.id));
+      } else {
+        await tx.update(orders).set({ customerName, mealDate, guestCount: count, note, dishes: JSON.stringify(normalized), dishSnapshot: JSON.stringify(dishSnapshot) }).where(eq(orders.id, orderId));
       }
-    }
+      const [savedOrder] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+      return savedOrder;
+    });
     return Response.json({ ok: true, guestToken, order, orderToken: order?.guestToken || "" });
   }
   return Response.json({ ok: true, guestToken });
