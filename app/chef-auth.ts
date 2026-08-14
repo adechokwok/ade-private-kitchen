@@ -1,10 +1,7 @@
 import "server-only";
 
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
-import { getDataDir, ensureDataDirectories } from "../storage/paths";
-import path from "node:path";
 
 export const CHEF_SESSION_COOKIE = "ade_chef_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -12,10 +9,6 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 type ChefSession = { sub: "chef"; exp: number };
 
 function configuredPassword() {
-  const file = process.env.CHEF_PASSWORD_FILE?.trim();
-  if (file) {
-    try { return readFileSync(file, "utf8").trim(); } catch { return ""; }
-  }
   return process.env.CHEF_PASSWORD?.trim() || "";
 }
 
@@ -33,21 +26,10 @@ export function verifyChefPassword(candidate: string) {
 
 function sessionSecret() {
   const configured = process.env.SESSION_SECRET?.trim();
-  if (configured && configured.length >= 32) return configured;
-  ensureDataDirectories();
-  const secretPath = path.join(getDataDir(), ".session-secret");
-  try {
-    const saved = readFileSync(secretPath, "utf8").trim();
-    if (saved.length >= 32) return saved;
-  } catch { /* 首次启动时创建 */ }
-  const created = randomBytes(48).toString("base64url");
-  try {
-    writeFileSync(secretPath, created, { mode: 0o600, flag: "wx" });
-    return created;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return readFileSync(secretPath, "utf8").trim();
-    throw error;
+  if (!configured || configured.length < 32) {
+    throw new Error("CloudBase 云版需要配置长度至少 32 位的 SESSION_SECRET");
   }
+  return configured;
 }
 
 function sign(value: string) {
