@@ -6,5 +6,5 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const object = await getUploads().get(`dinner-journals/${id}/${index}`);
   if (!object) return new Response("Not found", { status: 404 });
   const headers = new Headers(); object.writeHttpMetadata(headers); headers.set("etag", object.httpEtag); headers.set("cache-control", "public, max-age=31536000, immutable"); headers.set("x-content-type-options", "nosniff");
-  return new Response(object.body, { headers });
+  return new Response(new Uint8Array(object.body), { headers });
 }
