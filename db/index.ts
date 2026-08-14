@@ -164,7 +164,16 @@ export async function ensureDinnerInvitesSchema() {
   const inviteColumns = tableColumns("dinner_invites");
   addColumn("dinner_invites", inviteColumns, "mode", "TEXT NOT NULL DEFAULT 'single'");
   addColumn("dinner_invites", inviteColumns, "shared_order_id", "TEXT NOT NULL DEFAULT ''");
-  addColumn("dinner_invites", inviteColumns, "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
+  const hadUpdatedAt = inviteColumns.has("updated_at");
+  // SQLite rejects non-constant defaults when ALTER TABLE adds a column.
+  // Keep the CREATE TABLE default for new databases, but use a constant value
+  // for legacy tables and backfill it immediately below.
+  addColumn("dinner_invites", inviteColumns, "updated_at", "TEXT NOT NULL DEFAULT ''");
+  if (!hadUpdatedAt) {
+    getSqlite().exec(`UPDATE dinner_invites
+      SET updated_at = COALESCE(NULLIF(created_at, ''), CURRENT_TIMESTAMP)
+      WHERE updated_at = ''`);
+  }
   getSqlite().exec(`CREATE TABLE IF NOT EXISTS dinner_invite_guests (
     id TEXT PRIMARY KEY NOT NULL,
     invite_id TEXT NOT NULL,

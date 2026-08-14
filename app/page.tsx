@@ -2065,36 +2065,6 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     }
   };
 
-  const createSharedDinner = async () => {
-    if (inviteCreating) return;
-    const dishIds = inviteSelectionTouched ? inviteSelectedDishIds : inviteSelectableDishes.map((dish) => dish.id);
-    if (!dishIds.length) {
-      setNotice("请至少保留一个菜品类型后再创建饭局");
-      return;
-    }
-    setInviteCreating(true);
-    try {
-      const response = await fetch("/api/invites", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ quickCreate: true, mode: "shared", dishIds }),
-      });
-      const data = await response.json().catch(() => ({})) as { invite?: DinnerInvite; error?: string };
-      if (!response.ok || !data.invite) throw new Error(data.error || `饭局创建失败（${response.status}）`);
-      const invite = data.invite;
-      setInvites((current) => [invite, ...current.filter((item) => item.id !== invite.id)]);
-      setCreatedInvite(invite);
-      setCreatedInviteUrl(`${window.location.origin}/invite/${invite.token}`);
-      setChefView("invitations");
-      setNotice("共享饭局已创建，复制链接发给朋友即可一起点同一张单");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "饭局创建失败，请稍后重试");
-    } finally {
-      setInviteCreating(false);
-    }
-  };
-
   const shareInvite = async (invite: DinnerInvite) => {
     const url = `${window.location.origin}/invite/${invite.token}`;
     setCreatedInvite(invite);
@@ -2111,6 +2081,16 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     const response = await fetch("/api/invites", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: invite.id, active: !invite.active }) });
     if (!response.ok) return setNotice("邀请状态更新失败");
     setInvites((current) => current.map((item) => item.id === invite.id ? { ...item, active: !item.active } : item));
+  };
+
+  const deleteInvite = async (invite: DinnerInvite) => {
+    if (!window.confirm(`确定删除“${invite.title}”这份邀请吗？删除后，朋友将不能再通过这条链接进入，但已经形成的订单和餐桌日记会保留。`)) return;
+    const response = await fetch(`/api/invites?id=${encodeURIComponent(invite.id)}`, { method: "DELETE", credentials: "same-origin" });
+    const data = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) return setNotice(data.error || "邀请删除失败");
+    setInvites((current) => current.filter((item) => item.id !== invite.id));
+    if (createdInvite?.id === invite.id) setCreatedInvite(null);
+    setNotice("邀请已删除，相关订单和餐桌日记仍然保留");
   };
 
   const saveJournal = async (event: FormEvent<HTMLFormElement>, order: Order) => {
@@ -2431,7 +2411,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         <section className="chef-page">
           <div className="chef-heading">
             <div><span className="eyebrow">KITCHEN WORKFLOW</span><h1>主厨工作台</h1><p>从接单、买菜、制作到开饭，按厨房真正的顺序一步一步完成。</p></div>
-            <div className="chef-heading-actions"><button type="button" className="primary-button quick-dinner-button" onClick={() => void createSharedDinner()} disabled={inviteCreating}>{inviteCreating ? "正在创建饭局…" : "创建共享饭局"} <span>→</span></button><button type="button" className={`kitchen-status-toggle ${kitchenOpen ? "open" : "closed"}`} onClick={toggleKitchenStatus} disabled={kitchenStatusSaving}><i></i><span><small>{kitchenOpen ? "绿灯 · 朋友可见" : "红灯 · 朋友可见"}</small><strong>{kitchenStatusSaving ? "正在保存…" : kitchenOpen ? "厨房今日营业" : "厨房今天休息"}</strong></span><b>{kitchenOpen ? "关闭" : "开启"}</b></button>{(["accepting", "shopping", "cooking", "serving"] as ChefView[]).includes(chefView) && <button className="refresh-button" onClick={() => loadOrders()} disabled={loadingOrders}>{loadingOrders ? "刷新中…" : "刷新订单"}</button>}</div>
+            <div className="chef-heading-actions"><button type="button" className={`kitchen-status-toggle ${kitchenOpen ? "open" : "closed"}`} onClick={toggleKitchenStatus} disabled={kitchenStatusSaving}><i></i><span><small>{kitchenOpen ? "绿灯 · 朋友可见" : "红灯 · 朋友可见"}</small><strong>{kitchenStatusSaving ? "正在保存…" : kitchenOpen ? "厨房今日营业" : "厨房今天休息"}</strong></span><b>{kitchenOpen ? "关闭" : "开启"}</b></button>{(["accepting", "shopping", "cooking", "serving"] as ChefView[]).includes(chefView) && <button className="refresh-button" onClick={() => loadOrders()} disabled={loadingOrders}>{loadingOrders ? "刷新中…" : "刷新订单"}</button>}</div>
           </div>
           <div className="chef-workflow" role="tablist" aria-label="主厨工作流程">
             <button className={chefView === "accepting" ? "active" : ""} onClick={() => setChefView("accepting")}><i>01</i><span><b>接单</b><small>{acceptingOrders.length} 份待确认 · 编排宴席</small></span></button>
@@ -2459,7 +2439,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   <small>{invites.filter((invite) => invite.active).length} 场进行中</small>
                 </div>
                 {invites.filter((invite) => invite.active).length === 0 ? (
-                  <div className="dinner-overview-empty"><span>🍽️</span><p>还没有进行中的饭局，点击右上角“创建共享饭局”即可生成链接。</p></div>
+                  <div className="dinner-overview-empty"><span>🍽️</span><p>还没有进行中的饭局，请进入“专属邀请”创建一场饭局并生成分享链接。</p></div>
                 ) : (
                   <div className="dinner-overview-list">
                     {invites.filter((invite) => invite.active).slice(0, 6).map((invite) => (
@@ -2769,7 +2749,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                     <div className="invite-card-head"><span>{invite.mealDate}</span><em>{invite.mode === "shared" ? "多人共享" : "单人邀请"} · {invite.active ? "邀请中" : "已结束"}</em></div>
                     <h3>{invite.title}</h3><p>{invite.message || "菜我来做，你只管来。"}</p>
                     <div className="invite-menu-preview">{invite.dishIds.map((id) => dishCatalog.find((dish) => dish.id === id)?.name).filter(Boolean).join(" · ")}</div>
-                    <div className="invite-actions"><button onClick={() => shareInvite(invite)}>分享邀请</button><a href={`/invite/${invite.token}`} target="_blank">预览</a><button className="quiet" onClick={() => toggleInvite(invite)}>{invite.active ? "结束邀请" : "重新开放"}</button></div>
+                    <div className="invite-actions"><button onClick={() => shareInvite(invite)}>分享邀请</button><a href={`/invite/${invite.token}`} target="_blank">预览</a><button className="quiet" onClick={() => toggleInvite(invite)}>{invite.active ? "结束邀请" : "重新开放"}</button><button className="danger" onClick={() => void deleteInvite(invite)}>删除</button></div>
                   </article>)}</div>}
               </div>
             </section>
