@@ -50,7 +50,7 @@ export function getMysqlPool() {
 }
 
 export function getDb() {
-  runtime.__adeKitchen!.db ??= drizzle(getMysqlPool(), { schema });
+  runtime.__adeKitchen!.db ??= drizzle(getMysqlPool(), { schema, mode: "default" });
   return runtime.__adeKitchen!.db;
 }
 
