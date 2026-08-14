@@ -461,12 +461,16 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [inviteMode, setInviteMode] = useState<"single" | "shared">("shared");
   const [inviteSelectedDishIds, setInviteSelectedDishIds] = useState<string[]>([]);
   const [inviteRecommendedDishIds, setInviteRecommendedDishIds] = useState<string[]>([]);
+  const [inviteSelectionTouched, setInviteSelectionTouched] = useState(false);
+  const [inviteDishQuery, setInviteDishQuery] = useState("");
+  const [inviteDishCategory, setInviteDishCategory] = useState("全部分类");
   const [inviteCreating, setInviteCreating] = useState(false);
   const [createdInvite, setCreatedInvite] = useState<DinnerInvite | null>(null);
   const [createdInviteUrl, setCreatedInviteUrl] = useState("");
   const [activeInvite, setActiveInvite] = useState<DinnerInvite | null>(null);
   const [sharedDinner, setSharedDinner] = useState<SharedDinner | null>(null);
   const [sharedGuestName, setSharedGuestName] = useState("朋友");
+  const sharedGuestNameDirtyRef = useRef(false);
   const [sharedGuestSaving, setSharedGuestSaving] = useState(false);
   const [inviteLoading, setInviteLoading] = useState(Boolean(initialInviteToken));
   const [orderProgressUrl, setOrderProgressUrl] = useState("");
@@ -600,7 +604,17 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const inviteSelectableDishes = allDishes;
   const inviteSelectedDishIdSet = useMemo(() => new Set(inviteSelectedDishIds), [inviteSelectedDishIds]);
   const inviteRecommendedDishIdSet = useMemo(() => new Set(inviteRecommendedDishIds), [inviteRecommendedDishIds]);
-  const allInviteDishesSelected = inviteSelectableDishes.length > 0 && inviteSelectableDishes.every((dish) => inviteSelectedDishIdSet.has(dish.id));
+  const inviteCategoryOptions = useMemo(() => menuCategories.filter((category) => inviteSelectableDishes.some((dish) => dish.category === category)), [inviteSelectableDishes, menuCategories]);
+  const inviteCategorySelected = (category: string) => !inviteSelectionTouched || inviteSelectableDishes.filter((dish) => dish.category === category).every((dish) => inviteSelectedDishIdSet.has(dish.id));
+  const filteredInviteDishes = useMemo(() => {
+    const query = inviteDishQuery.trim().toLocaleLowerCase("zh-CN");
+    return inviteSelectableDishes.filter((dish) => {
+      const matchesCategory = inviteDishCategory === "全部分类" || dish.category === inviteDishCategory;
+      const matchesQuery = !query || [dish.name, dish.category, dish.description, dish.slogan].some((value) => value?.toLocaleLowerCase("zh-CN").includes(query));
+      return matchesCategory && matchesQuery;
+    });
+  }, [inviteDishCategory, inviteDishQuery, inviteSelectableDishes]);
+  const allInviteDishesSelected = filteredInviteDishes.length > 0 && filteredInviteDishes.every((dish) => !inviteSelectionTouched || inviteSelectedDishIdSet.has(dish.id));
 
   const cartCount = Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
   const menuReadOnly = mode === "menu" && !kitchenOpen;
@@ -960,6 +974,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     try {
       const response = await fetch(`/api/invites/${activeInvite.token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "join", guestToken: sharedDinner.guestToken, displayName }) });
       if (!response.ok) throw new Error();
+      sharedGuestNameDirtyRef.current = false;
       setSharedGuestName(displayName);
       await loadInvite(activeInvite.token, true);
       setNotice(`已确认称呼：${displayName}，大家会看到你点的菜`);
@@ -1024,7 +1039,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       if (data.shared) {
         setSharedDinner(data.shared);
         const currentGuest = data.shared.guests.find((guest) => guest.id === data.shared?.guestId);
-        if (currentGuest) setSharedGuestName(currentGuest.displayName);
+        if (currentGuest && !sharedGuestNameDirtyRef.current) setSharedGuestName(currentGuest.displayName);
         const own = data.shared.selections.find((item) => item.guestId === data.shared?.guestId);
         if (own) setCart(Object.fromEntries(own.items.map((item) => [item.dishId, item.quantity])));
         if (!guestToken || !data.shared.guestId) {
@@ -1961,14 +1976,32 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   };
 
   const toggleAllInviteDishes = () => {
-    const nextIds = allInviteDishesSelected ? [] : inviteSelectableDishes.map((dish) => dish.id);
+    const baseIds = inviteSelectionTouched ? inviteSelectedDishIds : inviteSelectableDishes.map((dish) => dish.id);
+    const nextIds = allInviteDishesSelected
+      ? baseIds.filter((id) => !filteredInviteDishes.some((dish) => dish.id === id))
+      : Array.from(new Set([...baseIds, ...filteredInviteDishes.map((dish) => dish.id)]));
+    setInviteSelectionTouched(true);
     setInviteSelectedDishIds(nextIds);
     if (allInviteDishesSelected) setInviteRecommendedDishIds([]);
   };
 
   const toggleInviteDish = (dishId: string, checked: boolean) => {
-    setInviteSelectedDishIds((current) => checked ? Array.from(new Set([...current, dishId])) : current.filter((id) => id !== dishId));
+    setInviteSelectionTouched(true);
+    setInviteSelectedDishIds((current) => {
+      const base = inviteSelectionTouched ? current : inviteSelectableDishes.map((dish) => dish.id);
+      return checked ? Array.from(new Set([...base, dishId])) : base.filter((id) => id !== dishId);
+    });
     if (!checked) setInviteRecommendedDishIds((current) => current.filter((id) => id !== dishId));
+  };
+
+  const toggleInviteCategory = (category: string, checked: boolean) => {
+    setInviteSelectionTouched(true);
+    const categoryIds = inviteSelectableDishes.filter((dish) => dish.category === category).map((dish) => dish.id);
+    setInviteSelectedDishIds((current) => {
+      const base = inviteSelectionTouched ? current : inviteSelectableDishes.map((dish) => dish.id);
+      return checked ? Array.from(new Set([...base, ...categoryIds])) : base.filter((id) => !categoryIds.includes(id));
+    });
+    if (!checked) setInviteRecommendedDishIds((current) => current.filter((id) => !categoryIds.includes(id)));
   };
 
   const copyInviteLink = async (invite: DinnerInvite) => {
@@ -2005,8 +2038,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     if (inviteCreating) return;
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
-    const selectedDishIds = inviteSelectedDishIds.length ? inviteSelectedDishIds : form.getAll("dishIds").map(String);
-    const dishIds = inviteMode === "shared" && !selectedDishIds.length ? inviteSelectableDishes.map((dish) => dish.id) : selectedDishIds;
+    const selectedDishIds = inviteSelectedDishIds.length || inviteSelectionTouched ? inviteSelectedDishIds : form.getAll("dishIds").map(String);
+    const dishIds = inviteMode === "shared" && !inviteSelectionTouched && !selectedDishIds.length ? inviteSelectableDishes.map((dish) => dish.id) : selectedDishIds;
     const recommendedDishIds = inviteRecommendedDishIds.length ? inviteRecommendedDishIds : form.getAll("recommendedDishIds").map(String);
     setInviteCreating(true);
     try {
@@ -2021,9 +2054,42 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       setInviteMode("shared");
       setInviteSelectedDishIds([]);
       setInviteRecommendedDishIds([]);
+      setInviteSelectionTouched(false);
+      setInviteDishQuery("");
+      setInviteDishCategory("全部分类");
       setNotice(invite.mode === "shared" ? "多人共享饭局已生成，复制链接发给几位朋友即可一起选菜" : "专属邀请已生成，复制链接发给朋友即可");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "邀请创建失败，请稍后重试");
+    } finally {
+      setInviteCreating(false);
+    }
+  };
+
+  const createSharedDinner = async () => {
+    if (inviteCreating) return;
+    const dishIds = inviteSelectionTouched ? inviteSelectedDishIds : inviteSelectableDishes.map((dish) => dish.id);
+    if (!dishIds.length) {
+      setNotice("请至少保留一个菜品类型后再创建饭局");
+      return;
+    }
+    setInviteCreating(true);
+    try {
+      const response = await fetch("/api/invites", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ quickCreate: true, mode: "shared", dishIds }),
+      });
+      const data = await response.json().catch(() => ({})) as { invite?: DinnerInvite; error?: string };
+      if (!response.ok || !data.invite) throw new Error(data.error || `饭局创建失败（${response.status}）`);
+      const invite = data.invite;
+      setInvites((current) => [invite, ...current.filter((item) => item.id !== invite.id)]);
+      setCreatedInvite(invite);
+      setCreatedInviteUrl(`${window.location.origin}/invite/${invite.token}`);
+      setChefView("invitations");
+      setNotice("共享饭局已创建，复制链接发给朋友即可一起点同一张单");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "饭局创建失败，请稍后重试");
     } finally {
       setInviteCreating(false);
     }
@@ -2256,7 +2322,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               <div className="menu-count-pill"><strong>{allDishes.length}</strong><span>道拿手菜<br />等你翻牌</span></div>
             </div>
             {inviteLoading && <div className="invite-loading">正在把你的专属菜单端上来…</div>}
-            {activeInvite?.mode === "shared" && sharedDinner && <section className="shared-dinner-bar" aria-label="多人共享饭局"><div><span>SHARED DINNER · {sharedDinner.guests.length} 位朋友已加入</span><strong>大家选的菜会自动汇总到同一张单</strong></div><div className="shared-name-field"><label><small>你的称呼</small><input value={sharedGuestName} maxLength={30} onChange={(event) => setSharedGuestName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void saveSharedGuestName(); } }} disabled={sharedGuestSaving} /></label><button type="button" onClick={() => void saveSharedGuestName()} disabled={sharedGuestSaving || !sharedDinner.guestToken}>{sharedGuestSaving ? "保存中…" : "确认称呼"}</button></div><p>{sharedDinner.guests.map((guest) => guest.displayName).join("、") || "等朋友加入"}</p><div className="shared-dinner-selections">{sharedDinner.selections.filter((guest) => guest.items.length).map((guest) => <span key={guest.guestId}><b>{guest.displayName}</b>：{guest.items.length} 道菜</span>)}{!sharedDinner.selections.some((guest) => guest.items.length) && <span>还没有人选菜，先挑一道你想吃的吧。</span>}</div>{sharedDinner.orderToken && <a className="shared-dinner-progress" href={`/order/${sharedDinner.orderToken}`}>这桌已送进厨房 · 查看实时进度与主厨菜单 →</a>}</section>}
+            {activeInvite?.mode === "shared" && sharedDinner && <section className="shared-dinner-bar" aria-label="多人共享饭局"><div><span>SHARED DINNER · {sharedDinner.guests.length} 位朋友已加入</span><strong>大家选的菜会自动汇总到同一张单</strong></div><div className="shared-name-field"><label><small>你的称呼</small><input value={sharedGuestName} maxLength={30} onChange={(event) => { sharedGuestNameDirtyRef.current = true; setSharedGuestName(event.target.value); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void saveSharedGuestName(); } }} disabled={sharedGuestSaving} /></label><button type="button" onClick={() => void saveSharedGuestName()} disabled={sharedGuestSaving || !sharedDinner.guestToken}>{sharedGuestSaving ? "保存中…" : "确认称呼"}</button></div><p>{sharedDinner.guests.map((guest) => guest.displayName).join("、") || "等朋友加入"}</p><div className="shared-dinner-selections">{sharedDinner.selections.filter((guest) => guest.items.length).map((guest) => <span key={guest.guestId}><b>{guest.displayName}</b>：{guest.items.length} 道菜</span>)}{!sharedDinner.selections.some((guest) => guest.items.length) && <span>还没有人选菜，先挑一道你想吃的吧。</span>}</div>{sharedDinner.orderToken && <a className="shared-dinner-progress" href={`/order/${sharedDinner.orderToken}`}>这桌已送进厨房 · 查看实时进度与主厨菜单 →</a>}</section>}
             {activeInvite && activeInvite.recommendedDishIds.length > 0 && <div className="recommended-combo"><span>主厨搭配</span><strong>如果不想纠结，就从这几道开始</strong><div>{activeInvite.recommendedDishIds.map((id) => dishCatalog.find((dish) => dish.id === id)).filter(Boolean).map((dish) => <button key={dish!.id} disabled={menuReadOnly} onClick={() => updateQuantity(dish!.id, 1)}>{dish!.name}<i>＋</i></button>)}</div></div>}
             <div className="category-tabs-shell">
               <div className="category-tabs-heading"><div><span>MENU CATEGORIES</span><strong>想吃哪一类？</strong></div><small>{activeCategory === "全部" ? `全部 ${allDishes.length} 道` : `${activeCategory} · ${filteredDishes.length} 道`}</small></div>
@@ -2365,7 +2431,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         <section className="chef-page">
           <div className="chef-heading">
             <div><span className="eyebrow">KITCHEN WORKFLOW</span><h1>主厨工作台</h1><p>从接单、买菜、制作到开饭，按厨房真正的顺序一步一步完成。</p></div>
-            <div className="chef-heading-actions"><button type="button" className={`kitchen-status-toggle ${kitchenOpen ? "open" : "closed"}`} onClick={toggleKitchenStatus} disabled={kitchenStatusSaving}><i></i><span><small>{kitchenOpen ? "绿灯 · 朋友可见" : "红灯 · 朋友可见"}</small><strong>{kitchenStatusSaving ? "正在保存…" : kitchenOpen ? "厨房今日营业" : "厨房今天休息"}</strong></span><b>{kitchenOpen ? "关闭" : "开启"}</b></button>{(["accepting", "shopping", "cooking", "serving"] as ChefView[]).includes(chefView) && <button className="refresh-button" onClick={() => loadOrders()} disabled={loadingOrders}>{loadingOrders ? "刷新中…" : "刷新订单"}</button>}</div>
+            <div className="chef-heading-actions"><button type="button" className="primary-button quick-dinner-button" onClick={() => void createSharedDinner()} disabled={inviteCreating}>{inviteCreating ? "正在创建饭局…" : "创建共享饭局"} <span>→</span></button><button type="button" className={`kitchen-status-toggle ${kitchenOpen ? "open" : "closed"}`} onClick={toggleKitchenStatus} disabled={kitchenStatusSaving}><i></i><span><small>{kitchenOpen ? "绿灯 · 朋友可见" : "红灯 · 朋友可见"}</small><strong>{kitchenStatusSaving ? "正在保存…" : kitchenOpen ? "厨房今日营业" : "厨房今天休息"}</strong></span><b>{kitchenOpen ? "关闭" : "开启"}</b></button>{(["accepting", "shopping", "cooking", "serving"] as ChefView[]).includes(chefView) && <button className="refresh-button" onClick={() => loadOrders()} disabled={loadingOrders}>{loadingOrders ? "刷新中…" : "刷新订单"}</button>}</div>
           </div>
           <div className="chef-workflow" role="tablist" aria-label="主厨工作流程">
             <button className={chefView === "accepting" ? "active" : ""} onClick={() => setChefView("accepting")}><i>01</i><span><b>接单</b><small>{acceptingOrders.length} 份待确认 · 编排宴席</small></span></button>
@@ -2386,6 +2452,24 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               <section className="workflow-hero panel">
                 <div><span>STEP 01 · ORDER INTAKE</span><h2 id="accepting-title">先看清这场饭，再确认接单</h2><p>客人、日期、人数、菜品和忌口集中确认；确认后可直接把这份点单编排成正式宴席菜单。</p></div>
                 <div className="workflow-hero-stats"><span><small>待确认</small><strong>{acceptingOrders.length}</strong></span><span><small>下一场</small><strong>{nextMealDate}</strong></span><span><small>预计招待</small><strong>{cookingGuestCount} 人</strong></span><span><small>已点菜品</small><strong>{cookingRecipeCount} 道</strong></span></div>
+              </section>
+              <section className="dinner-overview panel" aria-labelledby="dinner-overview-title">
+                <div className="panel-title">
+                  <div><span>SHARED DINNERS</span><h2 id="dinner-overview-title">我的饭局</h2></div>
+                  <small>{invites.filter((invite) => invite.active).length} 场进行中</small>
+                </div>
+                {invites.filter((invite) => invite.active).length === 0 ? (
+                  <div className="dinner-overview-empty"><span>🍽️</span><p>还没有进行中的饭局，点击右上角“创建共享饭局”即可生成链接。</p></div>
+                ) : (
+                  <div className="dinner-overview-list">
+                    {invites.filter((invite) => invite.active).slice(0, 6).map((invite) => (
+                      <article className="dinner-overview-card" key={invite.id}>
+                        <div><span>{invite.mealDate}</span><strong>{invite.title}</strong><small>{invite.mode === "shared" ? "多人共享一张单" : "专属点菜单"}</small></div>
+                        <div className="dinner-overview-actions"><button type="button" onClick={() => { setCreatedInvite(invite); setCreatedInviteUrl(`${window.location.origin}/invite/${invite.token}`); setChefView("invitations"); }}>管理</button><a href={`/invite/${invite.token}`} target="_blank" rel="noreferrer">打开点菜页</a><button type="button" className="quiet" onClick={() => void shareInvite(invite)}>分享</button></div>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </section>
               <section className="accepting-orders panel">
                 <div className="panel-title"><div><span>NEW DINNER REQUESTS</span><h2>接单信息汇总</h2></div><small>{acceptingOrders.length} 份等待处理</small></div>
@@ -2653,7 +2737,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 <div className="data-transfer-mark" aria-hidden="true">↔</div>
               </section>
               <div className="data-transfer-grid">
-                <article className="data-transfer-card panel"><span className="data-transfer-icon">↓</span><div><span>EXPORT ALL DATA</span><h3>导出全部数据</h3><p>生成一个 ZIP 压缩包，包含 SQLite 业务数据与 uploads 下的所有原图、缩略图和元数据。适合从 NAS 下载保存。</p></div><button type="button" className="primary-button" onClick={() => void exportAllData}>导出 ZIP <span>→</span></button></article>
+                <article className="data-transfer-card panel"><span className="data-transfer-icon">↓</span><div><span>EXPORT ALL DATA</span><h3>导出全部数据</h3><p>生成一个 ZIP 压缩包，包含 SQLite 业务数据与 uploads 下的所有原图、缩略图和元数据。适合从 NAS 下载保存。</p></div><button type="button" className="primary-button" onClick={() => void exportAllData()}>导出 ZIP <span>→</span></button></article>
                 <article className="data-transfer-card panel"><span className="data-transfer-icon">↑</span><div><span>IMPORT BACKUP</span><h3>导入备份</h3><p>选择之前导出的 ZIP，整体替换当前业务数据和照片。导入前会自动备份当前 SQLite，SESSION_SECRET 等运行时密钥始终保留。</p></div><label className={`primary-button data-import-picker${dataImporting ? " is-loading" : ""}`}><input type="file" accept=".zip,application/zip" disabled={dataImporting} onChange={importAllData} />{dataImporting ? "正在导入…" : "选择 ZIP 导入"}<span>→</span></label></article>
               </div>
               <section className="data-transfer-notes panel"><strong>迁移前请确认</strong><ul><li>导入会替换当前菜谱、订单、邀请、采购和照片；请只选择可信的阿德小厨房导出包。</li><li>导入期间不要关闭页面或重启容器；完成后建议重新打开主厨工作台确认数据。</li><li>导出的压缩包可直接保存到电脑或 NAS，不包含密码、会话密钥和 API Key。</li></ul></section>
@@ -2674,7 +2758,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   <label><span>点菜方式</span><select name="mode" value={inviteMode} onChange={(event) => setInviteMode(event.target.value as "single" | "shared")}><option value="shared">多人共享一张单</option><option value="single">每人单独提交</option></select></label>
                   <label className="wide"><span>写给朋友的话</span><textarea name="message" maxLength={180} placeholder="例如：菜我来做，你只管带着好胃口来。" /></label>
                 </div>
-                <fieldset className="invite-dish-picker"><legend>这次开放哪些菜</legend><div className="invite-dish-picker-head"><p>{inviteMode === "shared" ? "多人共享饭局默认跟随后台当前上架、可点的完整菜单；需要指定范围时，可一键全选后再取消个别菜。" : "单人邀请按这里勾选的菜开放；需要指定范围时，可一键全选后再取消个别菜。"}</p><button type="button" className="invite-all-toggle" onClick={toggleAllInviteDishes}>{allInviteDishesSelected ? "取消全选" : "一键全选当前可点菜"}</button></div><div>{inviteSelectableDishes.map((dish) => <article key={dish.id}><label><input type="checkbox" name="dishIds" value={dish.id} checked={inviteSelectedDishIdSet.has(dish.id)} onChange={(event) => toggleInviteDish(dish.id, event.currentTarget.checked)} /><span>{dish.imageUrl ? <img src={dishThumbnailUrl(dish.imageUrl)} loading="lazy" decoding="async" alt="" /> : "🍽️"}<b>{dish.name}</b><small>{dish.category}</small></span></label><label className="recommend-check"><input type="checkbox" name="recommendedDishIds" value={dish.id} checked={inviteRecommendedDishIdSet.has(dish.id)} disabled={!inviteSelectedDishIdSet.has(dish.id)} onChange={(event) => setInviteRecommendedDishIds((current) => event.currentTarget.checked ? Array.from(new Set([...current, dish.id])) : current.filter((id) => id !== dish.id))} />推荐</label></article>)}</div></fieldset>
+                {inviteMode === "shared" && <fieldset className="invite-category-picker"><legend>按类型开放菜品</legend><p>默认全部开放；取消勾选某个类型后，这场共享饭局里就不会显示该类型的菜。</p><div>{inviteCategoryOptions.map((category) => <label key={category}><input type="checkbox" checked={inviteCategorySelected(category)} onChange={(event) => toggleInviteCategory(category, event.currentTarget.checked)} /><span>{managedCategoryEmoji[category] || "•"} {category}</span><small>{inviteSelectableDishes.filter((dish) => dish.category === category).length} 道</small></label>)}</div></fieldset>}
+                <fieldset className="invite-dish-picker"><legend>这次开放哪些菜</legend><div className="invite-dish-picker-head"><div className="invite-dish-tools"><input value={inviteDishQuery} onChange={(event) => setInviteDishQuery(event.target.value)} placeholder="搜索菜名、类型或介绍" aria-label="搜索共享饭局菜品" /><select value={inviteDishCategory} onChange={(event) => setInviteDishCategory(event.target.value)} aria-label="按菜品类型筛选"><option value="全部分类">全部分类</option>{inviteCategoryOptions.map((category) => <option value={category} key={`invite-filter-${category}`}>{managedCategoryEmoji[category] || "•"} {category}</option>)}</select></div><p>{inviteMode === "shared" ? "多人共享饭局默认跟随后台当前上架、可点的完整菜单；需要指定范围时，可一键全选后再取消个别菜。" : "单人邀请按这里勾选的菜开放；需要指定范围时，可一键全选后再取消个别菜。"}</p><button type="button" className="invite-all-toggle" onClick={toggleAllInviteDishes}>{allInviteDishesSelected ? "取消全选" : "一键全选当前可点菜"}</button></div><div>{filteredInviteDishes.map((dish) => <article key={dish.id}><label><input type="checkbox" name="dishIds" value={dish.id} checked={inviteMode === "shared" && !inviteSelectionTouched ? true : inviteSelectedDishIdSet.has(dish.id)} onChange={(event) => toggleInviteDish(dish.id, event.currentTarget.checked)} /><span>{dish.imageUrl ? <img src={dishThumbnailUrl(dish.imageUrl)} loading="lazy" decoding="async" alt="" /> : "🍽️"}<b>{dish.name}</b><small>{dish.category}</small></span></label><label className="recommend-check"><input type="checkbox" name="recommendedDishIds" value={dish.id} checked={inviteRecommendedDishIdSet.has(dish.id)} disabled={!(inviteMode === "shared" && !inviteSelectionTouched ? true : inviteSelectedDishIdSet.has(dish.id))} onChange={(event) => setInviteRecommendedDishIds((current) => event.currentTarget.checked ? Array.from(new Set([...current, dish.id])) : current.filter((id) => id !== dish.id))} />推荐</label></article>)}</div></fieldset>
                 <button className="primary-button" disabled={inviteCreating}>{inviteCreating ? "正在生成邀请…" : "生成专属邀请"}<span>→</span></button>
               </form>
 
