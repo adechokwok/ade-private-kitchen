@@ -94,7 +94,7 @@ async function replaceDatabase(payload: ExportPayload) {
     dinnerJournals: rows<typeof schema.dinnerJournals.$inferInsert>(payload, "dinner_journals"),
     pantryItems: rows<typeof schema.pantryItems.$inferInsert>(payload, "pantry_items"),
     shoppingChecks: rows<typeof schema.shoppingChecks.$inferInsert>(payload, "shopping_checks"),
-    appSettings: rows<typeof schema.appSettings.$inferInsert>(payload).filter((row) => !protectedSettingKey.test(String(row.key || ""))),
+    appSettings: rows<typeof schema.appSettings.$inferInsert>(payload, "app_settings").filter((row) => !protectedSettingKey.test(String(row.key || ""))),
   };
 
   await db.transaction(async (tx) => {
