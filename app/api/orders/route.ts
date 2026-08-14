@@ -72,7 +72,8 @@ async function mutateOrderForChef(payload: ChefOrderMutation) {
     }
     const publishedMenu = normalizePublishedMenu(payload.publishedMenu);
     const publishedMenuUpdatedAt = new Date().toISOString();
-    const [order] = await getDb().update(orders).set({ publishedMenu: JSON.stringify(publishedMenu), publishedMenuUpdatedAt, menuReadAt: "" }).where(eq(orders.id, payload.id)).returning();
+    await getDb().update(orders).set({ publishedMenu: JSON.stringify(publishedMenu), publishedMenuUpdatedAt, menuReadAt: "" }).where(eq(orders.id, payload.id));
+    const [order] = await getDb().select().from(orders).where(eq(orders.id, payload.id)).limit(1);
     return Response.json({ order });
   }
 
@@ -81,7 +82,8 @@ async function mutateOrderForChef(payload: ChefOrderMutation) {
     const progressNote = typeof payload.progressNote === "string" ? payload.progressNote.trim().slice(0, 160) : "";
     const statusUpdatedAt = new Date().toISOString();
     const archivedAt = payload.status === "cancelled" ? statusUpdatedAt : payload.status === "done" ? undefined : "";
-    const [order] = await getDb().update(orders).set({ status: payload.status, progressNote, statusUpdatedAt, statusReadAt: "", ...(archivedAt === undefined ? {} : { archivedAt }) }).where(eq(orders.id, payload.id)).returning();
+    await getDb().update(orders).set({ status: payload.status, progressNote, statusUpdatedAt, statusReadAt: "", ...(archivedAt === undefined ? {} : { archivedAt }) }).where(eq(orders.id, payload.id));
+    const [order] = await getDb().select().from(orders).where(eq(orders.id, payload.id)).limit(1);
     if (!order) return Response.json({ error: "没有找到这份订单" }, { status: 404 });
     return Response.json({ order });
   }
@@ -91,7 +93,8 @@ async function mutateOrderForChef(payload: ChefOrderMutation) {
     if (!existing) return Response.json({ error: "没有找到这场饭局" }, { status: 404 });
     if (existing.status !== "done") return Response.json({ error: "请先通知开饭，再确认归档" }, { status: 409 });
     if (existing.archivedAt) return Response.json({ order: existing });
-    const [order] = await getDb().update(orders).set({ archivedAt: new Date().toISOString() }).where(eq(orders.id, payload.id)).returning();
+    await getDb().update(orders).set({ archivedAt: new Date().toISOString() }).where(eq(orders.id, payload.id));
+    const [order] = await getDb().select().from(orders).where(eq(orders.id, payload.id)).limit(1);
     return Response.json({ order });
   }
 
@@ -183,7 +186,8 @@ export async function POST(request: Request) {
     await ensureOrdersSchema();
     const id = crypto.randomUUID();
     const guestToken = crypto.randomUUID().replaceAll("-", "");
-    const [order] = await getDb().insert(orders).values({ id, customerName, mealDate, guestCount, note, dishes: JSON.stringify(normalized), dishSnapshot: JSON.stringify(dishSnapshot), inviteId, guestToken }).returning();
+    await getDb().insert(orders).values({ id, customerName, mealDate, guestCount, note, dishes: JSON.stringify(normalized), dishSnapshot: JSON.stringify(dishSnapshot), inviteId, guestToken });
+    const [order] = await getDb().select().from(orders).where(eq(orders.id, id)).limit(1);
     return Response.json({ order, guestToken }, { status: 201 });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
