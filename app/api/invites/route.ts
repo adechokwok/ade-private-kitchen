@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
-import { ensureDinnerInvitesSchema, ensureMenuLibrary, getDb, getSqlite } from "../../../db";
-import { customDishes, dinnerInvites, dinnerJournals } from "../../../db/schema";
+import { ensureDinnerInvitesSchema, ensureMenuLibrary, getDb } from "../../../db";
+import { customDishes, dinnerInvites, dinnerJournals, dinnerInviteGuests, dinnerInviteSelections } from "../../../db/schema";
 import { chefApiGuard } from "../../chef-auth";
 
 const themes = new Set(["warm", "romance", "fine", "festival"]);
@@ -49,7 +49,8 @@ export async function POST(request: Request) {
   await ensureDinnerInvitesSchema();
   const id = crypto.randomUUID();
   const token = crypto.randomUUID().replaceAll("-", "");
-  const [invite] = await getDb().insert(dinnerInvites).values({ id, token, title, message, mealDate, theme, mode, dishIds: JSON.stringify(allowed), recommendedDishIds: JSON.stringify(recommendedDishIds.filter((id) => allowed.includes(id))), updatedAt: new Date().toISOString() }).returning();
+  await getDb().insert(dinnerInvites).values({ id, token, title, message, mealDate, theme, mode, dishIds: JSON.stringify(allowed), recommendedDishIds: JSON.stringify(recommendedDishIds.filter((id) => allowed.includes(id))), updatedAt: new Date().toISOString() });
+  const [invite] = await getDb().select().from(dinnerInvites).where(eq(dinnerInvites.id, id)).limit(1);
   return Response.json({ invite: presentInvite(invite) }, { status: 201 });
 }
 
@@ -59,7 +60,9 @@ export async function PATCH(request: Request) {
   const payload = await request.json() as { id?: unknown; active?: unknown };
   if (typeof payload.id !== "string" || typeof payload.active !== "boolean") return Response.json({ error: "无效的邀请状态" }, { status: 400 });
   await ensureDinnerInvitesSchema();
-  const [invite] = await getDb().update(dinnerInvites).set({ active: payload.active ? 1 : 0, updatedAt: new Date().toISOString() }).where(eq(dinnerInvites.id, payload.id)).returning();
+  const db = getDb();
+  await db.update(dinnerInvites).set({ active: payload.active ? 1 : 0, updatedAt: new Date().toISOString() }).where(eq(dinnerInvites.id, payload.id));
+  const [invite] = await db.select().from(dinnerInvites).where(eq(dinnerInvites.id, payload.id)).limit(1);
   return invite ? Response.json({ invite: presentInvite(invite) }) : Response.json({ error: "没有找到这份邀请" }, { status: 404 });
 }
 
@@ -69,13 +72,13 @@ export async function DELETE(request: Request) {
   const id = new URL(request.url).searchParams.get("id")?.trim();
   if (!id) return Response.json({ error: "缺少邀请 ID" }, { status: 400 });
   await ensureDinnerInvitesSchema();
-  const sqlite = getSqlite();
-  const deleted = sqlite.transaction(() => {
-    const existing = sqlite.prepare("SELECT id FROM dinner_invites WHERE id = ?").get(id);
-    if (!existing) return false;
-    sqlite.prepare("DELETE FROM dinner_invite_selections WHERE invite_id = ?").run(id);
-    sqlite.prepare("DELETE FROM dinner_invite_guests WHERE invite_id = ?").run(id);
-    return sqlite.prepare("DELETE FROM dinner_invites WHERE id = ?").run(id).changes > 0;
-  })();
+  const deleted = await getDb().transaction(async (tx) => {
+    const existing = await tx.select({ id: dinnerInvites.id }).from(dinnerInvites).where(eq(dinnerInvites.id, id)).limit(1);
+    if (!existing.length) return false;
+    await tx.delete(dinnerInviteSelections).where(eq(dinnerInviteSelections.inviteId, id));
+    await tx.delete(dinnerInviteGuests).where(eq(dinnerInviteGuests.inviteId, id));
+    await tx.delete(dinnerInvites).where(eq(dinnerInvites.id, id));
+    return true;
+  });
   return deleted ? Response.json({ ok: true }) : Response.json({ error: "没有找到这份邀请" }, { status: 404 });
 }
