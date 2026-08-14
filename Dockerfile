@@ -7,7 +7,7 @@ FROM base AS dependencies
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # CloudBase 分支在迁移期间由 pnpm 根据 package.json 同步锁文件。
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 FROM base AS builder
 WORKDIR /app
