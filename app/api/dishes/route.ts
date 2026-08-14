@@ -334,7 +334,7 @@ export async function PATCH(request: Request) {
     const move = typeof payload.move === "string" && ["up", "down", "top", "bottom"].includes(payload.move) ? payload.move as DishMove : null;
     if (move) {
       if (!current.active) return Response.json({ error: "归档菜品固定排在末尾，恢复后才能排序" }, { status: 409 });
-      const activeRows = await getDb().select({ id: customDishes.id }).from(customDishes)
+      const activeRows = await getDb().select({ id: customDishes.id, active: customDishes.active }).from(customDishes)
         .where(eq(customDishes.category, current.category))
         .orderBy(desc(customDishes.active), asc(customDishes.sortOrder), asc(customDishes.createdAt));
       const activeOnly = activeRows.filter((row) => row.active === 1);
