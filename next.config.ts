@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   output: "standalone",
   poweredByHeader: false,
-  serverExternalPackages: ["better-sqlite3"],
+  serverExternalPackages: ["better-sqlite3", "unzipper", "archiver"],
   async headers() {
     return [{
       source: "/:path*",

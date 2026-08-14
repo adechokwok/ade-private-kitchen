@@ -77,7 +77,7 @@ type ImageCrop = { x: number; y: number; zoom: number };
 type BanquetCourse = "starter" | "main" | "staple" | "soup";
 type BanquetItem = { dishId: string; course: BanquetCourse };
 type BanquetTemplate = "home" | "romance" | "fine" | "spring" | "midautumn" | "birthday" | "housewarming" | "summer" | "christmas" | "brunch";
-type ChefView = "accepting" | "shopping" | "cooking" | "serving" | "menuManager" | "invitations" | "journals";
+type ChefView = "accepting" | "shopping" | "cooking" | "serving" | "menuManager" | "invitations" | "journals" | "dataTransfer";
 type StatusUpdateDraft = { orderId: string; status: Order["status"]; note: string };
 
 const acceptedImageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -446,6 +446,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [bulkRecipePreview, setBulkRecipePreview] = useState<BulkRecipePreview | null>(null);
   const [bulkRecipeResult, setBulkRecipeResult] = useState<BulkRecipeResult | null>(null);
   const [bulkRecipeLoading, setBulkRecipeLoading] = useState<"preview" | "import" | null>(null);
+  const [dataImporting, setDataImporting] = useState(false);
   const [recipeLibraryQuery, setRecipeLibraryQuery] = useState("");
   const [recipeLibraryCategory, setRecipeLibraryCategory] = useState("全部分类");
   const [recipeLibraryStatus, setRecipeLibraryStatus] = useState("全部状态");
@@ -906,6 +907,50 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       const data = await response.json() as { invites?: DinnerInvite[]; journals?: DinnerJournal[] };
       if (response.ok) { setInvites(data.invites || []); setJournals(data.journals || []); }
     } catch { /* 不影响订单和菜单管理 */ }
+  };
+
+  const exportAllData = async () => {
+    try {
+      setNotice("正在整理菜谱、饭局和照片…");
+      const response = await fetch("/api/admin/export", { cache: "no-store" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error || "数据导出失败");
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `ade-kitchen-export-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      setNotice("全部数据已导出，压缩包已开始下载");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "数据导出失败，请稍后重试");
+    }
+  };
+
+  const importAllData = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    if (!window.confirm("导入后会整体替换当前菜谱、饭局、邀请、库存和照片。当前会话密钥会保留，确定继续吗？")) return;
+    setDataImporting(true);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      const response = await fetch("/api/admin/import", { method: "POST", body: form });
+      const data = await response.json().catch(() => ({})) as { result?: { dishes?: number; orders?: number; images?: number }; error?: string };
+      if (!response.ok) throw new Error(data.error || "数据导入失败");
+      await Promise.all([loadOrders(), loadDishes(), loadShoppingChecks(), loadCategories(), loadPantry(), loadInvites(), loadRecipePreferences()]);
+      setNotice(`导入完成：${data.result?.dishes || 0} 道菜、${data.result?.orders || 0} 场饭局、${data.result?.images || 0} 个文件已恢复`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "数据导入失败，原数据已保留");
+    } finally {
+      setDataImporting(false);
+    }
   };
 
   const saveSharedGuestName = async () => {
@@ -2333,6 +2378,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             <button className={chefView === "menuManager" ? "active" : ""} onClick={() => setChefView("menuManager")}>菜单与菜谱 <b>{dishCatalog.filter((dish) => dish.active !== false).length}</b></button>
             <button className={chefView === "invitations" ? "active" : ""} onClick={() => setChefView("invitations")}>专属邀请 <b>{invites.filter((invite) => invite.active).length}</b></button>
             <button className={chefView === "journals" ? "active" : ""} onClick={() => setChefView("journals")}>餐桌日记 <b>{journals.length}</b></button>
+            <button className={chefView === "dataTransfer" ? "active" : ""} onClick={() => setChefView("dataTransfer")}>数据迁移</button>
           </div>
 
           {chefView === "accepting" ? (
@@ -2599,6 +2645,18 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 <section className="panel"><div className="panel-title"><div><span>READY & ARCHIVE</span><h2>等待通知与确认归档</h2></div><small>{servingReadyOrders.length} 待通知 · {pendingArchiveOrders.length} 待归档</small></div>{servingOrders.length === 0 ? <div className="empty"><span>🔔</span><strong>暂时没有待处理的饭局</strong><p>制作页点击“开始制作”后，订单会出现在这里。</p></div> : <div className="order-list serving-list">{servingOrders.map((order) => renderOrderCard(order))}</div>}</section>
                 <section className="panel"><div className="panel-title"><div><span>RECENTLY ARCHIVED</span><h2>最近归档</h2></div><small>{recentDoneOrders.length} 场</small></div>{recentDoneOrders.length === 0 ? <div className="empty compact"><span>🍽️</span><p>确认归档后的饭局会出现在这里。</p></div> : <div className="order-list archived-list">{recentDoneOrders.map((order) => renderOrderCard(order, true))}</div>}{archivedOrders.length > recentDoneOrders.length && <section className="order-archive"><button type="button" className="order-archive-toggle" onClick={() => setArchiveOpen((value) => !value)} aria-expanded={archiveOpen}><span><b>全部订单归档</b><small>包含已完成和已取消的历史饭局</small></span><strong>{archivedOrders.length} 份 {archiveOpen ? "收起 ↑" : "查看 ↓"}</strong></button>{archiveOpen && <div className="order-list archived-list">{archivedOrders.map((order) => renderOrderCard(order, true))}</div>}</section>}</section>
               </div>
+            </section>
+          ) : chefView === "dataTransfer" ? (
+            <section className="data-transfer-workspace" aria-labelledby="data-transfer-title">
+              <section className="data-transfer-hero panel">
+                <div><span>BACKUP & MIGRATION</span><h2 id="data-transfer-title">把整间小厨房带走</h2><p>导出或导入菜谱、分类、饭局、邀请、库存、餐桌日记和全部照片。导入失败会自动回滚，当前云端会话密钥不会被覆盖。</p></div>
+                <div className="data-transfer-mark" aria-hidden="true">↔</div>
+              </section>
+              <div className="data-transfer-grid">
+                <article className="data-transfer-card panel"><span className="data-transfer-icon">↓</span><div><span>EXPORT ALL DATA</span><h3>导出全部数据</h3><p>生成一个 ZIP 压缩包，包含 SQLite 业务数据与 uploads 下的所有原图、缩略图和元数据。适合从 NAS 下载保存。</p></div><button type="button" className="primary-button" onClick={() => void exportAllData}>导出 ZIP <span>→</span></button></article>
+                <article className="data-transfer-card panel"><span className="data-transfer-icon">↑</span><div><span>IMPORT BACKUP</span><h3>导入备份</h3><p>选择之前导出的 ZIP，整体替换当前业务数据和照片。导入前会自动备份当前 SQLite，SESSION_SECRET 等运行时密钥始终保留。</p></div><label className={`primary-button data-import-picker${dataImporting ? " is-loading" : ""}`}><input type="file" accept=".zip,application/zip" disabled={dataImporting} onChange={importAllData} />{dataImporting ? "正在导入…" : "选择 ZIP 导入"}<span>→</span></label></article>
+              </div>
+              <section className="data-transfer-notes panel"><strong>迁移前请确认</strong><ul><li>导入会替换当前菜谱、订单、邀请、采购和照片；请只选择可信的阿德小厨房导出包。</li><li>导入期间不要关闭页面或重启容器；完成后建议重新打开主厨工作台确认数据。</li><li>导出的压缩包可直接保存到电脑或 NAS，不包含密码、会话密钥和 API Key。</li></ul></section>
             </section>
           ) : chefView === "invitations" ? (
             <section className="invitation-workspace">
