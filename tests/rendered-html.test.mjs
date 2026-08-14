@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the private menu and chef workflow", async () => {
-  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, remoteImagePreviewRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, inviteTokenRoute, orderStatusRoute, statusClient, orderMemory, journalRoute, kitchenStatusRoute, schema, database, layout, manifest, appIconAsset, appleIconAsset, shareImageAsset, chefInterviewAsset] = await Promise.all([
+  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, remoteImagePreviewRoute, importRoute, adminImportRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, inviteTokenRoute, orderStatusRoute, statusClient, orderMemory, journalRoute, kitchenStatusRoute, schema, database, layout, manifest, appIconAsset, appleIconAsset, shareImageAsset, chefInterviewAsset] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
@@ -12,6 +12,7 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../app/api/dish-images/[id]/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/image-preview/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-import/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/import/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-bulk-import/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-copy/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/recipe-copy-style.ts", import.meta.url), "utf8"),
@@ -197,6 +198,11 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /downloadInviteQr/);
   assert.match(page, /shareInviteQr/);
   assert.match(page, /import\("qrcode"\)/);
+  assert.match(page, /x-import-chunk-index/);
+  assert.match(page, /x-import-finalize/);
+  assert.match(adminImportRoute, /receiveImportChunk/);
+  assert.match(adminImportRoute, /importChunkBytes/);
+  assert.match(adminImportRoute, /assembleImportChunks/);
   assert.match(globalStyles, /\.invite-qr-dialog/);
   assert.match(page, /invite-all-toggle/);
   assert.match(page, /invite-category-picker/);
