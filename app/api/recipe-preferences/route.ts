@@ -19,6 +19,6 @@ export async function PUT(request: Request) {
   const payload = await request.json() as { preferences?: unknown };
   const preferences = typeof payload.preferences === "string" ? payload.preferences.trim().slice(0, 1600) : "";
   await ensureMenuLibrary();
-  await getDb().insert(appSettings).values({ key, value: preferences }).onConflictDoUpdate({ target: appSettings.key, set: { value: preferences } });
+  await getDb().insert(appSettings).values({ key, value: preferences }).onDuplicateKeyUpdate({ set: { value: preferences } });
   return Response.json({ preferences });
 }
