@@ -66,7 +66,7 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /form\.set\("image", croppedCover/);
   assert.match(page, /网络图片还没有预览成功/);
   assert.match(page, /loadInvite\(initialInviteToken, true\)/);
-  assert.match(page, /initialInviteToken \? 5000 : 15000/);
+  assert.match(page, /initialInviteToken \? 2000 : 15000/);
   assert.match(page, /chef-magazine-v2\.jpg/);
   assert.match(page, /阿德私厨志/);
   assert.match(page, /chef-serving-wide\.jpg/);
@@ -193,6 +193,11 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /guest\.items\.length} 道菜/);
   assert.match(page, /invite-created-success/);
   assert.match(page, /copyInviteLink/);
+  assert.match(page, /generateInviteQr/);
+  assert.match(page, /downloadInviteQr/);
+  assert.match(page, /shareInviteQr/);
+  assert.match(page, /import\("qrcode"\)/);
+  assert.match(globalStyles, /\.invite-qr-dialog/);
   assert.match(page, /invite-all-toggle/);
   assert.match(page, /invite-category-picker/);
   assert.match(page, /按类型开放菜品/);
