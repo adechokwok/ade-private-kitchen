@@ -24,7 +24,9 @@ export async function POST(request: Request) {
   const location = typeof payload.location === "string" ? payload.location.trim().slice(0, 30) || "家中库存" : "家中库存";
   if (!name || !unit || !Number.isFinite(amount) || amount <= 0) return Response.json({ error: "请填写完整的库存名称、数量和单位" }, { status: 400 });
   await ensurePantrySchema();
-  const [item] = await getDb().insert(pantryItems).values({ id: crypto.randomUUID(), name, amount, unit, type, location }).returning();
+  const id = crypto.randomUUID();
+  await getDb().insert(pantryItems).values({ id, name, amount, unit, type, location });
+  const [item] = await getDb().select().from(pantryItems).where(eq(pantryItems.id, id)).limit(1);
   return Response.json({ item }, { status: 201 });
 }
 
