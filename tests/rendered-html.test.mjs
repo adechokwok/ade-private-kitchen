@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("ships the private menu and chef workflow", async () => {
-  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, remoteImagePreviewRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, orderStatusRoute, statusClient, orderMemory, journalRoute, kitchenStatusRoute, schema, database, layout, manifest, appIconAsset, appleIconAsset, shareImageAsset, chefInterviewAsset] = await Promise.all([
+  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, remoteImagePreviewRoute, importRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, inviteTokenRoute, orderStatusRoute, statusClient, orderMemory, journalRoute, kitchenStatusRoute, schema, database, layout, manifest, appIconAsset, appleIconAsset, shareImageAsset, chefInterviewAsset] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
@@ -19,6 +19,7 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../app/api/categories/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/pantry/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/invites/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/invites/[token]/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/order-status/[token]/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/order/[token]/status-client.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/order-memory.ts", import.meta.url), "utf8"),
@@ -44,7 +45,7 @@ test("ships the private menu and chef workflow", async () => {
     "订单和采购提醒", "制作执行台", "合并备菜清单", "倒排烹饪顺序", "单菜计时器", "库存不足提醒",
     "等待通知与确认归档", "菜单管理", "自定义新类型", "批量加入大类", "点菜端 slogan", "千问再生成", "家中库存",
     "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "生成一场专属饭局", "餐桌日记，想写的时候再写", "温馨家宴", "二人世界", "Fine Dining",
-    "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐",
+    "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐", "多人共享一张单",
   ]) assert.match(page, new RegExp(phrase));
   assert.match(page, /function ImageDropField/);
   assert.match(page, /onDrop=\{dropFiles\}/);
@@ -65,7 +66,7 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /form\.set\("image", croppedCover/);
   assert.match(page, /网络图片还没有预览成功/);
   assert.match(page, /loadInvite\(initialInviteToken, true\)/);
-  assert.match(page, /\}, 15000\)/);
+  assert.match(page, /initialInviteToken \? 5000 : 15000/);
   assert.match(page, /chef-magazine-v2\.jpg/);
   assert.match(page, /阿德私厨志/);
   assert.match(page, /chef-serving-wide\.jpg/);
@@ -175,6 +176,13 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /ade-signature\.png/);
   assert.match(page, /Adecho\.Kwok 手写签名/);
   assert.match(page, /imageLightboxDish/);
+  assert.match(page, /shared-dinner-bar/);
+  assert.match(page, /sharedGuestStorageKey/);
+  assert.match(inviteRoute, /const mode = payload\.mode/);
+  assert.match(inviteTokenRoute, /mode === "shared"/);
+  assert.match(inviteTokenRoute, /dinnerInviteSelections/);
+  assert.match(database, /dinner_invite_guests/);
+  assert.match(database, /dinner_invite_selections/);
   assert.match(page, /dish-lightbox-card/);
   assert.match(page, /openDishLightbox/);
   assert.match(page, /getBoundingClientRect/);

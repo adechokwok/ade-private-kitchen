@@ -89,8 +89,29 @@ export const dinnerInvites = sqliteTable("dinner_invites", {
   theme: text("theme").notNull().default("warm"),
   dishIds: text("dish_ids").notNull().default("[]"),
   recommendedDishIds: text("recommended_dish_ids").notNull().default("[]"),
+  mode: text("mode", { enum: ["single", "shared"] }).notNull().default("single"),
+  sharedOrderId: text("shared_order_id").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   active: integer("active").notNull().default(1),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const dinnerInviteGuests = sqliteTable("dinner_invite_guests", {
+  id: text("id").primaryKey(),
+  inviteId: text("invite_id").notNull(),
+  guestToken: text("guest_token").notNull().unique(),
+  displayName: text("display_name").notNull().default("朋友"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const dinnerInviteSelections = sqliteTable("dinner_invite_selections", {
+  id: text("id").primaryKey(),
+  inviteId: text("invite_id").notNull(),
+  guestId: text("guest_id").notNull(),
+  dishId: text("dish_id").notNull(),
+  quantity: integer("quantity").notNull().default(0),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const dinnerJournals = sqliteTable("dinner_journals", {
