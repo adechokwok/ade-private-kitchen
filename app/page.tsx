@@ -410,6 +410,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const coverDragRef = useRef<{ pointerId: number; clientX: number; clientY: number; crop: ImageCrop } | null>(null);
   const recipeScreenshotUrlsRef = useRef<string[]>([]);
   const shoppingRequestChainsRef = useRef<Record<string, Promise<void>>>({});
+  const invitePollingRef = useRef(false);
   const mode = initialMode;
   const [chefView, setChefView] = useState<ChefView>("accepting");
   const [activeCategory, setActiveCategory] = useState("全部");
@@ -467,6 +468,10 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [inviteCreating, setInviteCreating] = useState(false);
   const [createdInvite, setCreatedInvite] = useState<DinnerInvite | null>(null);
   const [createdInviteUrl, setCreatedInviteUrl] = useState("");
+  const [qrInvite, setQrInvite] = useState<DinnerInvite | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [qrGenerating, setQrGenerating] = useState(false);
+  const [qrSharing, setQrSharing] = useState(false);
   const [activeInvite, setActiveInvite] = useState<DinnerInvite | null>(null);
   const [sharedDinner, setSharedDinner] = useState<SharedDinner | null>(null);
   const [sharedGuestName, setSharedGuestName] = useState("朋友");
@@ -1131,21 +1136,31 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   useEffect(() => {
     let timer = 0;
+    let poll: (() => void) | null = null;
     const bootstrap = window.setTimeout(() => {
       loadKitchenStatus();
       if (initialInviteToken) loadInvite(initialInviteToken);
       else { loadDishes(); loadCategories(); }
       if (mode === "menu") {
-        timer = window.setInterval(() => {
+        poll = () => {
+          if (document.visibilityState !== "visible") return;
           loadKitchenStatus();
-          if (initialInviteToken) loadInvite(initialInviteToken, true);
-          else { loadDishes(); loadCategories(); }
-        }, initialInviteToken ? 5000 : 15000);
+          if (initialInviteToken) {
+            if (invitePollingRef.current) return;
+            invitePollingRef.current = true;
+            void loadInvite(initialInviteToken, true).finally(() => { invitePollingRef.current = false; });
+          } else { loadDishes(); loadCategories(); }
+        };
+        if (poll) {
+          timer = window.setInterval(poll, initialInviteToken ? 2000 : 15000);
+          document.addEventListener("visibilitychange", poll);
+        }
       }
     }, 0);
     return () => {
       window.clearTimeout(bootstrap);
       if (timer) window.clearInterval(timer);
+      if (poll) document.removeEventListener("visibilitychange", poll);
     };
   }, [initialInviteToken, mode]);
 
@@ -2077,6 +2092,58 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     } catch (error) { if ((error as Error).name !== "AbortError") setNotice("分享失败，请稍后重试"); }
   };
 
+  const generateInviteQr = async (invite: DinnerInvite) => {
+    const url = `${window.location.origin}/invite/${invite.token}`;
+    setQrInvite(invite);
+    setQrDataUrl("");
+    setQrGenerating(true);
+    try {
+      const QRCode = await import("qrcode");
+      const dataUrl = await QRCode.toDataURL(url, {
+        width: 720,
+        margin: 2,
+        errorCorrectionLevel: "M",
+        color: { dark: "#2c211d", light: "#fffdf8" },
+      });
+      setQrDataUrl(dataUrl);
+    } catch {
+      setQrInvite(null);
+      setNotice("二维码生成失败，请稍后重试");
+    } finally {
+      setQrGenerating(false);
+    }
+  };
+
+  const downloadInviteQr = () => {
+    if (!qrDataUrl || !qrInvite) return;
+    const link = document.createElement("a");
+    link.href = qrDataUrl;
+    link.download = `ade-kitchen-${qrInvite.title || "邀请"}-二维码.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setNotice("二维码图片已保存，可发送给朋友扫码");
+  };
+
+  const shareInviteQr = async () => {
+    if (!qrDataUrl || !qrInvite) return;
+    setQrSharing(true);
+    try {
+      const blob = await (await fetch(qrDataUrl)).blob();
+      const file = new File([blob], `ade-kitchen-${qrInvite.title || "邀请"}-二维码.png`, { type: "image/png" });
+      if (typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: qrInvite.title, text: qrInvite.message || "来阿德小厨房一起点菜" });
+        setNotice("二维码已打开系统分享");
+      } else {
+        downloadInviteQr();
+      }
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") setNotice("二维码分享失败，请先保存图片");
+    } finally {
+      setQrSharing(false);
+    }
+  };
+
   const toggleInvite = async (invite: DinnerInvite) => {
     const response = await fetch("/api/invites", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: invite.id, active: !invite.active }) });
     if (!response.ok) return setNotice("邀请状态更新失败");
@@ -2444,8 +2511,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   <div className="dinner-overview-list">
                     {invites.filter((invite) => invite.active).slice(0, 6).map((invite) => (
                       <article className="dinner-overview-card" key={invite.id}>
-                        <div><span>{invite.mealDate}</span><strong>{invite.title}</strong><small>{invite.mode === "shared" ? "多人共享一张单" : "专属点菜单"}</small></div>
-                        <div className="dinner-overview-actions"><button type="button" onClick={() => { setCreatedInvite(invite); setCreatedInviteUrl(`${window.location.origin}/invite/${invite.token}`); setChefView("invitations"); }}>管理</button><a href={`/invite/${invite.token}`} target="_blank" rel="noreferrer">打开点菜页</a><button type="button" className="quiet" onClick={() => void shareInvite(invite)}>分享</button></div>
+                        <div className="dinner-overview-date"><span>{invite.mealDate}</span><b aria-hidden="true">{invite.mode === "shared" ? "多人" : "专属"}</b></div>
+                        <div className="dinner-overview-copy"><div className="dinner-overview-title"><strong>{invite.title}</strong><em><i aria-hidden="true" />进行中</em></div><small>{invite.mode === "shared" ? "多人共享一张单 · 朋友的选择会同步汇总" : "专属点菜单 · 等待朋友确认"}</small><span>{invite.dishIds.length} 道开放菜品</span></div>
+                        <div className="dinner-overview-actions"><button type="button" onClick={() => { setCreatedInvite(invite); setCreatedInviteUrl(`${window.location.origin}/invite/${invite.token}`); setChefView("invitations"); }}>管理饭局</button><a href={`/invite/${invite.token}`} target="_blank" rel="noreferrer">打开点菜页</a><button type="button" className="quiet" onClick={() => void shareInvite(invite)}>分享</button><button type="button" className="quiet" onClick={() => void generateInviteQr(invite)}>二维码</button></div>
                       </article>
                     ))}
                   </div>
@@ -2727,7 +2795,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               {createdInvite && <section className="invite-created-success panel" role="status">
                 <div><span>INVITATION READY</span><strong>邀请已经生成，复制下面的链接发给朋友</strong><p>{createdInvite.mode === "shared" ? "同一条链接可以发给这一桌所有朋友，大家会实时看到彼此选了什么。" : "朋友打开这条链接后，就能进入这场饭局的专属菜单。"}</p></div>
                 <div className="invite-link-row"><input value={createdInviteUrl} readOnly aria-label="专属邀请链接" onFocus={(event) => event.currentTarget.select()} /><button type="button" onClick={() => void copyInviteLink(createdInvite)}>复制链接</button></div>
-                <div className="invite-created-actions"><button type="button" onClick={() => void shareInvite(createdInvite)}>分享给朋友</button><a href={`/invite/${createdInvite.token}`} target="_blank" rel="noreferrer">打开预览</a><button type="button" className="quiet" onClick={() => setCreatedInvite(null)}>收起</button></div>
+                <div className="invite-created-actions"><button type="button" onClick={() => void shareInvite(createdInvite)}>分享给朋友</button><button type="button" onClick={() => void generateInviteQr(createdInvite)}>生成二维码</button><a href={`/invite/${createdInvite.token}`} target="_blank" rel="noreferrer">打开预览</a><button type="button" className="quiet" onClick={() => setCreatedInvite(null)}>收起</button></div>
               </section>}
               <form className="invite-creator panel" onSubmit={createInvite}>
                 <div className="panel-title"><div><span>PRIVATE DINNER LINK</span><h2>生成一场专属饭局</h2></div><small>选菜 · 写话 · 分享</small></div>
@@ -2749,7 +2817,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                     <div className="invite-card-head"><span>{invite.mealDate}</span><em>{invite.mode === "shared" ? "多人共享" : "单人邀请"} · {invite.active ? "邀请中" : "已结束"}</em></div>
                     <h3>{invite.title}</h3><p>{invite.message || "菜我来做，你只管来。"}</p>
                     <div className="invite-menu-preview">{invite.dishIds.map((id) => dishCatalog.find((dish) => dish.id === id)?.name).filter(Boolean).join(" · ")}</div>
-                    <div className="invite-actions"><button onClick={() => shareInvite(invite)}>分享邀请</button><a href={`/invite/${invite.token}`} target="_blank">预览</a><button className="quiet" onClick={() => toggleInvite(invite)}>{invite.active ? "结束邀请" : "重新开放"}</button><button className="danger" onClick={() => void deleteInvite(invite)}>删除</button></div>
+                    <div className="invite-actions"><button onClick={() => shareInvite(invite)}>分享邀请</button><button onClick={() => void generateInviteQr(invite)}>二维码</button><a href={`/invite/${invite.token}`} target="_blank">预览</a><button className="quiet" onClick={() => toggleInvite(invite)}>{invite.active ? "结束邀请" : "重新开放"}</button><button className="danger" onClick={() => void deleteInvite(invite)}>删除</button></div>
                   </article>)}</div>}
               </div>
             </section>
@@ -2859,6 +2927,19 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             <label className="chef-status-message"><div className="chef-status-message-head"><span>朋友端显示的提醒内容</span><button type="button" disabled={statusUpdating} onClick={() => setStatusUpdateDraft((current) => current ? { ...current, note: statusUpdateNotes[current.status] || "" } : current)}>恢复预设</button></div><textarea value={statusUpdateDraft.note} maxLength={180} onChange={(event) => setStatusUpdateDraft((current) => current ? { ...current, note: event.target.value } : current)} placeholder="写一句让朋友安心的话" /></label>
             <div className="chef-status-actions"><button type="button" className="quiet" disabled={statusUpdating} onClick={() => setStatusUpdateDraft(null)}>先不推送</button><button type="submit" disabled={statusUpdating}>{statusUpdating ? "正在发送…" : `${statusUpdateActionLabel[statusUpdateDraft.status]}并推送`}</button></div>
           </form>
+        </div>
+      )}
+
+      {qrInvite && (
+        <div className="overlay checkout-overlay invite-qr-overlay" onMouseDown={(event) => event.target === event.currentTarget && !qrSharing && setQrInvite(null)}>
+          <section className="checkout-card invite-qr-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-qr-title">
+            <button type="button" className="close" disabled={qrSharing} onClick={() => setQrInvite(null)} aria-label="关闭二维码">×</button>
+            <span className="eyebrow">SCAN TO JOIN · 分享饭局</span>
+            <h2 id="invite-qr-title">{qrInvite.title}</h2>
+            <p>朋友扫码即可进入同一张点菜单。二维码只在当前浏览器生成，不会上传到服务器。</p>
+            <div className="invite-qr-frame">{qrGenerating ? <span className="invite-qr-loading">正在生成二维码…</span> : qrDataUrl ? <img src={qrDataUrl} alt={`${qrInvite.title}邀请二维码`} /> : <span className="invite-qr-loading">二维码暂时不可用</span>}</div>
+            <div className="invite-qr-actions"><button type="button" className="primary-button" disabled={!qrDataUrl || qrGenerating} onClick={downloadInviteQr}>保存二维码图片 <span>↓</span></button><button type="button" className="invite-qr-share" disabled={!qrDataUrl || qrGenerating || qrSharing} onClick={() => void shareInviteQr()}>{qrSharing ? "正在打开分享…" : "分享二维码"}</button></div>
+          </section>
         </div>
       )}
 
