@@ -18,9 +18,11 @@
   "dependencies": {
     "archiver": "^8.0.0",
     "better-sqlite3": "^12.4.1",
+    "cos-nodejs-sdk-v5": "^3.0.0",
     "drizzle-orm": "0.45.2",
     "html-to-image": "^1.11.13",
     "jspdf": "^4.2.1",
+    "mysql2": "^3.23.3",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6",
