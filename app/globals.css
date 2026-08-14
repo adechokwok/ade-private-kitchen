@@ -1333,3 +1333,43 @@ footer span { letter-spacing: .12em; } footer p { opacity: .48; font: 11px syste
 .status-add-dishes{display:flex!important;align-items:center;justify-content:space-between;gap:12px;margin:14px 0 10px;padding:13px 16px;border:1px solid #d8b47c!important;border-radius:12px;background:#fff8ec!important;color:#8a5d2d!important;text-decoration:none}.status-add-dishes strong{font-size:13px}.status-add-dishes span{font-size:10px;color:#a37b55}
 .data-transfer-workspace{display:grid;gap:18px;margin-top:24px}.data-transfer-hero{display:grid;grid-template-columns:1fr auto;align-items:center;gap:24px;border:0;border-radius:24px;background:linear-gradient(120deg,#e9ded0,#fbf5eb);padding:28px}.data-transfer-hero>div:first-child>span,.data-transfer-card>div>span{color:var(--red);font:800 9px system-ui,sans-serif;letter-spacing:.18em}.data-transfer-hero h2{margin:8px 0 7px;font-size:30px}.data-transfer-hero p{max-width:760px;margin:0;color:var(--muted);font:11px/1.8 system-ui,sans-serif}.data-transfer-mark{display:grid;place-items:center;width:86px;height:86px;border:1px solid rgba(133,78,40,.22);border-radius:50%;color:var(--red);font:400 44px Georgia,serif}.data-transfer-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.data-transfer-card{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;padding:24px;border-radius:20px}.data-transfer-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:#f2e5d5;color:var(--red);font:700 24px Georgia,serif}.data-transfer-card h3{margin:7px 0 7px;font-size:22px}.data-transfer-card p{min-height:54px;margin:0;color:var(--muted);font:10px/1.75 system-ui,sans-serif}.data-transfer-card>.primary-button{grid-column:2;justify-self:start;margin-top:4px}.data-import-picker{position:relative;overflow:hidden;cursor:pointer;text-align:center}.data-import-picker input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}.data-import-picker.is-loading{opacity:.65;cursor:wait}.data-transfer-notes{padding:20px 24px;border-radius:18px;background:#fffaf3}.data-transfer-notes strong{color:#6d4931;font-size:13px}.data-transfer-notes ul{display:grid;gap:7px;margin:10px 0 0;padding-left:18px;color:var(--muted);font:10px/1.7 system-ui,sans-serif}
 @media (max-width:720px){.data-transfer-workspace{margin-top:15px}.data-transfer-hero{grid-template-columns:1fr;padding:21px 17px}.data-transfer-hero h2{font-size:25px}.data-transfer-mark{width:60px;height:60px;font-size:30px}.data-transfer-grid{grid-template-columns:1fr;gap:12px}.data-transfer-card{padding:19px 16px}.data-transfer-card p{min-height:0}.data-transfer-card>.primary-button{grid-column:2;width:100%;margin-top:8px}.data-transfer-notes{padding:17px 16px}}
+/* Shared dinner shortcuts */
+.quick-dinner-button { white-space: nowrap; }
+.dinner-overview { margin-top: 1.25rem; }
+.dinner-overview-empty { display: flex; align-items: center; gap: .75rem; padding: 1rem 0 .25rem; color: var(--muted, #786d68); }
+.dinner-overview-empty span { font-size: 1.45rem; }
+.dinner-overview-empty p { margin: 0; }
+.dinner-overview-list { display: grid; gap: .65rem; }
+.dinner-overview-card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem 0; border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+.dinner-overview-card > div:first-child { min-width: 0; display: grid; gap: .15rem; }
+.dinner-overview-card span, .dinner-overview-card small { color: var(--muted, #786d68); font-size: .78rem; }
+.dinner-overview-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dinner-overview-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .45rem; }
+.dinner-overview-actions button, .dinner-overview-actions a { border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 999px; padding: .45rem .7rem; background: transparent; color: inherit; text-decoration: none; cursor: pointer; font: inherit; }
+.dinner-overview-actions button:first-child { background: var(--ink, #28211f); color: #fff; border-color: var(--ink, #28211f); }
+@media (max-width: 700px) {
+  .chef-heading-actions { align-items: stretch; }
+  .quick-dinner-button { width: 100%; }
+  .dinner-overview-card { align-items: flex-start; flex-direction: column; }
+  .dinner-overview-actions { justify-content: flex-start; }
+}
+.invite-category-picker { margin: 0 0 14px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.45); }
+.invite-category-picker legend { padding: 0 6px; font-weight: 700; }
+.invite-category-picker > p { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+.invite-category-picker > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.invite-category-picker label { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; background: #fff; cursor: pointer; }
+.invite-category-picker label:has(input:checked) { border-color: var(--red); background: #fff4ef; }
+.invite-category-picker label input { accent-color: var(--red); }
+.invite-category-picker label small { color: var(--muted); }
+.invite-dish-tools { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(150px, .6fr); gap: 8px; margin-bottom: 10px; }
+.invite-dish-tools input, .invite-dish-tools select { min-width: 0; border: 1px solid var(--line); border-radius: 9px; background: #fff; padding: 9px 10px; color: var(--ink); }
+.dish-selection-badge { padding: 7px 9px; border: 1px solid rgba(154,92,40,.32); border-radius: 10px; background: linear-gradient(90deg,#fff2d8,#fff9ed); box-shadow: 0 3px 10px rgba(128,75,24,.1); font-size: 11px; }
+.dish-selection-badge > span { display: block; width: 100%; color: #8d4b18; font-size: 11px; }
+.dish-selection-badge > b { padding: 4px 8px; border-radius: 6px; color: #fff; font-weight: 800; }
+.dish-selection-badge > b:nth-of-type(6n + 1) { background: #a4573c; }
+.dish-selection-badge > b:nth-of-type(6n + 2) { background: #45766b; }
+.dish-selection-badge > b:nth-of-type(6n + 3) { background: #76609a; }
+.dish-selection-badge > b:nth-of-type(6n + 4) { background: #b37a31; }
+.dish-selection-badge > b:nth-of-type(6n + 5) { background: #47729a; }
+.dish-selection-badge > b:nth-of-type(6n) { background: #9b567d; }
+@media (max-width: 720px) { .invite-dish-tools { grid-template-columns: 1fr; } }

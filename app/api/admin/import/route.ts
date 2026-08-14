@@ -22,7 +22,7 @@ const tableKeys = [
   "dinner_invite_selections", "dinner_journals", "pantry_items", "shopping_checks", "app_settings",
 ] as const;
 type TableKey = typeof tableKeys[number];
-type ExportPayload = { version: number; exportedAt: string; tables: Partial<Record<TableKey, unknown>> };
+type ExportPayload = { version: number; exportedAt: string; tables: Record<TableKey, unknown> };
 class ImportInputError extends Error {}
 
 function relativeKey(value: string) {
@@ -35,8 +35,8 @@ function relativeKey(value: string) {
 }
 
 function rows<T>(payload: ExportPayload, key: TableKey): T[] {
+  if (!Object.prototype.hasOwnProperty.call(payload.tables, key)) throw new ImportInputError(`导出文件缺少 ${key} 数据表`);
   const value = payload.tables?.[key];
-  if (value === undefined) return [];
   if (!Array.isArray(value)) throw new ImportInputError(`导出文件中的 ${key} 不是列表`);
   return value as T[];
 }
@@ -82,7 +82,9 @@ async function readArchive(file: File, stagingDir: string) {
   let payload: ExportPayload;
   try { payload = JSON.parse(exportJson) as ExportPayload; }
   catch { throw new ImportInputError("export.json 不是有效的 JSON"); }
-  if (!payload || payload.version !== 1 || !payload.tables || typeof payload.tables !== "object") throw new ImportInputError("不支持的导出文件版本");
+  if (!payload || payload.version !== 1 || typeof payload.exportedAt !== "string" || !payload.tables || typeof payload.tables !== "object" || Array.isArray(payload.tables)) throw new ImportInputError("不支持的导出文件版本");
+  const unknownTable = Object.keys(payload.tables).find((key) => !tableKeys.includes(key as TableKey));
+  if (unknownTable) throw new ImportInputError(`导出文件包含当前版本不认识的数据表：${unknownTable}`);
   for (const key of tableKeys) assertObjectRows(rows(payload, key), key);
   return { payload, imageCount: keys.size };
 }
@@ -114,8 +116,30 @@ function replaceDatabase(payload: ExportPayload) {
     if (tableRows.dinnerJournals.length) db.insert(schema.dinnerJournals).values(tableRows.dinnerJournals).run();
     if (tableRows.pantryItems.length) db.insert(schema.pantryItems).values(tableRows.pantryItems).run();
     if (tableRows.shoppingChecks.length) db.insert(schema.shoppingChecks).values(tableRows.shoppingChecks).run();
+    const importedSettingKeys = new Set(tableRows.appSettings.map((setting) => String(setting.key)));
+    const deleteSetting = sqlite.prepare("DELETE FROM app_settings WHERE key = ?");
+    const existingSettings = db.select({ key: schema.appSettings.key }).from(schema.appSettings).all();
+    for (const setting of existingSettings) {
+      const key = String(setting.key);
+      if (!protectedSettingKey.test(key) && !importedSettingKeys.has(key)) deleteSetting.run(key);
+    }
     const upsertSetting = sqlite.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
     for (const setting of tableRows.appSettings) upsertSetting.run(String(setting.key), String(setting.value ?? ""));
+    const expectedCounts: Record<string, number> = {
+      custom_dishes: tableRows.customDishes.length,
+      menu_categories: tableRows.menuCategories.length,
+      orders: tableRows.orders.length,
+      dinner_invites: tableRows.dinnerInvites.length,
+      dinner_invite_guests: tableRows.dinnerInviteGuests.length,
+      dinner_invite_selections: tableRows.dinnerInviteSelections.length,
+      dinner_journals: tableRows.dinnerJournals.length,
+      pantry_items: tableRows.pantryItems.length,
+      shopping_checks: tableRows.shoppingChecks.length,
+    };
+    for (const [table, expected] of Object.entries(expectedCounts)) {
+      const actual = Number((sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count);
+      if (actual !== expected) throw new ImportInputError(`导入校验失败：${table} 数量不一致`);
+    }
   });
   transaction();
   return {

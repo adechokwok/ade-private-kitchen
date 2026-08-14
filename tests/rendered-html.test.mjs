@@ -184,6 +184,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(orderStatusRoute, /token: inviteRow\.token/);
   assert.match(page, /sharedGuestStorageKey/);
   assert.match(page, /shared-name-field/);
+  assert.match(page, /sharedGuestNameDirtyRef/);
+  assert.match(page, /!sharedGuestNameDirtyRef\.current/);
   assert.match(page, /确认称呼/);
   assert.match(page, /sharedDishTotals/);
   assert.match(page, /sharedAggregatePortionCount/);
@@ -192,6 +194,10 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /invite-created-success/);
   assert.match(page, /copyInviteLink/);
   assert.match(page, /invite-all-toggle/);
+  assert.match(page, /invite-category-picker/);
+  assert.match(page, /按类型开放菜品/);
+  assert.match(page, /invite-dish-tools/);
+  assert.match(globalStyles, /dish-selection-badge > b:nth-of-type/);
   assert.match(page, /toggleAllInviteDishes/);
   assert.match(page, /inviteCreating/);
   assert.match(inviteRoute, /const mode = payload\.mode/);
