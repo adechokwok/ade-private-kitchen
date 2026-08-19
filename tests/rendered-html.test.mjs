@@ -413,7 +413,8 @@ test("includes a reproducible amd64 Docker deployment, updates, and backups", as
     readFile(new URL("../README.md", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
-  assert.match(dockerfile, /node:22-bookworm-slim/);
+  assert.match(dockerfile, /node:22\.13\.0-bookworm-slim/);
+  assert.match(dockerfile, /apt-get install -y --no-install-recommends python3 make g\+\+/);
   assert.match(dockerfile, /pnpm@11\.9\.0/);
   assert.match(dockerfile, /\.next\/standalone/);
   assert.match(dockerfile, /HEALTHCHECK/);
@@ -428,6 +429,7 @@ test("includes a reproducible amd64 Docker deployment, updates, and backups", as
   assert.match(cloudCompose, /APP_PORT:-3000/);
   assert.match(cloudCompose, /PUID:-0/);
   assert.match(workflow, /branches:\s*\n\s*- main/);
+  assert.match(workflow, /setup-python@v6/);
   assert.match(workflow, /pnpm test/);
   assert.match(workflow, /platforms: linux\/amd64/);
   assert.match(workflow, /packages: write/);

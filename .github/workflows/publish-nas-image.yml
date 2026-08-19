@@ -31,6 +31,11 @@ jobs:
         with:
           node-version: 22.13.0
 
+      - name: 准备 Python（原生依赖编译）
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
       - name: 准备 pnpm
         run: npm install --global pnpm@11.9.0
 

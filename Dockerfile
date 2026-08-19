@@ -1,10 +1,13 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-bookworm-slim AS base
+FROM node:22.13.0-bookworm-slim AS base
 RUN npm install --global pnpm@11.9.0
 
 FROM base AS dependencies
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
@@ -15,7 +18,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN pnpm run build
 
-FROM node:22-bookworm-slim AS runner
+FROM node:22.13.0-bookworm-slim AS runner
 WORKDIR /app
 LABEL org.opencontainers.image.source="https://github.com/adechokwok/ade-private-kitchen" \
       org.opencontainers.image.title="阿德小厨房" \
