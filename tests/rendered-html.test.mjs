@@ -87,14 +87,17 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /menu-title-lines/);
   assert.match(page, /<span>菜单照常翻，<\/span><span>厨房今天歇<\/span>/);
   assert.match(layout, /\/wechat-share\.jpg/);
-  assert.match(layout, /20260728-braised-pork/);
-  assert.match(layout, /width: 800, height: 800/);
+  assert.match(layout, /20260819-red-chopsticks/);
+  assert.match(layout, /width: 800,\s*height: 800/);
   assert.match(layout, /\/manifest\.webmanifest/);
   assert.match(layout, /\/icon\.png/);
   assert.match(layout, /\/apple-icon\.png/);
   assert.match(manifest, /\/app-icon-192\.png/);
   assert.match(manifest, /\/app-icon-512\.png/);
-  assert.match(layout, /const protocol = localHost \? forwardedProtocol \|\| "http" : "https"/);
+  assert.match(layout, /const requestProtocol = forwardedProtocol === "http" \|\| forwardedProtocol === "https"/);
+  assert.match(layout, /directHttpPort/);
+  assert.match(layout, /PUBLIC_ORIGIN/);
+  assert.match(layout, /shareImage\.startsWith\("https:\/\/"\)/);
   assert.ok(appIconAsset.byteLength > 0, "正式 App 图标应存在");
   assert.ok(appleIconAsset.byteLength > 0, "iPhone 图标应存在");
   assert.ok(shareImageAsset.byteLength < 400 * 1024, "微信分享图应保持轻量");
@@ -371,7 +374,7 @@ test("ships the private menu and chef workflow", async () => {
   assert.doesNotMatch(page, /codex-preview|SkeletonPreview/);
 });
 
-test("uses NAS-local persistence and app-owned chef authentication", async () => {
+test("uses local-disk persistence and app-owned chef authentication", async () => {
   const [database, uploads, paths, auth, chefPage, loginRoute, healthRoute] = await Promise.all([
     readFile(new URL("../db/index.ts", import.meta.url), "utf8"),
     readFile(new URL("../storage/uploads.ts", import.meta.url), "utf8"),
@@ -395,14 +398,16 @@ test("uses NAS-local persistence and app-owned chef authentication", async () =>
   assert.match(auth, /SESSION_SECRET/);
   assert.match(chefPage, /getChefSession/);
   assert.match(loginRoute, /MAX_ATTEMPTS/);
-  assert.match(healthRoute, /nas-local/);
+  assert.match(healthRoute, /local-disk/);
+  assert.match(healthRoute, /ensureAllSchema/);
 });
 
 test("includes a reproducible amd64 Docker deployment, updates, and backups", async () => {
-  const [dockerfile, compose, nasCompose, workflow, backup, readme, packageJson] = await Promise.all([
+  const [dockerfile, compose, nasCompose, cloudCompose, workflow, backup, readme, packageJson] = await Promise.all([
     readFile(new URL("../Dockerfile", import.meta.url), "utf8"),
     readFile(new URL("../compose.yaml", import.meta.url), "utf8"),
     readFile(new URL("../compose.nas.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../compose.cloud.yaml", import.meta.url), "utf8"),
     readFile(new URL("../.github/workflows/publish-nas-image.yml", import.meta.url), "utf8"),
     readFile(new URL("../scripts/backup.mjs", import.meta.url), "utf8"),
     readFile(new URL("../README.md", import.meta.url), "utf8"),
@@ -418,6 +423,10 @@ test("includes a reproducible amd64 Docker deployment, updates, and backups", as
   assert.match(compose, /service_healthy/);
   assert.match(nasCompose, /ghcr\.io\/adechokwok\/ade-private-kitchen:latest/);
   assert.match(nasCompose, /NAS_DATA_PATH/);
+  assert.match(cloudCompose, /CLOUD_DATA_PATH/);
+  assert.match(cloudCompose, /CLOUD_BACKUP_PATH/);
+  assert.match(cloudCompose, /APP_PORT:-3000/);
+  assert.match(cloudCompose, /PUID:-0/);
   assert.match(workflow, /branches:\s*\n\s*- main/);
   assert.match(workflow, /pnpm test/);
   assert.match(workflow, /platforms: linux\/amd64/);
