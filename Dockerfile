@@ -19,13 +19,15 @@ FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 LABEL org.opencontainers.image.source="https://github.com/adechokwok/ade-private-kitchen" \
       org.opencontainers.image.title="阿德小厨房" \
-      org.opencontainers.image.description="阿德小厨房 NAS Docker 版"
+      org.opencontainers.image.description="阿德小厨房 Docker 自托管版"
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \
     PORT=3000 \
     DATA_DIR=/data \
-    BACKUP_DIR=/backups
+    BACKUP_DIR=/backups \
+    PUID=0 \
+    PGID=0
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates dumb-init gosu \

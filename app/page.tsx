@@ -2659,7 +2659,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
               <section className="bulk-recipe-import panel" aria-labelledby="bulk-recipe-import-title">
                 <div className="bulk-import-heading">
-                  <div><span>RECIPE LIBRARY IMPORT</span><h2 id="bulk-recipe-import-title">批量导入菜谱库</h2><p>把整理好的 JSON 菜谱一次合并进 NAS；先预览，再确认导入。</p></div>
+                  <div><span>RECIPE LIBRARY IMPORT</span><h2 id="bulk-recipe-import-title">批量导入菜谱库</h2><p>把整理好的 JSON 菜谱一次合并进服务器菜谱库；先预览，再确认导入。</p></div>
                   <em>自动备份 · 失败回滚</em>
                 </div>
                 <div className="bulk-import-body">
@@ -2672,7 +2672,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   {bulkRecipePreview && <div className="bulk-import-preview">
                     <div className="bulk-import-stats"><article><small>文件内菜谱</small><strong>{bulkRecipePreview.total}</strong><span>道</span></article><article className="insert"><small>将新增</small><strong>{bulkRecipePreview.toInsert}</strong><span>道</span></article><article className="update"><small>将更新</small><strong>{bulkRecipePreview.toUpdate}</strong><span>道</span></article></div>
                     <div className="bulk-import-details"><p><b>涉及分类</b>{bulkRecipePreview.categories.join("、")}</p><p><b>部分菜名</b>{bulkRecipePreview.sampleNames.join("、")}{bulkRecipePreview.total > bulkRecipePreview.sampleNames.length ? "……" : ""}</p></div>
-                    <div className="bulk-import-confirm"><p><strong>合并规则</strong><span>同名菜更新配方和步骤，但保留原有照片、上架状态和推荐设置；新菜直接加入菜单。确认前会把数据库备份到 NAS 的 import-backups 文件夹。</span></p><button type="button" onClick={confirmBulkRecipeImport} disabled={bulkRecipeLoading !== null || Boolean(bulkRecipeResult)}>{bulkRecipeLoading === "import" ? "正在备份并导入…" : bulkRecipeResult ? "本文件已导入" : `确认合并导入 ${bulkRecipePreview.total} 道菜`}</button></div>
+                    <div className="bulk-import-confirm"><p><strong>合并规则</strong><span>同名菜更新配方和步骤，但保留原有照片、上架状态和推荐设置；新菜直接加入菜单。确认前会把数据库备份到服务器的 import-backups 文件夹。</span></p><button type="button" onClick={confirmBulkRecipeImport} disabled={bulkRecipeLoading !== null || Boolean(bulkRecipeResult)}>{bulkRecipeLoading === "import" ? "正在备份并导入…" : bulkRecipeResult ? "本文件已导入" : `确认合并导入 ${bulkRecipePreview.total} 道菜`}</button></div>
                   </div>}
                   {bulkRecipeResult && <div className="bulk-import-success" role="status"><span>✓</span><div><strong>批量导入完成</strong><p>新增 {bulkRecipeResult.inserted} 道、更新 {bulkRecipeResult.updated} 道；当前菜谱库共 {bulkRecipeResult.totalDishes} 道。</p><small>安全备份：{bulkRecipeResult.backupFile}</small></div></div>}
                 </div>
@@ -2761,7 +2761,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                         <span className="upload-icon">＋</span><strong>点击选择或拖入封面照片</strong><small>JPG、PNG、WebP 或 GIF，最大 6MB</small>
                       </ImageDropField>
                       <div className="or-divider"><span>或</span></div>
-                      <label className={`network-photo ${networkPreviewState}`}><span>粘贴网络图片地址</span><input name="imageUrl" type="url" value={networkImageUrl} placeholder="https://example.com/dish.jpg" onChange={(event) => { const value = event.target.value; setNetworkImageUrl(value); if (value.trim()) setNetworkPreviewState("loading"); else { setNetworkPreviewState(""); setImagePreview((current) => current.startsWith("/api/image-preview?") ? "" : current); setAutoCropPending(false); } }} /><small>{networkPreviewState === "loading" ? "正在读取图片并生成实时预览…" : networkPreviewState === "ready" ? "✓ 图片已读取，保存时会裁切并转存到 NAS" : networkPreviewState === "error" ? "未能读取这张图片，请检查地址或换一张" : "请使用你有权使用的图片地址，粘贴后会自动预览"}</small></label>
+                      <label className={`network-photo ${networkPreviewState}`}><span>粘贴网络图片地址</span><input name="imageUrl" type="url" value={networkImageUrl} placeholder="https://example.com/dish.jpg" onChange={(event) => { const value = event.target.value; setNetworkImageUrl(value); if (value.trim()) setNetworkPreviewState("loading"); else { setNetworkPreviewState(""); setImagePreview((current) => current.startsWith("/api/image-preview?") ? "" : current); setAutoCropPending(false); } }} /><small>{networkPreviewState === "loading" ? "正在读取图片并生成实时预览…" : networkPreviewState === "ready" ? "✓ 图片已读取，保存时会裁切并转存到服务器" : networkPreviewState === "error" ? "未能读取这张图片，请检查地址或换一张" : "请使用你有权使用的图片地址，粘贴后会自动预览"}</small></label>
                     </div>
                     <input name="imagePosition" type="hidden" value={serializeImageCrop(imageCrop)} readOnly />
                     <div className="cover-editor">
@@ -2814,10 +2814,10 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 <div className="data-transfer-mark" aria-hidden="true">↔</div>
               </section>
               <div className="data-transfer-grid">
-                <article className="data-transfer-card panel"><span className="data-transfer-icon">↓</span><div><span>EXPORT ALL DATA</span><h3>导出全部数据</h3><p>生成一个 ZIP 压缩包，包含 SQLite 业务数据与 uploads 下的所有原图、缩略图和元数据。适合从 NAS 下载保存。</p></div><button type="button" className="primary-button" onClick={() => void exportAllData()}>导出 ZIP <span>→</span></button></article>
+                <article className="data-transfer-card panel"><span className="data-transfer-icon">↓</span><div><span>EXPORT ALL DATA</span><h3>导出全部数据</h3><p>生成一个 ZIP 压缩包，包含 SQLite 业务数据与 uploads 下的所有原图、缩略图和元数据。适合下载到电脑或另一台服务器。</p></div><button type="button" className="primary-button" onClick={() => void exportAllData()}>导出 ZIP <span>→</span></button></article>
                 <article className="data-transfer-card panel"><span className="data-transfer-icon">↑</span><div><span>IMPORT BACKUP</span><h3>导入备份</h3><p>选择之前导出的 ZIP，整体替换当前业务数据和照片。导入前会自动备份当前 SQLite，SESSION_SECRET 等运行时密钥始终保留。</p></div><label className={`primary-button data-import-picker${dataImporting ? " is-loading" : ""}`}><input type="file" accept=".zip,application/zip" disabled={dataImporting} onChange={importAllData} />{dataImporting ? "正在导入…" : "选择 ZIP 导入"}<span>→</span></label></article>
               </div>
-              <section className="data-transfer-notes panel"><strong>迁移前请确认</strong><ul><li>导入会替换当前菜谱、订单、邀请、采购和照片；请只选择可信的阿德小厨房导出包。</li><li>导入期间不要关闭页面或重启容器；完成后建议重新打开主厨工作台确认数据。</li><li>导出的压缩包可直接保存到电脑或 NAS，不包含密码、会话密钥和 API Key。</li></ul></section>
+              <section className="data-transfer-notes panel"><strong>迁移前请确认</strong><ul><li>导入会替换当前菜谱、订单、邀请、采购和照片；请只选择可信的阿德小厨房导出包。</li><li>导入期间不要关闭页面或重启容器；完成后建议重新打开主厨工作台确认数据。</li><li>导出的压缩包可直接保存到电脑、云服务器或 NAS，不包含密码、会话密钥和 API Key。</li></ul></section>
             </section>
           ) : chefView === "invitations" ? (
             <section className="invitation-workspace">

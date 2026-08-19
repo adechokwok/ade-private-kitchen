@@ -20,7 +20,7 @@ export default async function ChefLoginPage({ searchParams }: { searchParams: Pr
         <Link className="chef-login-brand" href="/"><span>德</span><strong>阿德小厨房</strong></Link>
         <p className="chef-login-eyebrow">PRIVATE CHEF CONSOLE</p>
         <h1>主厨回来啦</h1>
-        <p>菜单、订单和今晚要买的菜，都安安稳稳放在你的 NAS 里。</p>
+        <p>菜单、订单和今晚要买的菜，都安安稳稳保存在这台服务器上。</p>
         {!configured ? (
           <div className="chef-login-alert"><strong>还差一步初始化</strong><span>请先在 Docker 环境变量中设置至少 10 位的 CHEF_PASSWORD，然后重新启动容器。</span></div>
         ) : (

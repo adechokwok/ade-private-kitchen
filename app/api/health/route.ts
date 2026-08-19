@@ -11,7 +11,7 @@ export async function GET() {
     return Response.json({
       ok: true,
       service: "ade-private-kitchen",
-      storage: "nas-local",
+      storage: "local-disk",
       time: new Date().toISOString(),
     }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
