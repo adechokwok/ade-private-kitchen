@@ -38,6 +38,8 @@
 
 当前生产环境使用 Ubuntu + Docker，容器内部固定监听 `3000`，宿主机把 `/data` 挂载到容器 `/data`，把 `/backups` 挂载到容器 `/backups`。云服务器请使用 `compose.cloud.yaml` 和 `cloud.env.example`，不要直接套用 NAS 的 3099 端口配置。
 
+镜像的依赖阶段会固定使用 Node.js 22.13.0，并预装 Python、`make` 和 `g++`，用于编译 `better-sqlite3` 等原生依赖。不要在容器外先执行 `pnpm install` 后再复制 `node_modules`；如果使用云平台的源码构建模式而不是本仓库 Dockerfile，请将构建运行时设为 Node.js 22.13 或以上，并安装 Python 3、`make` 和 `g++`。
+
 ```bash
 cp cloud.env.example .env
 # 编辑 .env，至少填写 CHEF_PASSWORD 和 AI 接口 Key；若直接用公网 HTTP:3000，填写 PUBLIC_ORIGIN=http://公网IP:3000
