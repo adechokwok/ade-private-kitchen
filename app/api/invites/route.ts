@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   const activeDishes = await getDb().select({ id: customDishes.id }).from(customDishes).where(eq(customDishes.active, 1));
   const valid = new Set(activeDishes.map((dish) => dish.id));
   const allowed = mode === "shared"
-    ? (hasDishIds ? dishIds.filter((id) => valid.has(id)) : activeDishes.map((dish) => dish.id))
+    ? (quickCreate ? activeDishes.map((dish) => dish.id) : hasDishIds ? dishIds.filter((id) => valid.has(id)) : activeDishes.map((dish) => dish.id))
     : dishIds.filter((id) => valid.has(id));
   if (!allowed.length) return Response.json({ error: "所选菜品暂不可用" }, { status: 400 });
   await ensureDinnerInvitesSchema();

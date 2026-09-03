@@ -45,7 +45,7 @@ test("ships the private menu and chef workflow", async () => {
     "朋友点菜", "阿德小厨房", "想吃什么", "主厨工作台", "接单信息汇总", "把点单编成正式宴席菜单",
     "订单和采购提醒", "制作执行台", "合并备菜清单", "倒排烹饪顺序", "单菜计时器", "库存不足提醒",
     "等待通知与确认归档", "菜单管理", "自定义新类型", "批量加入大类", "点菜端 slogan", "千问再生成", "家中库存",
-    "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "生成一场专属饭局", "餐桌日记，想写的时候再写", "温馨家宴", "二人世界", "Fine Dining",
+    "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "一键生成共享饭局", "餐桌日记，想写的时候再写", "温馨家宴", "二人世界", "Fine Dining",
     "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐", "多人共享一张单",
   ]) assert.match(page, new RegExp(phrase));
   assert.match(page, /function ImageDropField/);
@@ -207,12 +207,11 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(adminImportRoute, /importChunkBytes/);
   assert.match(adminImportRoute, /assembleImportChunks/);
   assert.match(globalStyles, /\.invite-qr-dialog/);
-  assert.match(page, /invite-all-toggle/);
-  assert.match(page, /invite-category-picker/);
-  assert.match(page, /按类型开放菜品/);
-  assert.match(page, /invite-dish-tools/);
+  assert.match(page, /quickCreate: true/);
+  assert.match(page, /一键生成共享饭局/);
+  assert.doesNotMatch(page, /invite-category-picker/);
+  assert.doesNotMatch(page, /invite-dish-picker/);
   assert.match(globalStyles, /dish-selection-badge > b:nth-of-type/);
-  assert.match(page, /toggleAllInviteDishes/);
   assert.match(page, /inviteCreating/);
   assert.match(page, /const deleteInvite/);
   assert.match(page, /method: "DELETE"/);
@@ -227,6 +226,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(inviteTokenRoute, /dinnerInviteSelections/);
   assert.match(database, /dinner_invite_guests/);
   assert.match(database, /dinner_invite_selections/);
+  assert.match(database, /recommended_dish_ids/);
+  assert.match(database, /dinner_invite_selections_unique_idx/);
   assert.match(database, /addColumn\("dinner_invites", inviteColumns, "updated_at", "TEXT NOT NULL DEFAULT ''"\)/);
   assert.match(database, /SET updated_at = COALESCE\(NULLIF\(created_at, ''\), CURRENT_TIMESTAMP\)/);
   assert.doesNotMatch(database, /addColumn\("dinner_invites", inviteColumns, "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"\)/);
