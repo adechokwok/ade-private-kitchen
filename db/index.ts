@@ -162,6 +162,7 @@ export async function ensureDinnerInvitesSchema() {
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
   const inviteColumns = tableColumns("dinner_invites");
+  addColumn("dinner_invites", inviteColumns, "recommended_dish_ids", "TEXT NOT NULL DEFAULT '[]'");
   addColumn("dinner_invites", inviteColumns, "mode", "TEXT NOT NULL DEFAULT 'single'");
   addColumn("dinner_invites", inviteColumns, "shared_order_id", "TEXT NOT NULL DEFAULT ''");
   const hadUpdatedAt = inviteColumns.has("updated_at");
@@ -192,6 +193,22 @@ export async function ensureDinnerInvitesSchema() {
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(invite_id, guest_id, dish_id)
   )`);
+  // Older databases were created before the composite UNIQUE constraint was
+  // introduced. Keep the newest row for any legacy duplicates before adding
+  // the equivalent unique index, so shared recommendations cannot fail with
+  // an ON CONFLICT error after an upgrade.
+  getSqlite().exec(`DELETE FROM dinner_invite_selections AS duplicate
+    WHERE EXISTS (
+      SELECT 1 FROM dinner_invite_selections AS keeper
+      WHERE keeper.invite_id = duplicate.invite_id
+        AND keeper.guest_id = duplicate.guest_id
+        AND keeper.dish_id = duplicate.dish_id
+        AND (
+          keeper.updated_at > duplicate.updated_at
+          OR (keeper.updated_at = duplicate.updated_at AND keeper.rowid > duplicate.rowid)
+        )
+    )`);
+  getSqlite().exec("CREATE UNIQUE INDEX IF NOT EXISTS dinner_invite_selections_unique_idx ON dinner_invite_selections (invite_id, guest_id, dish_id)");
   getSqlite().exec("CREATE INDEX IF NOT EXISTS dinner_invite_selections_invite_idx ON dinner_invite_selections (invite_id)");
   getSqlite().exec(`CREATE TABLE IF NOT EXISTS dinner_journals (
     id TEXT PRIMARY KEY NOT NULL,
