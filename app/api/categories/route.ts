@@ -1,3 +1,4 @@
+import { withDataWrite } from "../../../storage/maintenance";
 import { asc, eq, sql } from "drizzle-orm";
 import { chefApiGuard } from "../../chef-auth";
 import { ensureMenuLibrary, getDb, getSqlite } from "../../../db";
@@ -9,7 +10,7 @@ export async function GET() {
   return Response.json({ categories: rows });
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   const payload = await request.json() as { name?: unknown; emoji?: unknown };
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
   return Response.json({ category }, { status: 201 });
 }
 
-export async function PATCH(request: Request) {
+async function handlePATCH(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   const payload = await request.json() as { id?: unknown; name?: unknown; emoji?: unknown; direction?: unknown };
@@ -64,7 +65,7 @@ export async function PATCH(request: Request) {
   return Response.json({ categories: rows });
 }
 
-export async function DELETE(request: Request) {
+async function handleDELETE(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   const id = new URL(request.url).searchParams.get("id") || "";
@@ -94,3 +95,9 @@ export async function DELETE(request: Request) {
   const rows = await getDb().select().from(menuCategories).orderBy(asc(menuCategories.sortOrder), asc(menuCategories.createdAt));
   return Response.json({ categories: rows, movedCount });
 }
+
+export async function POST(...args: Parameters<typeof handlePOST>) { return withDataWrite(() => handlePOST(...args)); }
+
+export async function PATCH(...args: Parameters<typeof handlePATCH>) { return withDataWrite(() => handlePATCH(...args)); }
+
+export async function DELETE(...args: Parameters<typeof handleDELETE>) { return withDataWrite(() => handleDELETE(...args)); }

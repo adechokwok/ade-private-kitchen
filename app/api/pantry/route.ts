@@ -1,3 +1,4 @@
+import { withDataWrite } from "../../../storage/maintenance";
 import { asc, eq } from "drizzle-orm";
 import { chefApiGuard } from "../../chef-auth";
 import { ensurePantrySchema, getDb } from "../../../db";
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
   return Response.json({ items });
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   const payload = await request.json() as { name?: unknown; amount?: unknown; unit?: unknown; type?: unknown; location?: unknown };
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
   return Response.json({ item }, { status: 201 });
 }
 
-export async function DELETE(request: Request) {
+async function handleDELETE(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   const id = new URL(request.url).searchParams.get("id") || "";
@@ -37,3 +38,7 @@ export async function DELETE(request: Request) {
   await getDb().delete(pantryItems).where(eq(pantryItems.id, id));
   return Response.json({ ok: true });
 }
+
+export async function POST(...args: Parameters<typeof handlePOST>) { return withDataWrite(() => handlePOST(...args)); }
+
+export async function DELETE(...args: Parameters<typeof handleDELETE>) { return withDataWrite(() => handleDELETE(...args)); }

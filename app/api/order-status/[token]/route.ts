@@ -1,3 +1,4 @@
+import { withDataWrite } from "../../../../storage/maintenance";
 import { and, eq } from "drizzle-orm";
 import { ensureDinnerInvitesSchema, ensureOrdersSchema, getDb } from "../../../../db";
 import { dinnerInvites, dinnerJournals, orders } from "../../../../db/schema";
@@ -23,7 +24,7 @@ export async function GET(_request: Request, context: { params: Promise<{ token:
   return Response.json({ order: { customerName: order.customerName, mealDate: order.mealDate, guestCount: order.guestCount, dishes: parseList(order.dishes), dishSnapshot: parseList(order.dishSnapshot), status: order.status, progressNote: order.progressNote, statusUpdatedAt: order.statusUpdatedAt, statusReadAt: order.statusReadAt, publishedMenu: order.publishedMenu ? (() => { try { return JSON.parse(order.publishedMenu); } catch { return null; } })() : null, publishedMenuUpdatedAt: order.publishedMenuUpdatedAt, menuReadAt: order.menuReadAt, archivedAt: order.archivedAt, createdAt: order.createdAt }, invite, journal });
 }
 
-export async function POST(request: Request, context: { params: Promise<{ token: string }> }) {
+async function handlePOST(request: Request, context: { params: Promise<{ token: string }> }) {
   const { token } = await context.params;
   if (!/^[a-f0-9]{32}$/i.test(token)) return Response.json({ error: "进度链接无效" }, { status: 404 });
   try {
@@ -43,3 +44,5 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     return Response.json({ error: "已读状态保存失败" }, { status: 400 });
   }
 }
+
+export async function POST(...args: Parameters<typeof handlePOST>) { return withDataWrite(() => handlePOST(...args)); }
