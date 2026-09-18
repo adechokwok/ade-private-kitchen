@@ -1,0 +1,56 @@
+name: ade-private-kitchen-cloud
+
+# 腾讯云轻量应用服务器使用此文件。应用只把 /data 与 /backups 写入宿主机，
+# 容器删除或更新不会清空 SQLite、照片和历史备份。
+services:
+  kitchen:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ade-private-kitchen:latest
+    container_name: ade-kitchen
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      DATA_DIR: /data
+      BACKUP_DIR: /backups
+      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:-}"
+      CHEF_PASSWORD: "${CHEF_PASSWORD:?请在 .env 中设置至少 10 位的主厨密码}"
+      SESSION_SECRET: "${SESSION_SECRET:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-qwen3-vl-plus}"
+      OPENAI_RECIPE_MODEL: "${OPENAI_RECIPE_MODEL:-}"
+      PUID: "${PUID:-0}"
+      PGID: "${PGID:-0}"
+    volumes:
+      - "${CLOUD_DATA_PATH:-/data}:/data"
+      - "${CLOUD_BACKUP_PATH:-/backups}:/backups"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  backup:
+    platform: linux/amd64
+    image: ade-private-kitchen:latest
+    container_name: ade-kitchen-backup
+    restart: unless-stopped
+    depends_on:
+      kitchen:
+        condition: service_healthy
+    command: ["node", "scripts/backup.mjs", "--watch"]
+    environment:
+      DATA_DIR: /data
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-14}"
+      BACKUP_INTERVAL_HOURS: "${BACKUP_INTERVAL_HOURS:-24}"
+      PUID: "${PUID:-0}"
+      PGID: "${PGID:-0}"
+    volumes:
+      - "${CLOUD_DATA_PATH:-/data}:/data"
+      - "${CLOUD_BACKUP_PATH:-/backups}:/backups"

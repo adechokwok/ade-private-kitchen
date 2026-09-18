@@ -1,0 +1,444 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+test("ships the private menu and chef workflow", async () => {
+  const [page, globalStyles, nextConfig, ordersRoute, dishRoute, imageRoute, remoteImagePreviewRoute, importRoute, adminImportRoute, bulkImportRoute, copyRoute, copyStyle, shoppingRoute, categoryRoute, pantryRoute, inviteRoute, inviteTokenRoute, orderStatusRoute, statusClient, orderMemory, journalRoute, kitchenStatusRoute, schema, database, layout, manifest, appIconAsset, appleIconAsset, shareImageAsset, chefInterviewAsset] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/orders/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/dishes/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/dish-images/[id]/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/image-preview/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/recipe-import/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/import/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/recipe-bulk-import/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/recipe-copy/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/recipe-copy-style.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/shopping/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/categories/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/pantry/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/invites/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/invites/[token]/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/order-status/[token]/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/order/[token]/status-client.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/order-memory.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/journals/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/kitchen-status/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/index.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/manifest.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/icon.png", import.meta.url)),
+    readFile(new URL("../app/apple-icon.png", import.meta.url)),
+    readFile(new URL("../public/wechat-share.jpg", import.meta.url)),
+    readFile(new URL("../public/chef-interview-light.png", import.meta.url)),
+  ]);
+  await assert.rejects(
+    readFile(new URL("../app/api/dishes/duplicate/route.ts", import.meta.url), "utf8"),
+    { code: "ENOENT" },
+  );
+  const orderStatusPage = await readFile(new URL("../app/order/[token]/page.tsx", import.meta.url), "utf8");
+
+  for (const phrase of [
+    "朋友点菜", "阿德小厨房", "想吃什么", "主厨工作台", "接单信息汇总", "把点单编成正式宴席菜单",
+    "订单和采购提醒", "制作执行台", "合并备菜清单", "倒排烹饪顺序", "单菜计时器", "库存不足提醒",
+    "等待通知与确认归档", "菜单管理", "自定义新类型", "批量加入大类", "点菜端 slogan", "千问再生成", "家中库存",
+    "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "一键生成共享饭局", "餐桌日记，想写的时候再写", "温馨家宴", "二人世界", "Fine Dining",
+    "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐", "多人共享一张单",
+  ]) assert.match(page, new RegExp(phrase));
+  assert.match(page, /function ImageDropField/);
+  assert.match(page, /onDrop=\{dropFiles\}/);
+  assert.match(page, /input\.dispatchEvent\(new Event\("change", \{ bubbles: true \}\)\)/);
+  assert.match(page, /松开鼠标，照片就会放进这里/);
+  assert.match(page, /点击选择，或把菜谱截图拖到这里/);
+  assert.match(page, /点击选择或拖入封面照片/);
+  assert.match(page, /点击选择，或把过程照片拖到这里/);
+  assert.match(page, /点击选择，或把饭局照片拖到这里/);
+  assert.match(globalStyles, /\.image-drop-field\.is-dragging/);
+  assert.match(globalStyles, /\.image-drop-overlay/);
+  assert.match(page, /封面真实裁切/);
+  assert.match(page, /自动取景/);
+  assert.match(page, /createCroppedCoverFile/);
+  assert.match(page, /画面缩放（60%–220%）/);
+  assert.match(page, /min="0\.6" max="2\.2"/);
+  assert.match(page, /zoom: clamp\(rawZoom, \.6, 2\.2\)/);
+  assert.match(page, /form\.set\("image", croppedCover/);
+  assert.match(page, /网络图片还没有预览成功/);
+  assert.match(page, /loadInvite\(initialInviteToken, true\)/);
+  assert.match(page, /initialInviteToken \? 2000 : 15000/);
+  assert.match(page, /chef-magazine-v2\.jpg/);
+  assert.match(page, /阿德私厨志/);
+  assert.match(page, /chef-serving-wide\.jpg/);
+  assert.match(page, /chef-interview-light\.png/);
+  assert.doesNotMatch(page, /chef-at-counter\.jpg/);
+  assert.doesNotMatch(page, /kitchen-handoff/);
+  assert.match(page, /谢谢你把这一顿，交给阿德/);
+  assert.match(statusClient, /chef-serving-wide\.jpg/);
+  assert.match(statusClient, /<i>谢谢你<\/i><i>来吃饭<\/i>/);
+  assert.match(statusClient, /!data\.order\.publishedMenu && <div className="status-dishes">/);
+  assert.match(statusClient, /主厨排好正式菜单后，会在这里自动替换成完整菜单卡/);
+  assert.match(globalStyles, /\.status-thanks-hero/);
+  assert.match(page, /厨房今天休息/);
+  assert.match(page, /kitchen-status-toggle/);
+  assert.match(page, /menuReadOnly/);
+  assert.match(page, /今天先看菜单，不接新点单/);
+  assert.match(page, /menu-title-lines/);
+  assert.match(page, /<span>菜单照常翻，<\/span><span>厨房今天歇<\/span>/);
+  assert.match(layout, /\/wechat-share\.jpg/);
+  assert.match(layout, /20260819-red-chopsticks/);
+  assert.match(layout, /width: 800,\s*height: 800/);
+  assert.match(layout, /\/manifest\.webmanifest/);
+  assert.match(layout, /\/icon\.png/);
+  assert.match(layout, /\/apple-icon\.png/);
+  assert.match(manifest, /\/app-icon-192\.png/);
+  assert.match(manifest, /\/app-icon-512\.png/);
+  assert.match(layout, /const requestProtocol = forwardedProtocol === "http" \|\| forwardedProtocol === "https"/);
+  assert.match(layout, /directHttpPort/);
+  assert.match(layout, /PUBLIC_ORIGIN/);
+  assert.match(layout, /shareImage\.startsWith\("https:\/\/"\)/);
+  assert.ok(appIconAsset.byteLength > 0, "正式 App 图标应存在");
+  assert.ok(appleIconAsset.byteLength > 0, "iPhone 图标应存在");
+  assert.ok(shareImageAsset.byteLength < 400 * 1024, "微信分享图应保持轻量");
+  assert.ok(chefInterviewAsset.byteLength > 0 && chefInterviewAsset.byteLength < 3 * 1024 * 1024, "主厨介绍图应存在并控制在 3MB 内");
+  assert.match(ordersRoute, /kitchenSetting\?\.value === "closed"/);
+  assert.doesNotMatch(page, /window\.print/);
+  assert.match(page, /html-to-image/);
+  assert.match(page, /jspdf/);
+  assert.match(page, /function createClientRowId/);
+  assert.match(page, /getRandomValues/);
+  assert.doesNotMatch(page, /rowId: crypto\.randomUUID\(\)/);
+  assert.doesNotMatch(page, /event\.currentTarget\.reset\(\)/);
+  assert.match(page, /const formElement = event\.currentTarget/);
+  assert.match(page, /order-success-dialog/);
+  assert.match(page, /quantity-stepper/);
+  assert.match(page, /archivedOrders/);
+  assert.match(page, /通知开饭 · 强提醒/);
+  assert.match(page, /确认归档这顿饭/);
+  assert.match(page, /action: "archive-order"/);
+  assert.match(page, /activeGuestOrderStorageKey/);
+  assert.match(page, /window\.localStorage\.setItem\(activeGuestOrderStorageKey/);
+  assert.match(page, /正在找回这顿饭/);
+  assert.match(page, /\/api\/auth\/logout/);
+  assert.match(ordersRoute, /export async function POST/);
+  assert.match(ordersRoute, /export async function PATCH/);
+  assert.match(ordersRoute, /export async function DELETE/);
+  assert.match(ordersRoute, /if \(!order\.archivedAt\)/);
+  assert.match(page, /deleteArchivedOrder/);
+  assert.match(page, /删除饭局/);
+  assert.match(page, /orderPendingDelete/);
+  assert.match(page, /永久删除这场饭局/);
+  assert.match(page, /\{activeOrders\.map\(\(order\) => <option/);
+  assert.match(page, /目前没有进行中的订单/);
+  assert.match(page, /action: "update-status"/);
+  assert.match(page, /action: "delete-order"/);
+  assert.doesNotMatch(page, /ingredient\.amount \* scale/);
+  assert.doesNotMatch(page, /const scale = Math\.max\(1, item\.quantity\)/);
+  assert.match(page, /method: "POST", credentials: "same-origin"/);
+  assert.match(globalStyles, /\.status-actions button\.delete-order/);
+  assert.match(globalStyles, /\.status-actions button\.archive-confirm/);
+  assert.match(globalStyles, /\.delete-order-confirm-actions/);
+  assert.match(dishRoute, /getUploads\(\)\.put/);
+  assert.match(dishRoute, /normalizeImagePosition/);
+  assert.match(dishRoute, /Math\.min\(2\.2, Math\.max\(\.6, Number\(match\[3\]\)\)\)/);
+  assert.match(dishRoute, /versionedDishImageUrl/);
+  assert.match(dishRoute, /\?v=\$\{crypto\.randomUUID\(\)\}/);
+  assert.match(dishRoute, /isLocalDishImageUrl/);
+  assert.match(dishRoute, /chefApiGuard/);
+  assert.match(imageRoute, /getUploads\(\)\.get/);
+  assert.match(imageRoute, /public, no-cache, max-age=0, must-revalidate/);
+  assert.match(imageRoute, /if-none-match/);
+  assert.match(imageRoute, /status: 304/);
+  assert.doesNotMatch(imageRoute, /immutable/);
+  assert.match(remoteImagePreviewRoute, /chefApiGuard/);
+  assert.match(remoteImagePreviewRoute, /lookup\(hostname/);
+  assert.match(remoteImagePreviewRoute, /redirect: "manual"/);
+  assert.match(remoteImagePreviewRoute, /maximumImageBytes/);
+  assert.match(importRoute, /chat\/completions/);
+  assert.match(importRoute, /image_url/);
+  assert.match(importRoute, /qwen3-vl-plus/);
+  assert.match(importRoute, /slogan/);
+  assert.match(importRoute, /process\.env\.OPENAI_BASE_URL/);
+  assert.match(importRoute, /process\.env\.OPENAI_MODEL/);
+  assert.match(importRoute, /process\.env\.OPENAI_API_KEY/);
+  assert.match(bulkImportRoute, /chefApiGuard/);
+  assert.match(bulkImportRoute, /sqlite\.backup/);
+  assert.match(bulkImportRoute, /sqlite\.transaction/);
+  assert.match(bulkImportRoute, /fingerprint !== parsed\.fingerprint/);
+  assert.match(bulkImportRoute, /import-backups/);
+  assert.match(bulkImportRoute, /UPDATE custom_dishes SET/);
+  assert.match(page, /\/api\/recipe-bulk-import/);
+  assert.match(globalStyles, /\.bulk-import-preview/);
+  assert.match(importRoute, /rotations/);
+  assert.match(page, /rotateRecipeScreenshot/);
+  assert.match(page, /managed-recipe-details/);
+  assert.match(page, /mobile-menu-browser/);
+  assert.match(page, /mobile-ade-picks/);
+  assert.match(page, /desktop-ade-picks/);
+  assert.match(page, /TODAY'S NOTE/);
+  assert.match(page, /ade-signature\.png/);
+  assert.match(page, /Adecho\.Kwok 手写签名/);
+  assert.match(page, /imageLightboxDish/);
+  assert.match(page, /shared-dinner-bar/);
+  assert.match(page, /dish-selection-badge/);
+  assert.match(page, /addModeFromUrl/);
+  assert.match(page, /window\.location\.replace\(`\/order\/\$\{orderToken\}`\)/);
+  assert.match(statusClient, /status-add-dishes/);
+  assert.match(orderStatusRoute, /token: inviteRow\.token/);
+  assert.match(page, /sharedGuestStorageKey/);
+  assert.match(page, /shared-name-field/);
+  assert.match(page, /sharedGuestNameDirtyRef/);
+  assert.match(page, /!sharedGuestNameDirtyRef\.current/);
+  assert.match(page, /确认称呼/);
+  assert.match(page, /sharedDishTotals/);
+  assert.match(page, /sharedAggregatePortionCount/);
+  assert.match(page, /这桌已选 \{total\} 份/);
+  assert.match(page, /guest\.items\.length} 道菜/);
+  assert.match(page, /invite-created-success/);
+  assert.match(page, /copyInviteLink/);
+  assert.match(page, /generateInviteQr/);
+  assert.match(page, /downloadInviteQr/);
+  assert.match(page, /shareInviteQr/);
+  assert.match(page, /import\("qrcode"\)/);
+  assert.match(page, /x-import-chunk-index/);
+  assert.match(page, /x-import-finalize/);
+  assert.match(adminImportRoute, /receiveImportChunk/);
+  assert.match(adminImportRoute, /importChunkBytes/);
+  assert.match(adminImportRoute, /assembleImportChunks/);
+  assert.match(globalStyles, /\.invite-qr-dialog/);
+  assert.match(page, /quickCreate: true/);
+  assert.match(page, /一键生成共享饭局/);
+  assert.doesNotMatch(page, /invite-category-picker/);
+  assert.doesNotMatch(page, /invite-dish-picker/);
+  assert.match(globalStyles, /dish-selection-badge > b:nth-of-type/);
+  assert.match(page, /inviteCreating/);
+  assert.match(page, /const deleteInvite/);
+  assert.match(page, /method: "DELETE"/);
+  assert.doesNotMatch(page, /createSharedDinner/);
+  assert.doesNotMatch(page, /quick-dinner-button/);
+  assert.doesNotMatch(page, /创建共享饭局/);
+  assert.match(inviteRoute, /const mode = payload\.mode/);
+  assert.match(inviteRoute, /export async function DELETE/);
+  assert.match(inviteRoute, /DELETE FROM dinner_invite_selections/);
+  assert.match(inviteRoute, /DELETE FROM dinner_invite_guests/);
+  assert.match(inviteTokenRoute, /mode === "shared"/);
+  assert.match(inviteTokenRoute, /dinnerInviteSelections/);
+  assert.match(database, /dinner_invite_guests/);
+  assert.match(database, /dinner_invite_selections/);
+  assert.match(database, /recommended_dish_ids/);
+  assert.match(database, /dinner_invite_selections_unique_idx/);
+  assert.match(database, /addColumn\("dinner_invites", inviteColumns, "updated_at", "TEXT NOT NULL DEFAULT ''"\)/);
+  assert.match(database, /SET updated_at = COALESCE\(NULLIF\(created_at, ''\), CURRENT_TIMESTAMP\)/);
+  assert.doesNotMatch(database, /addColumn\("dinner_invites", inviteColumns, "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"\)/);
+  assert.match(page, /dish-lightbox-card/);
+  assert.match(page, /openDishLightbox/);
+  assert.match(page, /getBoundingClientRect/);
+  assert.match(page, /aspectRatio: imageLightboxAspect/);
+  assert.match(page, /dishImageStyle\(imageLightboxDish\.imagePosition\)/);
+  assert.match(page, /查看\$\{dish\.name\}大图/);
+  assert.match(page, /event\.key === "Escape"/);
+  assert.match(page, /阿德推荐/);
+  assert.match(page, /syncMobileCategory/);
+  assert.match(page, /recipeLibraryQuery/);
+  assert.match(page, /managed-dish-waterfall/);
+  assert.doesNotMatch(page, /再显示 12 道/);
+  assert.match(page, /category-emoji-editor/);
+  assert.match(page, /exportBanquetMenu/);
+  assert.match(page, /publishBanquetMenu/);
+  assert.match(page, /推送到点菜人的进度页/);
+  assert.match(page, /PNG 图片/);
+  assert.match(page, /JPG 图片/);
+  assert.match(page, /PDF 文件/);
+  assert.match(globalStyles, /\.mobile-category-rail/);
+  assert.match(globalStyles, /\.menu-title-lines span/);
+  assert.match(globalStyles, /\.section-heading \{ display: block; padding: 0 17px; \}/);
+  assert.match(globalStyles, /\.mobile-ade-picks-track/);
+  assert.match(globalStyles, /\.desktop-ade-picks-grid/);
+  assert.match(globalStyles, /\.hero-sticker span/);
+  assert.match(globalStyles, /\.chef-signature \{/);
+  assert.match(globalStyles, /\.dish-image-trigger/);
+  assert.match(globalStyles, /\.dish-lightbox-card/);
+  assert.match(globalStyles, /\.dish-lightbox-image img \{[^}]*object-fit: cover;/);
+  assert.doesNotMatch(globalStyles, /\.dish-lightbox-image img \{[^}]*object-fit: contain;/);
+  assert.match(globalStyles, /\.recipe-library-toolbar/);
+  assert.match(globalStyles, /\.recipe-bulk-category-bar/);
+  assert.match(globalStyles, /column-count: 2/);
+  assert.match(categoryRoute, /emoji/);
+  assert.match(schema, /emoji: text\("emoji"\)/);
+  assert.match(database, /addColumn\("menu_categories", categoryColumns, "emoji"/);
+  assert.match(globalStyles, /\.screenshot-frame img \{ position: absolute;/);
+  assert.match(globalStyles, /max-height: 100%/);
+  assert.match(globalStyles, /\.cover-crop-frame > img\.cover-crop-backdrop/);
+  assert.match(globalStyles, /filter: blur\(18px\) saturate\(\.82\)/);
+  assert.match(nextConfig, /allowedDevOrigins: \["127\.0\.0\.1", "localhost"\]/);
+  assert.match(copyRoute, /OPENAI_API_KEY/);
+  assert.match(copyRoute, /qwen3-vl-plus/);
+  assert.match(copyRoute, /description/);
+  assert.match(copyRoute, /slogan/);
+  assert.match(copyRoute, /privateKitchenCopyStyle/);
+  assert.match(importRoute, /privateKitchenCopyStyle/);
+  assert.match(copyStyle, /22–42 个中文字符/);
+  assert.match(copyStyle, /10–24 个中文字符/);
+  assert.match(copyStyle, /汤汁请务必留给米饭/);
+  assert.match(copyStyle, /软乎乎的一口鲜/);
+  assert.match(copyStyle, /简单，但会让人想念/);
+  assert.match(copyStyle, /白天不懂夜的黑，白菜不懂虾的鲜/);
+  assert.match(copyStyle, /没有虾头，是因为我不做虾头男/);
+  assert.match(copyStyle, /内娱真完了/);
+  assert.match(schema, /slogan: text\("slogan"\)/);
+  assert.match(database, /addColumn\("custom_dishes", columns, "slogan"/);
+  assert.match(database, /cache-refresh-20260723/);
+  assert.match(database, /instr\(image_url, '\?'\) = 0/);
+  assert.match(ordersRoute, /steps: dish\.steps/);
+  assert.match(shoppingRoute, /shoppingChecks/);
+  assert.match(categoryRoute, /export async function DELETE/);
+  assert.match(categoryRoute, /SET category = '未分类'/);
+  assert.match(categoryRoute, /sqlite\.transaction/);
+  assert.match(categoryRoute, /rows\.splice\(targetIndex, 0, moved\)/);
+  assert.match(categoryRoute, /UPDATE menu_categories SET sort_order = \?/);
+  assert.match(categoryRoute, /remaining\.forEach\(\(item, index\) => updateOrder\.run\(index, item\.id\)\)/);
+  assert.doesNotMatch(categoryRoute, /mergeInto/);
+  assert.doesNotMatch(database, /seedCategories/);
+  assert.match(dishRoute, /inArray\(customDishes\.id, ids\)/);
+  assert.match(dishRoute, /normalizeCategoryDishOrder/);
+  assert.match(dishRoute, /move === "top"/);
+  assert.match(dishRoute, /active DESC, sort_order ASC/);
+  assert.match(page, /moveSelectedRecipesToCategory/);
+  assert.match(page, /const managedNames = managedCategories\.map/);
+  assert.match(page, /return \[\.\.\.managedNames, \.\.\.legacyNames\]/);
+  assert.match(page, /recipeLibraryCategories\.map\(\(category\) => <option value=\{category\} key=\{`bulk-/);
+  assert.match(page, /菜品排序/);
+  assert.match(page, /moveDish/);
+  assert.match(page, /dishCategorySelection === "__custom__"/);
+  assert.match(page, /sortBanquetItemsByCourse/);
+  assert.match(page, /banquetCourseOrder/);
+  assert.match(page, /按前菜 → 热菜 → 主食 → 汤饮甜品自动排列/);
+  assert.match(page, /换栏目后会自动归位/);
+  assert.match(globalStyles, /\.banquet-course-group/);
+  assert.doesNotMatch(page, /duplicateDish/);
+  assert.doesNotMatch(page, />复制<\/button>/);
+  assert.match(page, /managed-card-actions\$\{dish\.active \? "" : " archived"\}/);
+  assert.match(page, /恢复菜品/);
+  assert.match(pantryRoute, /pantryItems/);
+  assert.match(inviteRoute, /recommendedDishIds/);
+  assert.match(orderStatusRoute, /progressNote/);
+  assert.match(orderStatusRoute, /export async function POST/);
+  assert.match(orderStatusRoute, /read-status/);
+  assert.match(orderStatusRoute, /read-menu/);
+  assert.match(ordersRoute, /statusUpdatedAt/);
+  assert.match(ordersRoute, /statusReadAt/);
+  assert.match(ordersRoute, /menuReadAt/);
+  assert.match(ordersRoute, /action === "publish-menu"/);
+  assert.match(ordersRoute, /action === "update-status"/);
+  assert.match(ordersRoute, /action === "archive-order"/);
+  assert.match(ordersRoute, /action === "delete-order"/);
+  assert.match(ordersRoute, /已开饭或已归档的饭局不能再推送菜单/);
+  assert.match(ordersRoute, /publishedMenuUpdatedAt/);
+  assert.match(schema, /publishedMenu: text\("published_menu"\)/);
+  assert.match(schema, /statusReadAt: text\("status_read_at"\)/);
+  assert.match(schema, /menuReadAt: text\("menu_read_at"\)/);
+  assert.match(schema, /archivedAt: text\("archived_at"\)/);
+  assert.match(database, /addColumn\("orders", columns, "published_menu"/);
+  assert.match(database, /addColumn\("orders", columns, "archived_at"/);
+  assert.match(database, /WHERE status IN \('done', 'cancelled'\)/);
+  assert.match(statusClient, /status-update-modal/);
+  assert.match(statusClient, /statusReadAt !== currentUpdateKey/);
+  assert.match(statusClient, /menuReadAt !== currentMenuUpdateKey/);
+  for (const emoji of ["🥰", "🛒", "🔥", "😋", "🥺", "📜"]) assert.match(statusClient, new RegExp(emoji, "u"));
+  assert.match(globalStyles, /Apple Color Emoji/);
+  assert.match(statusClient, /guest-published-menu/);
+  assert.match(statusClient, /ade-order-menu-update/);
+  assert.match(statusClient, /activeGuestOrderStorageKey/);
+  assert.match(statusClient, /data\?\.order\.archivedAt/);
+  assert.match(orderMemory, /ade-kitchen-active-guest-order-v1/);
+  assert.match(orderMemory, /a-f0-9/);
+  assert.match(statusClient, /localStorage/);
+  assert.match(statusClient, /setTimeout\(\(\) => void load\(\), 0\)/);
+  assert.match(statusClient, /setInterval\(\(\) => void load\(\), 15000\)/);
+  assert.match(statusClient, /每 15 秒自动更新/);
+  assert.match(orderStatusPage, /dynamic = "force-dynamic"/);
+  assert.match(orderStatusPage, /orders\.archivedAt/);
+  assert.match(orderStatusPage, /order\?\.archivedAt/);
+  assert.match(orderStatusPage, /redirect\("\/\?order=archived"\)/);
+  assert.match(journalRoute, /dinner-journals/);
+  assert.match(journalRoute, /export async function DELETE/);
+  assert.match(journalRoute, /order\.status !== "done"/);
+  assert.match(journalRoute, /eq\(dinnerJournals\.orderId, ""\)/);
+  assert.match(page, /deleteJournal/);
+  assert.match(page, /journal-workspace/);
+  assert.match(schema, /orderId: text\("order_id"\)/);
+  assert.match(database, /dinner_journals_order_id_unique_idx/);
+  assert.match(orderStatusRoute, /dinnerJournals\.orderId/);
+  assert.match(kitchenStatusRoute, /kitchen_open_v1/);
+  assert.match(kitchenStatusRoute, /chefApiGuard/);
+  assert.doesNotMatch(page, /codex-preview|SkeletonPreview/);
+});
+
+test("uses local-disk persistence and app-owned chef authentication", async () => {
+  const [database, uploads, paths, auth, chefPage, loginRoute, healthRoute] = await Promise.all([
+    readFile(new URL("../db/index.ts", import.meta.url), "utf8"),
+    readFile(new URL("../storage/uploads.ts", import.meta.url), "utf8"),
+    readFile(new URL("../storage/paths.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/chef-auth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/chef/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/auth/login/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/health/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(database, /better-sqlite3/);
+  assert.match(database, /journal_mode = WAL/);
+  assert.match(database, /ensureAllSchema/);
+  assert.doesNotMatch(database, /cloudflare:workers|drizzle-orm\/d1/);
+  assert.match(uploads, /getUploadsDir/);
+  assert.match(uploads, /writeFile/);
+  assert.match(uploads, /\.meta\.json/);
+  assert.match(paths, /DATA_DIR/);
+  assert.match(auth, /httpOnly: true/);
+  assert.match(auth, /timingSafeEqual/);
+  assert.match(auth, /SESSION_SECRET/);
+  assert.match(chefPage, /getChefSession/);
+  assert.match(loginRoute, /MAX_ATTEMPTS/);
+  assert.match(healthRoute, /local-disk/);
+  assert.match(healthRoute, /ensureAllSchema/);
+});
+
+test("includes a reproducible amd64 Docker deployment, updates, and backups", async () => {
+  const [dockerfile, compose, nasCompose, cloudCompose, workflow, backup, readme, packageJson] = await Promise.all([
+    readFile(new URL("../Dockerfile", import.meta.url), "utf8"),
+    readFile(new URL("../compose.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../compose.nas.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../compose.cloud.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../.github/workflows/publish-nas-image.yml", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/backup.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../README.md", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+  ]);
+  assert.match(dockerfile, /node:22\.13\.0-bookworm-slim/);
+  assert.match(dockerfile, /apt-get install -y --no-install-recommends python3 make g\+\+/);
+  assert.match(dockerfile, /pnpm@11\.9\.0/);
+  assert.match(dockerfile, /\.next\/standalone/);
+  assert.match(dockerfile, /HEALTHCHECK/);
+  assert.match(compose, /platform: linux\/amd64/);
+  assert.match(compose, /NAS_DATA_PATH/);
+  assert.match(compose, /NAS_BACKUP_PATH/);
+  assert.match(compose, /service_healthy/);
+  assert.match(nasCompose, /ghcr\.io\/adechokwok\/ade-private-kitchen:latest/);
+  assert.match(nasCompose, /NAS_DATA_PATH/);
+  assert.match(cloudCompose, /CLOUD_DATA_PATH/);
+  assert.match(cloudCompose, /CLOUD_BACKUP_PATH/);
+  assert.match(cloudCompose, /APP_PORT:-3000/);
+  assert.match(cloudCompose, /PUID:-0/);
+  assert.match(workflow, /branches:\s*\n\s*- main/);
+  assert.match(workflow, /setup-python@v6/);
+  assert.match(workflow, /pnpm test/);
+  assert.match(workflow, /platforms: linux\/amd64/);
+  assert.match(workflow, /packages: write/);
+  assert.match(backup, /database\.backup/);
+  assert.match(backup, /uploads-latest/);
+  assert.match(readme, /极空间 Z4Pro 部署/);
+  const manifest = JSON.parse(packageJson);
+  assert.equal(manifest.scripts.build, "next build");
+  assert.equal(manifest.dependencies["better-sqlite3"].startsWith("^"), true);
+  assert.equal(manifest.devDependencies.vinext, undefined);
+});

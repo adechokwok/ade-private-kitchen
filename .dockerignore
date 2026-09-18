@@ -1,0 +1,14 @@
+.git
+.github
+.next
+.vinext
+.wrangler
+data
+nas-data
+nas-backups
+node_modules
+npm-debug.log*
+pnpm-debug.log*
+.env*
+!.env.example
+README.md
