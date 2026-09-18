@@ -3,7 +3,8 @@
 import { ChangeEvent, DragEvent as ReactDragEvent, FormEvent, PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { categories, dishes, type Dish, type Ingredient } from "./menu";
+import { kitchenDate, courseForRecipe, procurementKey } from "./kitchen-domain";
+import { categories, type Dish, type Ingredient } from "./menu";
 import { activeGuestOrderStorageKey, isGuestOrderToken } from "./order-memory";
 
 type Cart = Record<string, number>;
@@ -75,7 +76,8 @@ type DinnerJournal = { id: string; inviteId: string; orderId: string; title: str
 type RecipeScreenshot = { id: string; file: File; preview: string; rotation: 0 | 90 | 180 | 270 };
 type ImageCrop = { x: number; y: number; zoom: number };
 type BanquetCourse = "starter" | "main" | "staple" | "soup";
-type BanquetItem = { dishId: string; course: BanquetCourse };
+type BanquetItem = { dishId: string; course: BanquetCourse; snapshot?: Dish };
+type BanquetDraft = { template: BanquetTemplate; items: BanquetItem[]; title: string; templateName: string; date: string; message: string; subtitle: string; occasion: string; chefCredit: string; guestCount: number; courseEdits: Partial<Record<BanquetCourse, { label: string; english: string }>>; dishEdits: Record<string, { name: string; description: string }> };
 type BanquetTemplate = "home" | "romance" | "fine" | "spring" | "midautumn" | "birthday" | "housewarming" | "summer" | "christmas" | "brunch";
 type ChefView = "accepting" | "shopping" | "cooking" | "serving" | "menuManager" | "invitations" | "journals" | "dataTransfer";
 type StatusUpdateDraft = { orderId: string; status: Order["status"]; note: string };
@@ -274,11 +276,11 @@ function createClientRowId() {
   const webCrypto = globalThis.crypto;
   if (typeof webCrypto?.randomUUID === "function") return webCrypto.randomUUID();
   if (typeof webCrypto?.getRandomValues === "function") {
-    const values = new Uint32Array(2);
+    const values = new Uint8Array(16);
     webCrypto.getRandomValues(values);
-    return `row-${values[0].toString(36)}-${values[1].toString(36)}`;
+    return Array.from(values, value => value.toString(16).padStart(2, "0")).join("");
   }
-  return `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return Date.now().toString(16).padStart(16, "0") + Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(16).padStart(16, "0");
 }
 
 const newIngredientRow = (): IngredientRow => ({
@@ -459,6 +461,13 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [customDishCategory, setCustomDishCategory] = useState("");
   const [invites, setInvites] = useState<DinnerInvite[]>([]);
   const [journals, setJournals] = useState<DinnerJournal[]>([]);
+  const [inviteDate, setInviteDate] = useState(() => kitchenDate());
+  const cartRef = useRef<Cart>({});
+  const selectionQueue = useRef(Promise.resolve());
+  const selectionVersion = useRef(0);
+  const [menuLoadState, setMenuLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const selectionPending = useRef(new Map<string, number>());
+  const orderRequestId = useRef("");
   const [inviteCreating, setInviteCreating] = useState(false);
   const [createdInvite, setCreatedInvite] = useState<DinnerInvite | null>(null);
   const [createdInviteUrl, setCreatedInviteUrl] = useState("");
@@ -489,7 +498,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [banquetDishId, setBanquetDishId] = useState("");
   const [banquetTitle, setBanquetTitle] = useState("今晚家宴");
   const [banquetTemplateName, setBanquetTemplateName] = useState(banquetTemplates[0].name);
-  const [banquetDate, setBanquetDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [banquetDate, setBanquetDate] = useState(() => kitchenDate());
   const [banquetMessage, setBanquetMessage] = useState("为喜欢的人认真做一桌饭");
   const [banquetSubtitle, setBanquetSubtitle] = useState(banquetTemplates[0].subtitle);
   const [banquetOccasion, setBanquetOccasion] = useState(banquetTemplates[0].occasion);
@@ -508,6 +517,73 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [kitchenOpen, setKitchenOpen] = useState(true);
   const [kitchenStatusSaving, setKitchenStatusSaving] = useState(false);
   const [imageLightboxAspect, setImageLightboxAspect] = useState(1.48);
+
+  const [draftReady, setDraftReady] = useState(false);
+  const draftCache = useRef<Record<string, { draft: BanquetDraft; revision: number }>>({});
+  const draftQueue = useRef(Promise.resolve());
+  const draftBlocked = useRef(new Set<string>());
+  const currentDraft = useMemo<BanquetDraft>(() => ({ template: banquetTemplate, items: banquetItems, title: banquetTitle, templateName: banquetTemplateName, date: banquetDate, message: banquetMessage, subtitle: banquetSubtitle, occasion: banquetOccasion, chefCredit: banquetChefCredit, guestCount: banquetGuestCount, courseEdits: banquetCourseEdits, dishEdits: banquetDishEdits }), [banquetTemplate, banquetItems, banquetTitle, banquetTemplateName, banquetDate, banquetMessage, banquetSubtitle, banquetOccasion, banquetChefCredit, banquetGuestCount, banquetCourseEdits, banquetDishEdits]);
+  const restoreDraft = (draft: BanquetDraft) => {
+    setBanquetTemplate(draft.template); setBanquetItems(draft.items); setBanquetTitle(draft.title); setBanquetTemplateName(draft.templateName); setBanquetDate(draft.date); setBanquetMessage(draft.message); setBanquetSubtitle(draft.subtitle); setBanquetOccasion(draft.occasion); setBanquetChefCredit(draft.chefCredit); setBanquetGuestCount(draft.guestCount); setBanquetCourseEdits(draft.courseEdits); setBanquetDishEdits(draft.dishEdits);
+  };
+  const cacheDraft = (scope: string, draft: BanquetDraft) => {
+    draftCache.current[scope] = { draft, revision: draftCache.current[scope]?.revision || 0 };
+    try { localStorage.setItem("ade-banquet-recovery:" + scope, JSON.stringify(draftCache.current[scope])); localStorage.setItem("ade-banquet-last", scope); } catch { /* server save still available */ }
+  };
+  useEffect(() => {
+    if (mode !== "chef") return;
+    let active = true;
+    void fetch("/api/menu-drafts", { cache: "no-store" }).then(async response => {
+      if (!response.ok) throw new Error("草稿读取失败，请刷新后重试");
+      const data = await response.json();
+      if (!active) return;
+      draftCache.current = data.drafts;
+      let scope = "free";
+      try { scope = localStorage.getItem("ade-banquet-last") || "free"; } catch { /* no storage */ }
+      let saved = draftCache.current[scope];
+      try {
+        const local = JSON.parse(localStorage.getItem("ade-banquet-recovery:" + scope) || "null");
+        if (local && local.revision === (saved?.revision || 0)) { saved = local; draftCache.current[scope] = local; }
+      } catch { /* invalid local cache */ }
+      if (saved) { setBanquetOrderId(scope === "free" ? "" : scope); restoreDraft(saved.draft); }
+      setDraftReady(true);
+    }).catch(error => { if (active) setNotice(error.message); });
+    return () => { active = false; };
+  }, [mode]);
+  useEffect(() => {
+    if (mode !== "chef" || !draftReady) return;
+    const scope = banquetOrderId || "free";
+    cacheDraft(scope, currentDraft);
+    const save = () => {
+      draftQueue.current = draftQueue.current.catch(() => {}).then(async () => {
+        if (draftBlocked.current.has(scope)) return;
+        const response = await fetch("/api/menu-drafts", { method: "PUT", keepalive: JSON.stringify(currentDraft).length < 50000, headers: { "content-type": "application/json" }, body: JSON.stringify({ scope, draft: currentDraft, revision: draftCache.current[scope]?.revision || 0 }) });
+        const data = await response.json();
+        if (!response.ok) { if (response.status === 409) draftBlocked.current.add(scope); throw new Error(data.error || "草稿暂未同步，本机恢复副本已保留"); }
+        draftCache.current[scope].revision = data.revision;
+        try { localStorage.setItem("ade-banquet-recovery:" + scope, JSON.stringify(draftCache.current[scope])); } catch { /* ignore */ }
+      });
+      void draftQueue.current.catch(error => setNotice(error.message));
+    };
+    const timer = window.setTimeout(save, 600);
+    return () => { window.clearTimeout(timer); save(); };
+  }, [mode, draftReady, banquetOrderId, currentDraft]);
+
+  useEffect(() => {
+    if (mode !== "menu") return;
+    const timer = window.setTimeout(() => {
+      try { orderRequestId.current = sessionStorage.getItem("ade-pending-order:" + (initialInviteToken || "normal")) || ""; } catch { /* ignore */ }
+      if (initialInviteToken) return;
+      try {
+        const saved = JSON.parse(localStorage.getItem("ade-cart:normal") || "{}");
+        if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+          const next = Object.fromEntries(Object.entries(saved).filter((entry): entry is [string, number] => typeof entry[1] === "number" && Number.isInteger(entry[1]) && entry[1] > 0 && entry[1] <= 10));
+          cartRef.current = next; setCart(next);
+        }
+      } catch { /* invalid local cart */ }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [mode, initialInviteToken]);
 
   const courseText = (course: typeof banquetCourses[number]) => banquetCourseEdits[course.id] || { label: course.label, english: course.english };
   const dishText = (dish: Dish) => banquetDishEdits[dish.id] || { name: dish.name, description: dish.description || dish.flavor || "阿德认真准备的一道菜" };
@@ -555,7 +631,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     return () => window.clearTimeout(timer);
   }, [networkImageUrl]);
 
-  const dishCatalog = useMemo<Dish[]>(() => customDishes.length ? customDishes : (initialInviteToken ? [] : dishes), [customDishes, initialInviteToken]);
+  const dishCatalog: Dish[] = customDishes;
   const allDishes = useMemo(() => dishCatalog.filter((dish) => dish.active !== false && dish.available !== false), [dishCatalog]);
   const menuCategories = useMemo(() => managedCategories.length
     ? managedCategories.map((category) => category.name).filter((name) => allDishes.some((dish) => dish.category === name))
@@ -645,37 +721,30 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const cookingGuestCount = activeOrders.reduce((sum, order) => sum + order.guestCount, 0);
   const nextMealDate = cookingOrders[0]?.mealDate || "暂无饭局";
 
-  const courseForDish = (dish?: Dish): BanquetCourse => {
-    const text = `${dish?.name || ""}${dish?.category || ""}`;
-    if (/[汤羹饮品甜品糖水羹]/.test(text)) return "soup";
-    if (/[饭面粉粥饼包馒头饺主食]/.test(text)) return "staple";
-    if (/[凉拌冷盘沙拉前菜卤味]/.test(text)) return "starter";
-    return "main";
+  const courseForDish = courseForRecipe;
+
+  const banquetDishes = banquetItems.map(item => ({ ...item, dish: item.snapshot || dishCatalog.find(dish => dish.id === item.dishId) })).filter((item): item is BanquetItem & { dish: Dish } => Boolean(item.dish));
+
+  const syncSelection = (dishId: string, quantity: number, token: string, guestToken: string) => {
+    selectionVersion.current++;
+    selectionPending.current.set(dishId, quantity);
+    selectionQueue.current = selectionQueue.current.catch(() => {}).then(async () => {
+      const response = await fetch("/api/invites/" + token, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "set-selection", guestToken, dishId, quantity }) });
+      if (!response.ok) { const data = await response.json(); throw new Error(data.error || "选菜同步失败"); }
+      if (selectionPending.current.get(dishId) === quantity) selectionPending.current.delete(dishId);
+    });
+    void selectionQueue.current.catch(error => setNotice(error instanceof Error ? error.message : "选菜尚未同步，提交时会重试"));
   };
 
-  const banquetDishes = banquetItems.map((item) => ({ ...item, dish: dishCatalog.find((dish) => dish.id === item.dishId) })).filter((item): item is BanquetItem & { dish: Dish } => Boolean(item.dish));
-
   const updateQuantity = (dishId: string, change: number) => {
-    if (!kitchenOpen) {
-      setNotice("阿德今天休息，菜单可以慢慢看，等绿灯亮起再来点菜吧");
-      return;
-    }
-    setCart((current) => {
-      const next = Math.max(0, (current[dishId] || 0) + change);
-      const updated = { ...current, [dishId]: next };
-      if (next === 0) delete updated[dishId];
-      return updated;
-    });
-    if (activeInvite?.mode === "shared" && sharedDinner?.guestToken) {
-      const next = Math.max(0, (cart[dishId] || 0) + change);
-      void fetch(`/api/invites/${activeInvite.token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "set-selection", guestToken: sharedDinner.guestToken, dishId, quantity: next }) }).then(async (response) => {
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({})) as { error?: string };
-          setNotice(data.error || "这道菜刚刚被主厨下架了，已帮你刷新菜单");
-          await loadInvite(activeInvite.token, true);
-        }
-      }).catch(() => setNotice("共享点菜同步失败，请稍后再试"));
-    }
+    if (!kitchenOpen || submitting) { setNotice("当前暂不能修改选菜"); return; }
+    const next = Math.min(10, Math.max(0, (cartRef.current[dishId] || 0) + change));
+    const updated = { ...cartRef.current, [dishId]: next };
+    if (!next) delete updated[dishId];
+    cartRef.current = updated;
+    setCart(updated);
+    if (activeInvite?.mode !== "shared") { try { localStorage.setItem("ade-cart:" + (initialInviteToken || "normal"), JSON.stringify(updated)); } catch { /* in-memory cart */ } }
+    if (activeInvite?.mode === "shared" && sharedDinner?.guestToken) syncSelection(dishId, next, activeInvite.token, sharedDinner.guestToken);
   };
 
   const selectMenuCategory = (category: string) => {
@@ -691,14 +760,18 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   };
 
   const composeFromOrder = (orderId: string) => {
+    if (!draftReady) { setNotice("菜单草稿正在恢复，请稍候"); return; }
+    cacheDraft(banquetOrderId || "free", currentDraft);
     setBanquetOrderId(orderId);
+    const saved = draftCache.current[orderId || "free"]?.draft;
+    if (saved) { restoreDraft(saved); return; }
     const order = activeOrders.find((item) => item.id === orderId);
     if (!order) {
       setBanquetItems([]);
       setBanquetGuestCount(0);
       setBanquetTitle(activeBanquetTemplate.defaultTitle);
       setBanquetTemplateName(activeBanquetTemplate.name);
-      setBanquetDate(new Date().toISOString().slice(0, 10));
+      setBanquetDate(kitchenDate());
       setBanquetMessage(activeBanquetTemplate.defaultMessage);
       setBanquetSubtitle(activeBanquetTemplate.subtitle);
       setBanquetOccasion(activeBanquetTemplate.occasion);
@@ -706,8 +779,20 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       setBanquetDishEdits({});
       return;
     }
+    const published = parsePublishedMenu(order);
+    if (published) {
+      const items: BanquetItem[] = [];
+      const edits: BanquetDraft["dishEdits"] = {};
+      published.courses.forEach(course => course.dishes.forEach((dish, index) => {
+        const id = "published-" + course.id + "-" + index;
+        const snapshot = { id, name: dish.name, description: dish.description, category: course.label, flavor: "", emoji: "🍽️", tone: "custom", minutes: 0, ingredients: [], steps: [] } as Dish;
+        items.push({ dishId: id, course: course.id, snapshot }); edits[id] = dish;
+      }));
+      restoreDraft({ ...published, chefCredit: published.chefCredit || "", guestCount: published.guestCount || order.guestCount, items, courseEdits: Object.fromEntries(published.courses.map(course => [course.id, { label: course.label, english: course.english }])), dishEdits: edits });
+      return;
+    }
     const uniqueIds = Array.from(new Set(parseItems(order).map((item) => item.dishId)));
-    setBanquetItems(sortBanquetItemsByCourse(uniqueIds.map((dishId) => ({ dishId, course: courseForDish(dishCatalog.find((dish) => dish.id === dishId)) }))));
+    setBanquetItems(sortBanquetItemsByCourse(uniqueIds.map((dishId) => ({ dishId, course: courseForDish(dishCatalog.find((dish) => dish.id === dishId)), snapshot: dishCatalog.find((dish) => dish.id === dishId) }))));
     setBanquetTitle(`${order.customerName}的${activeBanquetTemplate.name}`);
     setBanquetTemplateName(activeBanquetTemplate.name);
     setBanquetDate(order.mealDate);
@@ -722,16 +807,12 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const startFreeBanquet = () => {
     composeFromOrder("");
-    setNotice("已新建自由菜单，可以从菜谱库加入菜品并直接导出");
+    setNotice("已打开自由菜单，上次编辑内容会继续保留");
   };
 
   const selectBanquetTemplate = (template: typeof banquetTemplates[number]) => {
     setBanquetTemplate(template.id);
-    setBanquetTitle(selectedBanquetOrder ? `${selectedBanquetOrder.customerName}的${template.name}` : template.defaultTitle);
     setBanquetTemplateName(template.name);
-    setBanquetMessage(selectedBanquetOrder?.note ? `今日心意：${selectedBanquetOrder.note}` : template.defaultMessage);
-    setBanquetSubtitle(template.subtitle);
-    setBanquetOccasion(template.occasion);
   };
 
   const addBanquetDish = () => {
@@ -741,7 +822,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       return;
     }
     const dish = dishCatalog.find((item) => item.id === banquetDishId);
-    setBanquetItems((current) => sortBanquetItemsByCourse([...current, { dishId: banquetDishId, course: courseForDish(dish) }]));
+    setBanquetItems((current) => sortBanquetItemsByCourse([...current, { dishId: banquetDishId, course: courseForDish(dish), snapshot: dish }]));
     setBanquetDishId("");
   };
 
@@ -858,7 +939,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       if (!response.ok) throw new Error(data.error || "订单加载失败");
       const nextOrders = data.orders || [];
       setOrders(nextOrders);
-      setBanquetOrderId((current) => current && !nextOrders.some((order) => order.id === current && isActiveKitchenOrder(order)) ? "" : current);
+
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "订单加载失败");
     } finally {
@@ -880,7 +961,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       const data = await response.json() as { dishes?: ManagedDish[]; error?: string };
       if (!response.ok) throw new Error(data.error || "菜单加载失败");
       setCustomDishes(data.dishes || []);
+      setMenuLoadState("ready");
     } catch (error) {
+      setMenuLoadState("error");
       setNotice(error instanceof Error ? error.message : "菜单加载失败");
     }
   };
@@ -921,7 +1004,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = objectUrl;
-      link.download = `ade-kitchen-export-${new Date().toISOString().slice(0, 10)}.zip`;
+      link.download = `ade-kitchen-export-${kitchenDate()}.zip`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -1012,7 +1095,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       if (response.ok && typeof data.open === "boolean") {
         setKitchenOpen(data.open);
         if (!data.open) {
-          setCart({});
+          setCart({}); cartRef.current = {};
           setCartOpen(false);
           setCheckoutOpen(false);
         }
@@ -1029,7 +1112,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       if (!response.ok || typeof data.open !== "boolean") throw new Error(data.error || "营业状态保存失败");
       setKitchenOpen(data.open);
       if (!data.open) {
-        setCart({});
+        setCart({}); cartRef.current = {};
         setCartOpen(false);
         setCheckoutOpen(false);
       }
@@ -1042,21 +1125,24 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   };
 
   const loadInvite = async (token: string, silent = false) => {
+    const version = selectionVersion.current;
     if (!silent) setInviteLoading(true);
     try {
       let guestToken = "";
       try { guestToken = window.localStorage.getItem(sharedGuestStorageKey(token)) || ""; } catch { /* 无痕模式仍可临时加入 */ }
       const response = await fetch(`/api/invites/${token}${guestToken ? `?guestToken=${encodeURIComponent(guestToken)}` : ""}`, { cache: "no-store" });
-      const data = await response.json() as { invite?: DinnerInvite; dishes?: ManagedDish[]; shared?: SharedDinner; error?: string };
+      const data = await response.json() as { invite?: DinnerInvite; dishes?: ManagedDish[]; categories?: MenuCategory[]; shared?: SharedDinner; error?: string };
       if (!response.ok || !data.invite) throw new Error(data.error || "邀请加载失败");
       setActiveInvite(data.invite);
+      setManagedCategories(data.categories || []);
       setCustomDishes(data.dishes || []);
+      setMenuLoadState("ready");
       if (data.shared) {
         setSharedDinner(data.shared);
         const currentGuest = data.shared.guests.find((guest) => guest.id === data.shared?.guestId);
         if (currentGuest && !sharedGuestNameDirtyRef.current) setSharedGuestName(currentGuest.displayName);
         const own = data.shared.selections.find((item) => item.guestId === data.shared?.guestId);
-        if (own) setCart(Object.fromEntries(own.items.map((item) => [item.dishId, item.quantity])));
+        if (own && !selectionPending.current.size && version === selectionVersion.current) { const next = Object.fromEntries(own.items.map(item => [item.dishId, item.quantity])); cartRef.current = next; setCart(next); }
         if (!guestToken || !data.shared.guestId) {
           const joinResponse = await fetch(`/api/invites/${token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "join", guestToken, displayName: sharedGuestName || "朋友" }) });
           const joined = await joinResponse.json().catch(() => ({})) as { guestToken?: string };
@@ -1070,6 +1156,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       }
       if (!silent) setActiveCategory("全部");
     } catch (error) {
+      setMenuLoadState("error");
       if (!silent) setNotice(error instanceof Error ? error.message : "邀请加载失败");
     } finally {
       if (!silent) setInviteLoading(false);
@@ -1225,7 +1312,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   }, []);
 
   const shoppingList = useMemo(() => {
-    const totals = new Map<string, { itemKey: string; dishName: string; name: string; amount: number; unit: string; type: string; location: string; stockUsed: number }>();
+    const totals = new Map<string, { itemKey: string; dishName: string; name: string; amount: number; unit: string; type: string; location: string; stockUsed: number; demand: string[] }>();
     activeOrders.forEach((order) => {
       const snapshots = parseDishSnapshot(order);
       parseItems(order).forEach((item) => {
@@ -1239,7 +1326,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
           const key = `${item.dishId || dishName}::${name}::${ingredient.unit}`;
           const current = totals.get(key);
           totals.set(key, {
-            itemKey: key.slice(0, 120),
+            itemKey: key,
+            demand: [...(current?.demand || []), JSON.stringify([order.id, order.mealDate, ingredient.amount])],
             dishName,
             ...ingredient,
             name,
@@ -1260,7 +1348,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       const stocked = remainingStock.get(stockKey) || 0;
       const stockUsed = Math.min(item.amount, stocked);
       remainingStock.set(stockKey, Math.max(0, stocked - stockUsed));
-      return { ...item, stockUsed, amount: Math.max(0, item.amount - stockUsed) };
+      return { ...item, itemKey: procurementKey(item.itemKey, item.demand, item.amount, stockUsed), stockUsed, amount: Math.max(0, item.amount - stockUsed) };
     }).filter((item) => item.amount > 0.01).sort((a, b) => a.location.localeCompare(b.location, "zh-CN") || a.type.localeCompare(b.type, "zh-CN"));
   }, [activeOrders, dishCatalog, pantryItems]);
 
@@ -1493,27 +1581,39 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const submitOrder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submitting) return;
     if (!kitchenOpen) return setNotice("阿德今天休息，菜单可以慢慢看，等绿灯亮起再来点菜吧");
     const formElement = event.currentTarget;
     setSubmitting(true);
     const form = new FormData(formElement);
     try {
       const shared = activeInvite?.mode === "shared" && sharedDinner?.guestToken;
+      if (shared) {
+        await selectionQueue.current.catch(() => {});
+        for (const [dishId, quantity] of selectionPending.current) syncSelection(dishId, quantity, activeInvite!.token, sharedDinner!.guestToken);
+        await selectionQueue.current;
+        if (selectionPending.current.size) throw new Error("仍有选菜未同步，请检查网络后重试");
+      }
+      if (!orderRequestId.current) orderRequestId.current = createClientRowId();
+      try { sessionStorage.setItem("ade-pending-order:" + (initialInviteToken || "normal"), orderRequestId.current); } catch { /* in-memory retry */ }
       const response = await fetch(shared ? `/api/invites/${activeInvite!.token}` : "/api/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...(shared ? { action: "submit", guestToken: sharedDinner!.guestToken } : {}),
+          requestId: orderRequestId.current,
           customerName: form.get("customerName"),
           mealDate: form.get("mealDate"),
           guestCount: Number(form.get("guestCount")),
           note: form.get("note"),
-          ...(shared ? {} : { dishes: cartItems.map((item) => ({ dishId: item.id, quantity: item.quantity })), inviteToken: initialInviteToken || undefined }),
+          ...(shared ? {} : { dishes: Object.entries(cartRef.current).map(([dishId, quantity]) => ({ dishId, quantity })), inviteToken: initialInviteToken || undefined }),
         }),
       });
       const data = await response.json() as { error?: string; guestToken?: string; orderToken?: string };
       if (!response.ok) throw new Error(data.error || "提交失败，请再试一次");
-      setCart({});
+      setCart({}); cartRef.current = {};
+      orderRequestId.current = "";
+      try { sessionStorage.removeItem("ade-pending-order:" + (initialInviteToken || "normal")); localStorage.removeItem("ade-cart:" + (initialInviteToken || "normal")); } catch { /* ignore */ }
       setCheckoutOpen(false);
       setCartOpen(false);
       const progressToken = data.orderToken || data.guestToken;
@@ -1626,7 +1726,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       </div>
       {order.note && <p className="order-note">“{order.note}”</p>}
       {order.progressNote && <p className="order-progress-note"><span>最近通知</span>{order.progressNote}</p>}
-      {order.statusUpdatedAt && <p className={`order-progress-read${order.statusReadAt === order.statusUpdatedAt ? " read" : ""}`}><span>{order.statusReadAt === order.statusUpdatedAt ? "✓ 朋友已读" : "○ 等待朋友确认"}</span>{order.statusReadAt === order.statusUpdatedAt ? "提醒已确认" : "朋友打开进度页后会在这里显示"}</p>}
+      {order.statusUpdatedAt && <p className={`order-progress-read${order.statusReadAt === order.statusUpdatedAt ? " read" : ""}`}><span>{order.statusReadAt === order.statusUpdatedAt ? "✓ 至少一位至少一位朋友已读" : "○ 等待朋友确认"}</span>{order.statusReadAt === order.statusUpdatedAt ? "提醒已确认" : "朋友打开进度页后会在这里显示"}</p>}
       <div className="status-actions">
         {!archived && order.status === "new" && <button onClick={() => updateOrderStatus(order.id, "confirmed")}>确认接单</button>}
         {!archived && order.status === "confirmed" && <button onClick={() => updateOrderStatus(order.id, "shopping")}>开始买菜</button>}
@@ -2029,11 +2129,21 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     }
   };
 
+  const changeInviteDate = async (invite: DinnerInvite, mealDate: string) => {
+    try {
+      const response = await fetch("/api/invites", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: invite.id, mealDate }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "日期保存失败");
+      setInvites(current => current.map(item => item.id === invite.id ? data.invite : item));
+      await loadOrders(true);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "日期保存失败"); }
+  };
+
   const createInvite = async () => {
     if (inviteCreating) return;
     setInviteCreating(true);
     try {
-      const response = await fetch("/api/invites", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quickCreate: true }) });
+      const response = await fetch("/api/invites", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quickCreate: true, mealDate: inviteDate }) });
       const data = await response.json().catch(() => ({})) as { invite?: DinnerInvite; error?: string };
       if (!response.ok || !data.invite) throw new Error(data.error || `邀请创建失败（${response.status}）`);
       const invite = data.invite;
@@ -2208,7 +2318,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               {activeOrders.map((order) => <option value={order.id} key={order.id}>{order.customerName} · {order.mealDate} · {parseItems(order).length} 道菜</option>)}
             </select>
             <button type="button" className="quiet banquet-free-menu-button" onClick={startFreeBanquet}>＋ 新建自由菜单</button>
-            {selectedBanquetOrder && <p className={parsePublishedMenu(selectedBanquetOrder) ? "banquet-publish-state published" : "banquet-publish-state"}><span>{parsePublishedMenu(selectedBanquetOrder) ? "✓" : "○"}</span>{parsePublishedMenu(selectedBanquetOrder) ? <>{`已推送过正式菜单 · ${selectedBanquetOrder.publishedMenuUpdatedAt ? new Date(selectedBanquetOrder.publishedMenuUpdatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "可再次更新"}`}<small className={selectedBanquetOrder.menuReadAt === selectedBanquetOrder.publishedMenuUpdatedAt ? "menu-read-state read" : "menu-read-state"}>{selectedBanquetOrder.menuReadAt === selectedBanquetOrder.publishedMenuUpdatedAt ? "✓ 朋友已读" : "○ 等待朋友查看"}</small></> : "这份订单还没有收到正式宴席菜单"}</p>}
+            {selectedBanquetOrder && <p className={parsePublishedMenu(selectedBanquetOrder) ? "banquet-publish-state published" : "banquet-publish-state"}><span>{parsePublishedMenu(selectedBanquetOrder) ? "✓" : "○"}</span>{parsePublishedMenu(selectedBanquetOrder) ? <>{`已推送过正式菜单 · ${selectedBanquetOrder.publishedMenuUpdatedAt ? new Date(selectedBanquetOrder.publishedMenuUpdatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "可再次更新"}`}<small className={selectedBanquetOrder.menuReadAt === selectedBanquetOrder.publishedMenuUpdatedAt ? "menu-read-state read" : "menu-read-state"}>{selectedBanquetOrder.menuReadAt === selectedBanquetOrder.publishedMenuUpdatedAt ? "✓ 至少一位朋友已读" : "○ 等待朋友查看"}</small></> : "这份订单还没有收到正式宴席菜单"}</p>}
             {activeOrders.length === 0 && <p className="banquet-hint">目前没有进行中的订单，也可以先从下方菜谱库加入菜品，做一张备用菜单。</p>}
           </div>
 
@@ -2286,7 +2396,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     return <main className="status-page guest-order-resume"><section className="status-card"><span>阿德小厨房</span><h1>正在找回这顿饭</h1><p>上次点过的菜还在，我带你回到厨房进度页。</p></section></main>;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = kitchenDate();
   const statusUpdateOrder = statusUpdateDraft ? orders.find((order) => order.id === statusUpdateDraft.orderId) : null;
 
   return (
@@ -2392,6 +2502,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               </div>
             </div>
             <div className="dish-grid" ref={dishGridRef}>
+              {!allDishes.length && <p role="status">{menuLoadState === "loading" ? "正在加载菜单…" : menuLoadState === "error" ? "菜单暂时无法加载，请刷新重试。" : "主厨暂时没有上架菜品，稍后再来看看。"}</p>}
               {filteredDishes.map((dish, index) => {
                 const quantity = cart[dish.id] || 0;
                 return (
@@ -2436,7 +2547,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             <div className="promise-card"><span>03</span><div>🥂</div><strong>最重要的是开心</strong><p>吃饱以后，再慢慢聊天。</p></div>
           </section>
 
-          {kitchenOpen && cartCount > 0 && (
+          {kitchenOpen && Object.keys(cart).length > 0 && (
             <button className="floating-cart" onClick={() => setCartOpen(true)}>
               <span className="cart-icon">{cartCount}</span><span><small>{activeInvite?.mode === "shared" ? "这桌正在一起选" : "这顿有着落了"}</small><strong>{activeInvite?.mode === "shared" ? `${sharedAggregateItems.length} 道菜 · 共 ${sharedAggregateItems.reduce((sum, item) => sum + item.quantity, 0)} 份` : `${cartItems.length} 道菜 · 共 ${cartCount} 份`}</strong></span><b>去确认菜单 <i>→</i></b>
             </button>
@@ -2768,6 +2879,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               <section className="invite-creator panel">
                 <div className="panel-title"><div><span>SHARED DINNER LINK</span><h2>一键生成共享饭局</h2></div><small>自动同步 · 直接分享</small></div>
                 <div className="invite-auto-copy"><strong>整张菜单直接复制给朋友</strong><p>无需挑菜、无需设置。系统会自动使用当前所有已上架菜品，并实时跟随主厨端的上架、下架和推荐变化。</p><div><span>✓ 普通点菜页同款界面</span><span>✓ 所有人共用一张单</span><span>✓ 支持链接与二维码</span></div></div>
+                <label>饭局日期<input type="date" value={inviteDate} onChange={event => setInviteDate(event.target.value)} required /></label>
                 <button type="button" className="primary-button" onClick={() => void createInvite()} disabled={inviteCreating}>{inviteCreating ? "正在生成共享饭局…" : "一键生成共享饭局"}<span>→</span></button>
               </section>
 
@@ -2775,7 +2887,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 <div className="panel-title"><div><span>SHARED DINNERS</span><h2>我的共享饭局</h2></div><small>{invites.length} 场</small></div>
                 {invites.length === 0 ? <div className="empty"><span>💌</span><strong>还没有共享饭局</strong><p>点击上方“一键生成共享饭局”，就能得到一条可发给所有朋友的链接。</p></div> : <div className="invite-cards">{invites.map((invite) => <article className={`invite-card theme-${invite.theme}${invite.active ? "" : " inactive"}`} key={invite.id}>
                     <div className="invite-card-head"><span>{invite.mealDate}</span><em>{invite.mode === "shared" ? "多人共享" : "单人邀请"} · {invite.active ? "邀请中" : "已结束"}</em></div>
-                    <h3>{invite.title}</h3><p>{invite.message || "菜我来做，你只管来。"}</p>
+                    <h3>{invite.title}</h3>{invite.active && <label>饭局日期<input type="date" defaultValue={invite.mealDate} key={invite.mealDate} onBlur={event => { if (event.target.value !== invite.mealDate) void changeInviteDate(invite, event.target.value); }} /></label>}<p>{invite.message || "菜我来做，你只管来。"}</p>
                     <div className="invite-menu-preview">{invite.dishIds.map((id) => dishCatalog.find((dish) => dish.id === id)?.name).filter(Boolean).join(" · ")}</div>
                     <div className="invite-actions"><button onClick={() => shareInvite(invite)}>分享邀请</button><button onClick={() => void generateInviteQr(invite)}>二维码</button><a href={`/invite/${invite.token}`} target="_blank">预览</a><button className="quiet" onClick={() => toggleInvite(invite)}>{invite.active ? "结束邀请" : "重新开放"}</button><button className="danger" onClick={() => void deleteInvite(invite)}>删除</button></div>
                   </article>)}</div>}
@@ -2820,6 +2932,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             <span className="eyebrow">YOUR HAPPY LITTLE MENU</span><h2>这顿想吃这些</h2>
             <div className="cart-lines">{cartItems.map((item) => <div key={item.id}><span className="mini-emoji">{item.imageUrl ? <img src={dishThumbnailUrl(item.imageUrl)} loading="lazy" decoding="async" alt="" /> : item.emoji}</span><span><strong>{item.name}</strong></span><div><button type="button" onClick={() => updateQuantity(item.id, -1)} aria-label={`减少${item.name}`}><span className="control-mark minus" aria-hidden="true" /></button><b>{item.quantity}</b><button type="button" onClick={() => updateQuantity(item.id, 1)} aria-label={`增加${item.name}`}><span className="control-mark plus" aria-hidden="true" /></button></div></div>)}</div>
             {activeInvite?.mode === "shared" && sharedDinner && <div className="shared-cart-summary"><strong>大家合计</strong>{sharedAggregateItems.map((item) => <span key={item.dishId}>{item.dish.name} × {item.quantity}</span>)}</div>}
+            {Object.entries(cart).filter(([id]) => !allDishes.some(dish => dish.id === id)).map(([id, quantity]) => <div key={id}>已下架菜品（{quantity} 份）<button type="button" onClick={() => updateQuantity(id, -quantity)}>移除</button></div>)}
             <p className="cart-hint">{activeInvite?.mode === "shared" ? "每位朋友都能看到这张汇总单；选好后由任意一位通知主厨。" : "眼光不错呀。提交后我会和你确认时间，再认真去买菜。"}</p>
             <button className="primary-button" onClick={() => setCheckoutOpen(true)}>{activeInvite?.mode === "shared" ? "通知主厨，汇总这一桌" : "把这顿饭约起来"} <span>→</span></button>
           </aside>

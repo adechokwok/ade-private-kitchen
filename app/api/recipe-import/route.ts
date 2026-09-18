@@ -1,3 +1,4 @@
+import { withDataWrite } from "../../../storage/maintenance";
 import { chefApiGuard } from "../../chef-auth";
 import { conciseDescriptionRule, playfulSloganRule, privateKitchenCopyStyle } from "../recipe-copy-style";
 
@@ -163,7 +164,7 @@ function compatibleBaseUrl() {
   return configured.replace(/\/+$/, "");
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   try {
@@ -240,3 +241,5 @@ ${text ? `\n用户补充文字：\n${text}` : ""}`;
     return Response.json({ error: message }, { status: 500 });
   }
 }
+
+export async function POST(...args: Parameters<typeof handlePOST>) { return withDataWrite(() => handlePOST(...args)); }

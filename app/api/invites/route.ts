@@ -1,6 +1,8 @@
+import { withDataWrite } from "../../../storage/maintenance";
+import { kitchenDate, validMealDate } from "../../kitchen-domain";
 import { desc, eq } from "drizzle-orm";
 import { ensureDinnerInvitesSchema, ensureMenuLibrary, getDb, getSqlite } from "../../../db";
-import { customDishes, dinnerInvites, dinnerJournals } from "../../../db/schema";
+import { customDishes, dinnerInvites, dinnerJournals, orders } from "../../../db/schema";
 import { chefApiGuard } from "../../chef-auth";
 
 const themes = new Set(["warm", "romance", "fine", "festival"]);
@@ -16,28 +18,28 @@ export async function GET(request: Request) {
   if (denied) return denied;
   await ensureDinnerInvitesSchema();
   const [invites, journals] = await Promise.all([
-    getDb().select().from(dinnerInvites).orderBy(desc(dinnerInvites.createdAt)).limit(100),
-    getDb().select().from(dinnerJournals).orderBy(desc(dinnerJournals.createdAt)).limit(100),
+    getDb().select().from(dinnerInvites).orderBy(desc(dinnerInvites.createdAt)),
+    getDb().select().from(dinnerJournals).orderBy(desc(dinnerJournals.createdAt)),
   ]);
   return Response.json({ invites: invites.map(presentInvite), journals: journals.map((item) => ({ ...item, imageUrls: parseList(item.imageUrls) })) });
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   const payload = await request.json() as { title?: unknown; message?: unknown; mealDate?: unknown; theme?: unknown; dishIds?: unknown; recommendedDishIds?: unknown; mode?: unknown; quickCreate?: unknown };
   const quickCreate = payload.quickCreate === true;
-  const today = new Date().toISOString().slice(0, 10);
-  const title = typeof payload.title === "string" ? payload.title.trim().slice(0, 48) : quickCreate ? `共享饭局 · ${today}` : "";
+  const today = kitchenDate();
   const message = typeof payload.message === "string" ? payload.message.trim().slice(0, 180) : "";
   const mealDate = typeof payload.mealDate === "string" && payload.mealDate ? payload.mealDate : quickCreate ? today : "";
+  const title = typeof payload.title === "string" ? payload.title.trim().slice(0, 48) : quickCreate ? `共享饭局 · ${mealDate}` : "";
   const theme = typeof payload.theme === "string" && themes.has(payload.theme) ? payload.theme : "warm";
   const dishIds = parseIds(payload.dishIds);
   const hasDishIds = Object.prototype.hasOwnProperty.call(payload, "dishIds");
   const recommendedDishIds = parseIds(payload.recommendedDishIds).filter((id) => dishIds.includes(id));
   const mode = payload.mode === "shared" || quickCreate ? "shared" : "single";
   if (!title) return Response.json({ error: "请给这场饭局起个名字" }, { status: 400 });
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(mealDate)) return Response.json({ error: "请选择饭局日期" }, { status: 400 });
+  if (!validMealDate(mealDate)) return Response.json({ error: "请选择饭局日期" }, { status: 400 });
   if (mode === "single" && !dishIds.length) return Response.json({ error: "请至少选择一道可点的菜" }, { status: 400 });
   await ensureMenuLibrary();
   const activeDishes = await getDb().select({ id: customDishes.id }).from(customDishes).where(eq(customDishes.active, 1));
@@ -53,17 +55,26 @@ export async function POST(request: Request) {
   return Response.json({ invite: presentInvite(invite) }, { status: 201 });
 }
 
-export async function PATCH(request: Request) {
+async function handlePATCH(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
-  const payload = await request.json() as { id?: unknown; active?: unknown };
-  if (typeof payload.id !== "string" || typeof payload.active !== "boolean") return Response.json({ error: "无效的邀请状态" }, { status: 400 });
+  const payload = await request.json() as { id?: unknown; active?: unknown; mealDate?: unknown };
+  if (typeof payload.id !== "string" || (typeof payload.active !== "boolean" && typeof payload.mealDate !== "string")) return Response.json({ error: "无效的邀请信息" }, { status: 400 });
+  if (typeof payload.mealDate === "string" && !validMealDate(payload.mealDate)) return Response.json({ error: "请选择有效日期" }, { status: 400 });
   await ensureDinnerInvitesSchema();
-  const [invite] = await getDb().update(dinnerInvites).set({ active: payload.active ? 1 : 0, updatedAt: new Date().toISOString() }).where(eq(dinnerInvites.id, payload.id)).returning();
-  return invite ? Response.json({ invite: presentInvite(invite) }) : Response.json({ error: "没有找到这份邀请" }, { status: 404 });
+  const id = payload.id;
+  return getSqlite().transaction(() => {
+    const existing = getDb().select().from(dinnerInvites).where(eq(dinnerInvites.id, id)).get();
+    if (!existing) return Response.json({ error: "没有找到这份邀请" }, { status: 404 });
+    const order = existing.sharedOrderId ? getDb().select().from(orders).where(eq(orders.id, existing.sharedOrderId)).get() : undefined;
+    if ((payload.active === true || typeof payload.mealDate === "string") && existing.sharedOrderId && (!order || order.archivedAt || ["done", "cancelled"].includes(order.status))) return Response.json({ error: "这场饭局已经结束，请新建邀请" }, { status: 409 });
+    if (typeof payload.mealDate === "string" && order) getDb().update(orders).set({ mealDate: payload.mealDate }).where(eq(orders.id, order.id)).run();
+    const invite = getDb().update(dinnerInvites).set({ ...(typeof payload.active === "boolean" ? { active: payload.active ? 1 : 0 } : {}), ...(typeof payload.mealDate === "string" ? { mealDate: payload.mealDate } : {}), updatedAt: new Date().toISOString() }).where(eq(dinnerInvites.id, id)).returning().get();
+    return Response.json({ invite: presentInvite(invite) });
+  })();
 }
 
-export async function DELETE(request: Request) {
+async function handleDELETE(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   const id = new URL(request.url).searchParams.get("id")?.trim();
@@ -79,3 +90,9 @@ export async function DELETE(request: Request) {
   })();
   return deleted ? Response.json({ ok: true }) : Response.json({ error: "没有找到这份邀请" }, { status: 404 });
 }
+
+export async function POST(...args: Parameters<typeof handlePOST>) { return withDataWrite(() => handlePOST(...args)); }
+
+export async function PATCH(...args: Parameters<typeof handlePATCH>) { return withDataWrite(() => handlePATCH(...args)); }
+
+export async function DELETE(...args: Parameters<typeof handleDELETE>) { return withDataWrite(() => handleDELETE(...args)); }

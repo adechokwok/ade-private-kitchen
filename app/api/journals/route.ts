@@ -1,3 +1,4 @@
+import { withDataWrite } from "../../../storage/maintenance";
 import { and, eq } from "drizzle-orm";
 import { ensureDinnerInvitesSchema, getDb, getUploads } from "../../../db";
 import { dinnerInvites, dinnerJournals, orders } from "../../../db/schema";
@@ -5,7 +6,7 @@ import { chefApiGuard } from "../../chef-auth";
 
 const imageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   const form = await request.formData();
@@ -33,11 +34,10 @@ export async function POST(request: Request) {
   const id = existingRows[0]?.id || crypto.randomUUID();
   let imageUrls: string[] = existingRows[0] ? (() => { try { return JSON.parse(existingRows[0].imageUrls); } catch { return []; } })() : [];
   if (images.length) {
-    for (let index = 0; index < imageUrls.length; index += 1) await getUploads().delete(`dinner-journals/${id}/${index}`);
     imageUrls = [];
     for (const [index, file] of images.entries()) {
       await getUploads().put(`dinner-journals/${id}/${index}`, file.stream(), { httpMetadata: { contentType: file.type, cacheControl: "public, max-age=31536000, immutable" } });
-      imageUrls.push(`/api/journal-images/${id}/${index}`);
+      imageUrls.push(`/api/journal-images/${id}/${index}?v=${crypto.randomUUID()}`);
     }
   }
   const updatedAt = new Date().toISOString();
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
   return Response.json({ journal: { ...journal, imageUrls } });
 }
 
-export async function DELETE(request: Request) {
+async function handleDELETE(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   const id = new URL(request.url).searchParams.get("id")?.trim() || "";
@@ -60,3 +60,7 @@ export async function DELETE(request: Request) {
   await getDb().delete(dinnerJournals).where(eq(dinnerJournals.id, id));
   return Response.json({ ok: true, id });
 }
+
+export async function POST(...args: Parameters<typeof handlePOST>) { return withDataWrite(() => handlePOST(...args)); }
+
+export async function DELETE(...args: Parameters<typeof handleDELETE>) { return withDataWrite(() => handleDELETE(...args)); }

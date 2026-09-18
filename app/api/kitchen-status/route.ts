@@ -1,3 +1,4 @@
+import { withDataWrite } from "../../../storage/maintenance";
 import { eq } from "drizzle-orm";
 import { ensureMenuLibrary, getDb } from "../../../db";
 import { appSettings } from "../../../db/schema";
@@ -11,7 +12,7 @@ export async function GET() {
   return Response.json({ open: setting?.value !== "closed" });
 }
 
-export async function PUT(request: Request) {
+async function handlePUT(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   const payload = await request.json() as { open?: unknown };
@@ -21,3 +22,5 @@ export async function PUT(request: Request) {
   await getDb().insert(appSettings).values({ key, value }).onConflictDoUpdate({ target: appSettings.key, set: { value } });
   return Response.json({ open: payload.open });
 }
+
+export async function PUT(...args: Parameters<typeof handlePUT>) { return withDataWrite(() => handlePUT(...args)); }
