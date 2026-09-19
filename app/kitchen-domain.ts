@@ -12,9 +12,12 @@ export function validMealDate(value: string) {
 export function courseForRecipe(dish?: { name: string; category: string }): "starter" | "main" | "staple" | "soup" {
   const category = dish?.category || "";
   const name = dish?.name || "";
-  if (/汤|羹|饮品|甜品|糖水/.test(category) || /汤$|羹$|糖水|布丁|冰淇淋/.test(name)) return "soup";
-  if (/主食|米饭|面食|粥|饼|包点/.test(category) || /炒饭$|焖饭$|炒面$|汤面$|粥$|馒头$|饺子$|包子$/.test(name)) return "staple";
-  if (/凉菜|冷盘|沙拉|前菜|卤味/.test(category) || /^(凉拌|凉菜)|沙拉$/.test(name)) return "starter";
+  if (/汤$|羹$|糖水|布丁|冰淇淋/.test(name)) return "soup";
+  if (/炒饭$|焖饭$|炒面$|拌面$|汤面$|粥$|馒头$|饺子$|包子$/.test(name)) return "staple";
+  if (/^(凉拌|凉菜)|沙拉$/.test(name)) return "starter";
+  if (/主食|米饭|面食|粥|饼|包点/.test(category)) return "staple";
+  if (/汤|羹|饮品|甜品|糖水/.test(category)) return "soup";
+  if (/凉菜|冷盘|沙拉|前菜|卤味/.test(category)) return "starter";
   return "main";
 }
 

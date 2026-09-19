@@ -36,7 +36,10 @@ export default function OrderStatusClient({ token }: { token: string }) {
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [readSyncError, setReadSyncError] = useState("");
-  const [pendingRead, setPendingRead] = useState<PendingReadReceipt | null>(null);
+  const [pendingRead, setPendingRead] = useState<PendingReadReceipt[]>(() => {
+    if (typeof window === "undefined") return [];
+    try { return JSON.parse(localStorage.getItem("ade-receipts:" + token) || "[]"); } catch { return []; }
+  });
   const [dismissedUpdate, setDismissedUpdate] = useState(() => {
     if (typeof window === "undefined") return "";
     try { return window.localStorage.getItem(`ade-order-update:${token}`) || ""; } catch { return ""; }
@@ -64,7 +67,7 @@ export default function OrderStatusClient({ token }: { token: string }) {
 
   const sendReadReceipt = useCallback(async (receipt: PendingReadReceipt) => {
     const response = await fetch(`/api/order-status/${token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(receipt) });
-    if (!response.ok) throw new Error("read receipt failed");
+    if (!response.ok && response.status !== 409) throw new Error("read receipt failed");
   }, [token]);
 
   useEffect(() => {
@@ -77,15 +80,27 @@ export default function OrderStatusClient({ token }: { token: string }) {
   }, [load]);
 
   useEffect(() => {
-    if (!pendingRead) return;
+    try { localStorage.setItem("ade-receipts:" + token, JSON.stringify(pendingRead)); } catch { /* retry in memory */ }
+    if (!pendingRead.length) return;
     let active = true;
-    const timer = window.setTimeout(() => {
-      void sendReadReceipt(pendingRead).then(() => {
-        if (active) { setPendingRead(null); setReadSyncError(""); }
-      }).catch(() => { if (active) setPendingRead(null); });
-    }, 15000);
-    return () => { active = false; window.clearTimeout(timer); };
-  }, [pendingRead, sendReadReceipt]);
+    let running = false;
+    const retry = async () => {
+      if (running) return;
+      running = true;
+      try {
+        for (const receipt of pendingRead) {
+          await sendReadReceipt(receipt);
+          if (active) setPendingRead(current => current.filter(item => item.action !== receipt.action || item.updateKey !== receipt.updateKey));
+        }
+        if (active) setReadSyncError("");
+      } catch { if (active) setReadSyncError("已在本机确认，正在等待网络恢复后同步给主厨。"); }
+      finally { running = false; }
+    };
+    const initial = window.setTimeout(() => void retry(), 0);
+    const timer = window.setInterval(() => void retry(), 15000);
+    window.addEventListener("online", retry);
+    return () => { active = false; window.clearTimeout(initial); window.clearInterval(timer); window.removeEventListener("online", retry); };
+  }, [pendingRead, sendReadReceipt, token]);
 
   useEffect(() => {
     try {
@@ -96,9 +111,9 @@ export default function OrderStatusClient({ token }: { token: string }) {
   const currentUpdateKey = data?.order.statusUpdatedAt || "";
   const currentStatus = data?.order.status || "";
   const currentNotice = currentStatus ? statusNotices[currentStatus] : undefined;
-  const showUpdateAlert = Boolean(currentNotice && currentUpdateKey && dismissedUpdate !== currentUpdateKey && data?.order.statusReadAt !== currentUpdateKey);
+  const showUpdateAlert = Boolean(currentNotice && currentUpdateKey && dismissedUpdate !== currentUpdateKey);
   const currentMenuUpdateKey = data?.order.publishedMenuUpdatedAt || "";
-  const showMenuAlert = Boolean(!showUpdateAlert && data?.order.publishedMenu && currentMenuUpdateKey && dismissedMenuUpdate !== currentMenuUpdateKey && data.order.menuReadAt !== currentMenuUpdateKey);
+  const showMenuAlert = Boolean(!showUpdateAlert && data?.order.publishedMenu && currentMenuUpdateKey && dismissedMenuUpdate !== currentMenuUpdateKey);
 
   useEffect(() => {
     if ((!showUpdateAlert || !currentStatus) && !showMenuAlert) return;
@@ -110,31 +125,25 @@ export default function OrderStatusClient({ token }: { token: string }) {
     return () => { window.clearTimeout(timer); document.title = previousTitle; };
   }, [showUpdateAlert, showMenuAlert, currentUpdateKey, currentMenuUpdateKey, currentStatus]);
 
-  const acknowledgeUpdate = async () => {
-    if (!currentUpdateKey) return;
-    setReadSyncError("");
-    try { window.localStorage.setItem(`ade-order-update:${token}`, currentUpdateKey); } catch { /* 无痕模式下仍可在本次访问关闭 */ }
-    setDismissedUpdate(currentUpdateKey);
-    try {
-      await sendReadReceipt({ action: "read-status", updateKey: currentUpdateKey });
-    } catch {
-      setPendingRead({ action: "read-status", updateKey: currentUpdateKey });
-      setReadSyncError("提醒已在本机确认，但主厨端暂时没有收到已读回执；保持页面打开会自动重试同步。 ");
-    }
+  const enqueueReceipt = (receipt: PendingReadReceipt) => {
+    setPendingRead(current => {
+      const next = [...current.filter(item => item.action !== receipt.action), receipt];
+      try { localStorage.setItem("ade-receipts:" + token, JSON.stringify(next)); } catch { /* retry in memory */ }
+      return next;
+    });
   };
-
-  const acknowledgeMenuUpdate = async () => {
+  const acknowledgeUpdate = () => {
+    if (!currentUpdateKey) return;
+    enqueueReceipt({ action: "read-status", updateKey: currentUpdateKey });
+    try { localStorage.setItem("ade-order-update:" + token, currentUpdateKey); } catch { /* ignore */ }
+    setDismissedUpdate(currentUpdateKey);
+  };
+  const acknowledgeMenuUpdate = () => {
     if (!currentMenuUpdateKey) return;
-    setReadSyncError("");
-    try { window.localStorage.setItem(`ade-order-menu-update:${token}`, currentMenuUpdateKey); } catch { /* 无痕模式下仍可在本次访问关闭 */ }
+    enqueueReceipt({ action: "read-menu", updateKey: currentMenuUpdateKey });
+    try { localStorage.setItem("ade-order-menu-update:" + token, currentMenuUpdateKey); } catch { /* ignore */ }
     setDismissedMenuUpdate(currentMenuUpdateKey);
     window.setTimeout(() => document.getElementById("published-menu")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
-    try {
-      await sendReadReceipt({ action: "read-menu", updateKey: currentMenuUpdateKey });
-    } catch {
-      setPendingRead({ action: "read-menu", updateKey: currentMenuUpdateKey });
-      setReadSyncError("菜单已在本机打开，但主厨端暂时没有收到已读回执；保持页面打开会自动重试同步。 ");
-    }
   };
 
   if (error && !data) return <main className="status-page"><section className="status-card"><span>阿德小厨房</span><h1>这张进度卡走丢了</h1><p>{error}</p><button onClick={() => void load()} disabled={refreshing}>{refreshing ? "正在重试…" : "重新加载进度"}</button><Link href="/">回到点菜页</Link></section></main>;
@@ -185,7 +194,7 @@ export default function OrderStatusClient({ token }: { token: string }) {
       </section>}
       {!data.order.publishedMenu && <div className="status-dishes"><small>今晚菜单</small><p>{data.order.dishSnapshot.map((dish) => dish.name).join(" · ")}</p><span>主厨排好正式菜单后，会在这里自动替换成完整菜单卡。</span></div>}
       {data.journal && <section className="guest-journal"><span>AFTER DINNER</span><h2>{data.journal.title}</h2><p>{data.journal.note}</p>{data.journal.imageUrls.length > 0 && <div>{data.journal.imageUrls.map((url, index) => <img src={url} alt={`饭局照片 ${index + 1}`} key={url} />)}</div>}</section>}
-      {data.invite?.token && !data.order.archivedAt && data.order.status !== "cancelled" && <Link className="status-add-dishes" href={`/invite/${data.invite.token}?add=1`}><strong>我还想加菜</strong><span>回到这桌点菜页面 →</span></Link>}
+      {data.invite?.token && !data.order.archivedAt && data.order.status !== "cancelled" && data.order.status !== "done" && <Link className="status-add-dishes" href={`/invite/${data.invite.token}?add=1`}><strong>我还想加菜</strong><span>回到这桌点菜页面 →</span></Link>}
       <button onClick={() => void load()} disabled={refreshing}>{refreshing ? "正在同步厨房进度…" : "立即刷新厨房进度"}</button>
     </section>
   </main>;

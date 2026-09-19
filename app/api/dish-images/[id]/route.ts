@@ -7,7 +7,7 @@ const thumbnailCacheLimit = 96;
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
-    if (!/^[0-9a-f-]{36}$/i.test(id)) return new Response("Not found", { status: 404 });
+    if (!/^[a-z0-9][a-z0-9-]{0,79}$/i.test(id)) return new Response("Not found", { status: 404 });
     const object = await getUploads().get(`dish-images/${id}`);
     if (!object) return new Response("Not found", { status: 404 });
     const thumbnail = new URL(request.url).searchParams.get("size") === "thumb";
@@ -21,7 +21,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       }
       const headers = new Headers({
         "content-type": "image/webp",
-        "cache-control": "public, max-age=86400, stale-while-revalidate=604800",
+        "cache-control": "public, max-age=0, must-revalidate",
         "etag": `${object.httpEtag}-thumb`,
         "x-content-type-options": "nosniff",
       });

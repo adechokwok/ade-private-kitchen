@@ -10,6 +10,7 @@ import { ensureDataDirectories, getDatabasePath } from "../storage/paths";
 import { getUploads as getLocalUploads } from "../storage/uploads";
 
 type RuntimeState = {
+  initialized?: Record<string, Promise<void>>;
   sqlite?: Database.Database;
   db?: BetterSQLite3Database<typeof schema>;
 };
@@ -47,7 +48,7 @@ function addColumn(table: string, columns: Set<string>, name: string, definition
   if (!columns.has(name)) getSqlite().exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
 }
 
-export async function ensureOrdersSchema() {
+async function initializeensureOrdersSchema() {
   getSqlite().exec(`CREATE TABLE IF NOT EXISTS orders (
     id TEXT PRIMARY KEY NOT NULL,
     customer_name TEXT NOT NULL,
@@ -69,6 +70,8 @@ export async function ensureOrdersSchema() {
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
   const columns = tableColumns("orders");
+  addColumn("orders", columns, "request_id", "TEXT NOT NULL DEFAULT ''");
+  getSqlite().exec("CREATE UNIQUE INDEX IF NOT EXISTS orders_request_id_idx ON orders (request_id) WHERE request_id <> ''");
   const hadArchivedAt = columns.has("archived_at");
   addColumn("orders", columns, "dish_snapshot", "TEXT NOT NULL DEFAULT '[]'");
   addColumn("orders", columns, "invite_id", "TEXT NOT NULL DEFAULT ''");
@@ -90,7 +93,7 @@ export async function ensureOrdersSchema() {
   }
 }
 
-export async function ensureCustomDishesSchema() {
+async function initializeensureCustomDishesSchema() {
   getSqlite().exec(`CREATE TABLE IF NOT EXISTS custom_dishes (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
@@ -144,7 +147,7 @@ export async function ensureCustomDishesSchema() {
   `).run();
 }
 
-export async function ensureDinnerInvitesSchema() {
+async function initializeensureDinnerInvitesSchema() {
   await ensureOrdersSchema();
   getSqlite().exec(`CREATE TABLE IF NOT EXISTS dinner_invites (
     id TEXT PRIMARY KEY NOT NULL,
@@ -236,7 +239,7 @@ export async function ensureDinnerInvitesSchema() {
   getSqlite().exec("CREATE UNIQUE INDEX IF NOT EXISTS dinner_journals_order_id_unique_idx ON dinner_journals (order_id) WHERE order_id <> ''");
 }
 
-export async function ensureShoppingChecksSchema() {
+async function initializeensureShoppingChecksSchema() {
   getSqlite().exec(`CREATE TABLE IF NOT EXISTS shopping_checks (
     item_key TEXT PRIMARY KEY NOT NULL,
     checked INTEGER NOT NULL DEFAULT 0,
@@ -244,7 +247,7 @@ export async function ensureShoppingChecksSchema() {
   )`);
 }
 
-export async function ensureMenuLibrary() {
+async function initializeensureMenuLibrary() {
   await ensureCustomDishesSchema();
   getSqlite().exec(`CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY NOT NULL,
@@ -291,7 +294,7 @@ export async function ensureMenuLibrary() {
   }
 }
 
-export async function ensurePantrySchema() {
+async function initializeensurePantrySchema() {
   getSqlite().exec(`CREATE TABLE IF NOT EXISTS pantry_items (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
@@ -309,4 +312,20 @@ export async function ensureAllSchema() {
   await ensureShoppingChecksSchema();
   await ensurePantrySchema();
   await ensureDinnerInvitesSchema();
+}
+
+function initializeOnce(key: string, initialize: () => Promise<void>) {
+  const pending = runtime.__adeKitchen!.initialized ??= {};
+  return pending[key] ??= initialize().catch(error => { delete pending[key]; throw error; });
+}
+export function ensureOrdersSchema() { return initializeOnce("ensureOrdersSchema", initializeensureOrdersSchema); }
+export function ensureCustomDishesSchema() { return initializeOnce("ensureCustomDishesSchema", initializeensureCustomDishesSchema); }
+export function ensureDinnerInvitesSchema() { return initializeOnce("ensureDinnerInvitesSchema", initializeensureDinnerInvitesSchema); }
+export function ensureShoppingChecksSchema() { return initializeOnce("ensureShoppingChecksSchema", initializeensureShoppingChecksSchema); }
+export function ensureMenuLibrary() { return initializeOnce("ensureMenuLibrary", initializeensureMenuLibrary); }
+export function ensurePantrySchema() { return initializeOnce("ensurePantrySchema", initializeensurePantrySchema); }
+
+/** Category discovery belongs to writes, not polling-time initialization. */
+export function registerDishCategory(name: string) {
+  getSqlite().prepare("INSERT OR IGNORE INTO menu_categories (id, name, sort_order) SELECT ?, ?, COALESCE(MAX(sort_order), -1) + 1 FROM menu_categories").run(crypto.randomUUID(), name);
 }

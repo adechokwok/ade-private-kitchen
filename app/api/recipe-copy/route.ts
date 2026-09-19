@@ -1,3 +1,4 @@
+import { withDataWrite } from "../../../storage/maintenance";
 import { chefApiGuard } from "../../chef-auth";
 import { conciseDescriptionRule, playfulSloganRule, privateKitchenCopyStyle } from "../recipe-copy-style";
 
@@ -29,7 +30,7 @@ function parseObject(raw: string) {
   return JSON.parse(clean.slice(start, end + 1)) as Record<string, unknown>;
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   try {
@@ -87,3 +88,5 @@ export async function POST(request: Request) {
     return Response.json({ error: message }, { status: 500 });
   }
 }
+
+export async function POST(...args: Parameters<typeof handlePOST>) { return withDataWrite(() => handlePOST(...args)); }

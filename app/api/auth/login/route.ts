@@ -11,7 +11,8 @@ function safeReturnTo(value: FormDataEntryValue | null) {
 }
 
 function clientKey(request: Request) {
-  return request.headers.get("x-forwarded-for")?.split(",")[0].trim() || request.headers.get("x-real-ip") || "local";
+  if (process.env.TRUST_PROXY !== "true") return "direct";
+  return request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim().slice(0, 80) || "direct";
 }
 
 export async function POST(request: Request) {
@@ -22,10 +23,14 @@ export async function POST(request: Request) {
 
   const key = clientKey(request);
   const now = Date.now();
+  for (const [id, record] of attempts) if (record.resetAt <= now) attempts.delete(id);
   const record = attempts.get(key);
-  if (record && record.resetAt > now && record.count >= MAX_ATTEMPTS) {
+  const globalRecord = attempts.get("global");
+  if ((record && record.count >= MAX_ATTEMPTS) || (globalRecord && globalRecord.count >= 40)) {
     return new NextResponse(null, { status: 303, headers: { location: `/chef/login?error=locked&returnTo=${encodeURIComponent(returnTo)}` } });
   }
+  if (!globalRecord) attempts.set("global", { count: 1, resetAt: now + WINDOW_MS });
+  else globalRecord.count += 1;
   if (!record || record.resetAt <= now) attempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
   else record.count += 1;
 

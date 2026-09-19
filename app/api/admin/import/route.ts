@@ -1,3 +1,4 @@
+import { beginImport, markImportRecovery, endImport } from "../../../../storage/maintenance";
 import "server-only";
 
 import { createReadStream, createWriteStream } from "node:fs";
@@ -113,6 +114,18 @@ async function readArchive(file: File, stagingDir: string) {
   const directory = await unzipper.Open.buffer(Buffer.from(await file.arrayBuffer()));
   if (directory.files.length > maxEntries) throw new ImportInputError(`压缩包文件过多，最多支持 ${maxEntries} 个文件`);
   let expandedBytes = 0;
+  const boundedBuffer = async (entry: typeof directory.files[number]) => {
+    if (entry.uncompressedSize > maxExpandedBytes - expandedBytes) throw new ImportInputError("解压后的数据超过 600MB 限制");
+    const chunks: Buffer[] = [];
+    const stream = entry.stream();
+    for await (const chunk of stream) {
+      const bytes = Buffer.from(chunk);
+      expandedBytes += bytes.length;
+      if (expandedBytes > maxExpandedBytes) { stream.destroy(); throw new ImportInputError("解压后的数据超过 600MB 限制"); }
+      chunks.push(bytes);
+    }
+    return Buffer.concat(chunks);
+  };
   let exportJson = "";
   const uploadsDir = path.join(stagingDir, "uploads");
   await mkdir(uploadsDir, { recursive: true });
@@ -122,8 +135,7 @@ async function readArchive(file: File, stagingDir: string) {
     if (entry.type === "Directory") continue;
     if (entryPath === "export.json") {
       if (exportJson) throw new ImportInputError("压缩包中有多个 export.json");
-      const bytes = await entry.buffer();
-      expandedBytes += bytes.byteLength;
+      const bytes = await boundedBuffer(entry);
       exportJson = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
       continue;
     }
@@ -131,8 +143,7 @@ async function readArchive(file: File, stagingDir: string) {
     const key = relativeKey(entryPath.slice("uploads/".length));
     if (keys.has(key)) throw new ImportInputError(`压缩包中有重复图片：${key}`);
     keys.add(key);
-    const bytes = await entry.buffer();
-    expandedBytes += bytes.byteLength;
+    const bytes = await boundedBuffer(entry);
     if (expandedBytes > maxExpandedBytes) throw new ImportInputError("解压后的数据超过 600MB 限制");
     const target = path.resolve(uploadsDir, key);
     const stagingRoot = path.resolve(uploadsDir);
@@ -248,6 +259,8 @@ function replaceDatabase(payload: ExportPayload) {
 export async function POST(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
+  let locked = false;
+  let recovered = true;
   let stagingDir = "";
   let oldUploadsDir = "";
   let uploadsBackupReady = false;
@@ -257,7 +270,7 @@ export async function POST(request: Request) {
     await ensureAllSchema();
     const chunkUploadId = request.headers.get("x-import-upload-id") || "";
     const isFinalChunk = request.headers.get("x-import-finalize") === "1";
-    if (chunkUploadId && !isFinalChunk) return receiveImportChunk(request);
+    if (chunkUploadId && !isFinalChunk) return await receiveImportChunk(request);
     let file: File;
     if (chunkUploadId && isFinalChunk) {
       chunkUploadDir = importUploadPath(chunkUploadId);
@@ -272,6 +285,8 @@ export async function POST(request: Request) {
     }
     stagingDir = await mkdtemp(path.join(tmpdir(), "ade-import-"));
     const parsed = await readArchive(file, stagingDir);
+    beginImport();
+    locked = true;
     const sqlite = getSqlite();
     const backupDir = path.join(getDataDir(), "import-backups");
     await mkdir(backupDir, { recursive: true });
@@ -282,28 +297,36 @@ export async function POST(request: Request) {
     await copyRegularFile(backupTempFile, backupFile);
 
     const currentUploads = getUploadsDir();
-    oldUploadsDir = await mkdtemp(path.join(tmpdir(), "ade-uploads-before-import-"));
+    oldUploadsDir = path.join(backupDir, `uploads-before-import-${stamp}`);
     await copyDirectoryContents(currentUploads, oldUploadsDir);
     uploadsBackupReady = true;
+    markImportRecovery({ database: backupFile, uploads: oldUploadsDir });
+    recovered = false;
     await clearDirectoryContents(currentUploads);
     await copyDirectoryContents(path.join(stagingDir, "uploads"), currentUploads);
     const result = replaceDatabase(parsed.payload);
-    await rm(oldUploadsDir, { recursive: true, force: true }).catch(() => undefined);
+    recovered = true;
     oldUploadsDir = "";
     await rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
     stagingDir = "";
     return Response.json({ ok: true, result: { ...result, images: parsed.imageCount, backupFile: path.basename(backupFile) } });
   } catch (error) {
     if (uploadsBackupReady && oldUploadsDir) {
-      await clearDirectoryContents(getUploadsDir()).catch(() => undefined);
-      await copyDirectoryContents(oldUploadsDir, getUploadsDir()).catch(() => undefined);
-      await rm(oldUploadsDir, { recursive: true, force: true }).catch(() => undefined);
+      try {
+        await clearDirectoryContents(getUploadsDir());
+        await copyDirectoryContents(oldUploadsDir, getUploadsDir());
+        recovered = true;
+      } catch {
+        recovered = false;
+        return Response.json({ error: "图片恢复未完成，原数据库和照片备份已保留在 import-backups；已暂停写入，请先恢复数据。" }, { status: 500 });
+      }
     }
     if (stagingDir) await rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
     if (chunkUploadDir) await rm(chunkUploadDir, { recursive: true, force: true }).catch(() => undefined);
     const message = error instanceof Error ? error.message : "数据导入失败，已恢复原数据";
     return Response.json({ error: message }, { status: error instanceof ImportInputError ? 400 : 500 });
   } finally {
+    if (locked) endImport(recovered);
     if (chunkUploadDir) await rm(chunkUploadDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }

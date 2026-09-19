@@ -343,8 +343,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(database, /addColumn\("orders", columns, "archived_at"/);
   assert.match(database, /WHERE status IN \('done', 'cancelled'\)/);
   assert.match(statusClient, /status-update-modal/);
-  assert.match(statusClient, /statusReadAt !== currentUpdateKey/);
-  assert.match(statusClient, /menuReadAt !== currentMenuUpdateKey/);
+  assert.doesNotMatch(statusClient, /statusReadAt !== currentUpdateKey/);
+  assert.doesNotMatch(statusClient, /menuReadAt !== currentMenuUpdateKey/);
   for (const emoji of ["🥰", "🛒", "🔥", "😋", "🥺", "📜"]) assert.match(statusClient, new RegExp(emoji, "u"));
   assert.match(globalStyles, /Apple Color Emoji/);
   assert.match(statusClient, /guest-published-menu/);

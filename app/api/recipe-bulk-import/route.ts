@@ -1,3 +1,4 @@
+import { withDataWrite } from "../../../storage/maintenance";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -165,7 +166,7 @@ async function importRecipes(recipes: NormalizedRecipe[]) {
   return { inserted, updated, totalDishes, backupFile };
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   try {
@@ -188,3 +189,5 @@ export async function POST(request: Request) {
     return Response.json({ error: message }, { status: error instanceof ImportInputError ? 400 : 500 });
   }
 }
+
+export async function POST(...args: Parameters<typeof handlePOST>) { return withDataWrite(() => handlePOST(...args)); }

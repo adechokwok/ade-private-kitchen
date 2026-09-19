@@ -1,5 +1,6 @@
+import { withDataWrite } from "../../../storage/maintenance";
 import { eq, inArray } from "drizzle-orm";
-import { ensureCustomDishesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb, getSqlite, getUploads } from "../../../db";
+import { ensureCustomDishesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb, getSqlite, getUploads, registerDishCategory } from "../../../db";
 import { customDishes, menuCategories, orders } from "../../../db/schema";
 import { chefApiGuard, isChefRequest } from "../../chef-auth";
 
@@ -151,7 +152,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   try {
@@ -199,11 +200,12 @@ export async function POST(request: Request) {
     const gallery: string[] = [];
     for (const [index, file] of galleryFiles.entries()) {
       await getUploads().put(`dish-gallery/${id}/${index}`, file.stream(), { httpMetadata: { contentType: file.type, cacheControl: "public, max-age=31536000, immutable" } });
-      gallery.push(`/api/dish-gallery/${id}/${index}`);
+      gallery.push(`/api/dish-gallery/${id}/${index}?v=${crypto.randomUUID()}`);
     }
 
     await ensureMenuLibrary();
     const sortOrder = nextCategoryDishOrder(category);
+    registerDishCategory(category);
     const [dish] = await getDb().insert(customDishes).values({
       id, name, category, description, slogan, flavor, minutes, baseServings, imageUrl, imagePosition, gallery: JSON.stringify(gallery),
       ingredients: JSON.stringify(ingredients), steps: JSON.stringify(steps), source, active: 1,
@@ -217,7 +219,7 @@ export async function POST(request: Request) {
   }
 }
 
-export async function PUT(request: Request) {
+async function handlePUT(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   try {
@@ -267,15 +269,16 @@ export async function PUT(request: Request) {
       await getUploads().delete(`dish-images/${id}`);
     }
     if (galleryFiles.length) {
-      for (let index = 0; index < gallery.length; index += 1) await getUploads().delete(`dish-gallery/${id}/${index}`);
       gallery = [];
       for (const [index, file] of galleryFiles.entries()) {
         await getUploads().put(`dish-gallery/${id}/${index}`, file.stream(), { httpMetadata: { contentType: file.type, cacheControl: "public, max-age=31536000, immutable" } });
-        gallery.push(`/api/dish-gallery/${id}/${index}`);
+        gallery.push(`/api/dish-gallery/${id}/${index}?v=${crypto.randomUUID()}`);
       }
     }
 
     const categoryChanged = category !== existing.category;
+    await ensureMenuLibrary();
+    registerDishCategory(category);
     const sortOrder = categoryChanged ? nextCategoryDishOrder(category) : existing.sortOrder;
     await getDb().update(customDishes).set({
       name, category, description, slogan, flavor, minutes, baseServings, imageUrl, imagePosition, gallery: JSON.stringify(gallery),
@@ -295,7 +298,7 @@ export async function PUT(request: Request) {
   }
 }
 
-export async function PATCH(request: Request) {
+async function handlePATCH(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   try {
@@ -362,7 +365,7 @@ export async function PATCH(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+async function handleDELETE(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   try {
@@ -397,3 +400,11 @@ export async function DELETE(request: Request) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
+
+export async function POST(...args: Parameters<typeof handlePOST>) { return withDataWrite(() => handlePOST(...args)); }
+
+export async function PUT(...args: Parameters<typeof handlePUT>) { return withDataWrite(() => handlePUT(...args)); }
+
+export async function PATCH(...args: Parameters<typeof handlePATCH>) { return withDataWrite(() => handlePATCH(...args)); }
+
+export async function DELETE(...args: Parameters<typeof handleDELETE>) { return withDataWrite(() => handleDELETE(...args)); }

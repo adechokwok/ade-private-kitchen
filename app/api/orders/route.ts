@@ -1,5 +1,7 @@
+import { withDataWrite } from "../../../storage/maintenance";
+import { validMealDate } from "../../kitchen-domain";
 import { and, desc, eq } from "drizzle-orm";
-import { ensureDinnerInvitesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb } from "../../../db";
+import { ensureDinnerInvitesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb, getSqlite } from "../../../db";
 import { appSettings, customDishes, dinnerInvites, dinnerJournals, orders } from "../../../db/schema";
 import { chefApiGuard } from "../../chef-auth";
 
@@ -62,7 +64,7 @@ function errorMessage(error: unknown) {
 
 async function mutateOrderForChef(payload: ChefOrderMutation) {
   if (!payload.id) return Response.json({ error: "请选择要处理的饭局" }, { status: 400 });
-  await ensureOrdersSchema();
+  await ensureDinnerInvitesSchema();
 
   if (payload.action === "publish-menu") {
     const [existing] = await getDb().select({ status: orders.status, archivedAt: orders.archivedAt }).from(orders).where(eq(orders.id, payload.id)).limit(1);
@@ -83,6 +85,7 @@ async function mutateOrderForChef(payload: ChefOrderMutation) {
     const archivedAt = payload.status === "cancelled" ? statusUpdatedAt : payload.status === "done" ? undefined : "";
     const [order] = await getDb().update(orders).set({ status: payload.status, progressNote, statusUpdatedAt, statusReadAt: "", ...(archivedAt === undefined ? {} : { archivedAt }) }).where(eq(orders.id, payload.id)).returning();
     if (!order) return Response.json({ error: "没有找到这份订单" }, { status: 404 });
+    if (payload.status === "done" || payload.status === "cancelled") await getDb().update(dinnerInvites).set({ active: 0 }).where(eq(dinnerInvites.sharedOrderId, order.id));
     return Response.json({ order });
   }
 
@@ -105,7 +108,10 @@ async function mutateOrderForChef(payload: ChefOrderMutation) {
     let [journal] = await getDb().select({ id: dinnerJournals.id }).from(dinnerJournals).where(eq(dinnerJournals.orderId, order.id)).limit(1);
     if (!journal && order.inviteId) [journal] = await getDb().select({ id: dinnerJournals.id }).from(dinnerJournals).where(and(eq(dinnerJournals.inviteId, order.inviteId), eq(dinnerJournals.orderId, ""))).limit(1);
     if (journal) return Response.json({ error: "这场饭局还有餐桌日记，请先在“餐桌日记”中删除日记" }, { status: 409 });
-    await getDb().delete(orders).where(eq(orders.id, payload.id));
+    getSqlite().transaction(() => {
+      getDb().update(dinnerInvites).set({ active: 0, sharedOrderId: "" }).where(eq(dinnerInvites.sharedOrderId, payload.id!)).run();
+      getDb().delete(orders).where(eq(orders.id, payload.id!)).run();
+    })();
     return Response.json({ ok: true, id: payload.id });
   }
 
@@ -117,17 +123,17 @@ export async function GET(request: Request) {
   if (denied) return denied;
   try {
     await ensureOrdersSchema();
-    const rows = await getDb().select().from(orders).orderBy(desc(orders.createdAt)).limit(100);
+    const rows = await getDb().select().from(orders).orderBy(desc(orders.createdAt));
     return Response.json({ orders: rows });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   try {
     const payload = await request.json() as {
-      customerName?: unknown; mealDate?: unknown; guestCount?: unknown; note?: unknown; dishes?: Item[]; inviteToken?: unknown; action?: unknown;
+      requestId?: unknown; customerName?: unknown; mealDate?: unknown; guestCount?: unknown; note?: unknown; dishes?: Item[]; inviteToken?: unknown; action?: unknown;
     } & ChefOrderMutation;
     if (typeof payload.action === "string" && payload.action) {
       const denied = chefApiGuard(request);
@@ -140,6 +146,13 @@ export async function POST(request: Request) {
     const note = typeof payload.note === "string" ? payload.note.trim().slice(0, 200) : "";
     const items = Array.isArray(payload.dishes) ? payload.dishes : [];
     const inviteToken = typeof payload.inviteToken === "string" ? payload.inviteToken : "";
+    await ensureOrdersSchema();
+    const requestId = typeof payload.requestId === "string" && /^[a-z0-9-]{20,80}$/i.test(payload.requestId) ? payload.requestId : "";
+    if (payload.requestId && !requestId) return Response.json({ error: "提交标识无效" }, { status: 400 });
+    if (requestId) {
+      const previous = getDb().select().from(orders).where(eq(orders.requestId, requestId)).get();
+      if (previous) return Response.json({ order: previous, guestToken: previous.guestToken });
+    }
     await ensureMenuLibrary();
     const [kitchenSetting] = await getDb().select().from(appSettings).where(eq(appSettings.key, "kitchen_open_v1")).limit(1);
     if (kitchenSetting?.value === "closed") return Response.json({ error: "阿德今天休息，菜单可以慢慢看，等绿灯亮起再来点菜吧" }, { status: 409 });
@@ -150,16 +163,16 @@ export async function POST(request: Request) {
       await ensureDinnerInvitesSchema();
       const [invite] = await getDb().select().from(dinnerInvites).where(eq(dinnerInvites.token, inviteToken)).limit(1);
       if (!invite || !invite.active) return Response.json({ error: "这份饭局邀请已经结束" }, { status: 400 });
+      if (invite.mode === "shared") return Response.json({ error: "请从共享饭局页面提交" }, { status: 409 });
       inviteId = invite.id;
       try { inviteDishIds = JSON.parse(invite.dishIds); } catch { inviteDishIds = []; }
     }
     const validIds = new Set(customRows.filter((dish) => dish.available && !dish.soldOut && (!inviteDishIds || inviteDishIds.includes(dish.id))).map((dish) => dish.id));
-    const normalized = items
-      .filter((item) => item.dishId && validIds.has(item.dishId) && Number.isInteger(item.quantity) && Number(item.quantity) > 0 && Number(item.quantity) <= 10)
-      .map((item) => ({ dishId: item.dishId as string, quantity: Number(item.quantity) }));
+    if (items.length > 120 || items.some(item => !item || !item.dishId || !validIds.has(item.dishId) || !Number.isInteger(item.quantity) || Number(item.quantity) < 1 || Number(item.quantity) > 10) || new Set(items.map(item => item.dishId)).size !== items.length) return Response.json({ error: "有菜品已下架、售罄或数量无效（每道 1–10 份），请检查后重新提交" }, { status: 409 });
+    const normalized = items.map(item => ({ dishId: item.dishId!, quantity: Number(item.quantity) }));
 
     if (!customerName || customerName.length > 30) return Response.json({ error: "请填写你的称呼" }, { status: 400 });
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(mealDate)) return Response.json({ error: "请选择用餐日期" }, { status: 400 });
+    if (!validMealDate(mealDate)) return Response.json({ error: "请选择用餐日期" }, { status: 400 });
     if (!Number.isInteger(guestCount) || guestCount < 1 || guestCount > 20) return Response.json({ error: "用餐人数需为 1–20 人" }, { status: 400 });
     if (normalized.length === 0) return Response.json({ error: "请至少选择一道菜" }, { status: 400 });
 
@@ -183,14 +196,18 @@ export async function POST(request: Request) {
     await ensureOrdersSchema();
     const id = crypto.randomUUID();
     const guestToken = crypto.randomUUID().replaceAll("-", "");
-    const [order] = await getDb().insert(orders).values({ id, customerName, mealDate, guestCount, note, dishes: JSON.stringify(normalized), dishSnapshot: JSON.stringify(dishSnapshot), inviteId, guestToken }).returning();
+    const [order] = await getDb().insert(orders).values({ requestId, id, customerName, mealDate, guestCount, note, dishes: JSON.stringify(normalized), dishSnapshot: JSON.stringify(dishSnapshot), inviteId, guestToken }).onConflictDoNothing().returning();
+    if (!order && requestId) {
+      const previous = getDb().select().from(orders).where(eq(orders.requestId, requestId)).get();
+      if (previous) return Response.json({ order: previous, guestToken: previous.guestToken });
+    }
     return Response.json({ order, guestToken }, { status: 201 });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
 
-export async function PATCH(request: Request) {
+async function handlePATCH(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   try {
@@ -201,7 +218,7 @@ export async function PATCH(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+async function handleDELETE(request: Request) {
   const denied = chefApiGuard(request);
   if (denied) return denied;
   try {
@@ -211,3 +228,9 @@ export async function DELETE(request: Request) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
+
+export async function POST(...args: Parameters<typeof handlePOST>) { return withDataWrite(() => handlePOST(...args)); }
+
+export async function PATCH(...args: Parameters<typeof handlePATCH>) { return withDataWrite(() => handlePATCH(...args)); }
+
+export async function DELETE(...args: Parameters<typeof handleDELETE>) { return withDataWrite(() => handleDELETE(...args)); }
