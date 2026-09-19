@@ -16,6 +16,9 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const source = await readFile(new URL("../app/kitchen-domain.ts", import.meta.url), "utf8");
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
 const { kitchenDate, validMealDate, courseForRecipe, procurementKey } = await import("data:text/javascript;base64," + Buffer.from(js).toString("base64"));
+const unitSource = await readFile(new URL("../app/ingredient-units.ts", import.meta.url), "utf8");
+const unitJs = ts.transpileModule(unitSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
+const { normalizeIngredientAmount, displayIngredientAmount } = await import("data:text/javascript;base64," + Buffer.from(unitJs).toString("base64"));
 
 test("calendar, course labels and procurement demand identities", () => {
   assert.equal(kitchenDate(new Date("2026-09-18T17:00:00Z")), "2026-09-19");
@@ -31,6 +34,9 @@ test("calendar, course labels and procurement demand identities", () => {
   assert.notEqual(key, procurementKey("dish::rice::g", ["order-b"], 100, 0));
   assert.notEqual(key, procurementKey("dish::rice::g", ["order-a", "order-b"], 200, 0));
   assert.notEqual(key, procurementKey("dish::rice::g", ["order-a"], 100, 10));
+  assert.deepEqual(normalizeIngredientAmount(1.5, "kg"), { amount: 1500, unit: "g" });
+  assert.deepEqual(normalizeIngredientAmount(2, "升"), { amount: 2000, unit: "ml" });
+  assert.deepEqual(displayIngredientAmount(1500, "g"), { amount: 1.5, unit: "kg" });
 });
 
 async function zip(entries) {
@@ -53,7 +59,7 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
   const port = listener.address().port; await new Promise(resolve => listener.close(resolve));
   const base = `http://127.0.0.1:${port}`;
   const password = crypto.randomUUID();
-  const env = { ...process.env, DATA_DIR: temp, DATABASE_PATH: path.join(temp, "ade-kitchen.sqlite"), UPLOADS_DIR: path.join(temp, "uploads"), CHEF_PASSWORD: password, TRUST_PROXY: "false" };
+  const env = { ...process.env, DATA_DIR: temp, DATABASE_PATH: path.join(temp, "ade-kitchen.sqlite"), UPLOADS_DIR: path.join(temp, "uploads"), BACKUP_DIR: path.join(temp, "backups"), CHEF_PASSWORD: password, TRUST_PROXY: "false" };
   const child = spawn(process.execPath, [path.join(root, "node_modules/next/dist/bin/next"), "start", "-H", "127.0.0.1", "-p", String(port)], { cwd: root, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   let logs = ""; child.stdout.on("data", c => logs += c); child.stderr.on("data", c => logs += c);
   let db;
@@ -161,6 +167,29 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     const result = await api("/api/invites/" + inv.token);
     assert.equal(result.data.dishes[0].id, dish.id); assert.ok(result.data.categories.length);
   });
+  await t.test("accepted shared dinners flag later dish changes and stale formal menus", async () => {
+    const inv = await invite(); await select(inv); const order = (await submit(inv)).data.order;
+    const accepted = await api("/api/orders", { action: "update-status", id: order.id, status: "confirmed", progressNote: "接单" }, true);
+    assert.equal(accepted.status, 200);
+    const publishedMenu = { title: "测试家宴", date: "2026-10-02", message: "开饭", template: "home", templateName: "温馨家宴", subtitle: "DINNER", occasion: "朋友相聚", courses: [{ id: "main", label: "主厨热菜", english: "MAIN", dishes: [{ name: dish.name, description: "测试菜" }] }] };
+    const published = await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu }, true); assert.equal(published.status, 200);
+    await select(inv, 2); const changed = await submit(inv); assert.equal(changed.status, 200);
+    assert.ok(changed.data.order.dishesUpdatedAt > changed.data.order.statusUpdatedAt);
+    assert.ok(changed.data.order.dishesUpdatedAt > changed.data.order.publishedMenuUpdatedAt);
+  });
+  await t.test("pantry normalizes compatible units and records actual consumption", async () => {
+    const created = await api("/api/pantry", { name: "大米", amount: 1, unit: "kg", type: "其他" }, true); assert.equal(created.status, 201);
+    assert.equal(created.data.item.amount, 1000); assert.equal(created.data.item.unit, "g");
+    const consumed = await api("/api/pantry", { id: created.data.item.id, amount: 250, unit: "g", action: "consume" }, true, "PATCH");
+    assert.equal(consumed.status, 200); assert.equal(consumed.data.item.amount, 750);
+    const edited = await api("/api/pantry", { id: created.data.item.id, amount: 2, unit: "kg", action: "set" }, true, "PATCH");
+    assert.equal(edited.data.item.amount, 2000); assert.equal(edited.data.item.unit, "g");
+  });
+  await t.test("unchanged order lists return a conditional 304", async () => {
+    const first = await fetch(base + "/api/orders", { headers: { cookie } }); assert.equal(first.status, 200);
+    const etag = first.headers.get("etag"); assert.ok(etag);
+    const second = await fetch(base + "/api/orders", { headers: { cookie, "if-none-match": etag } }); assert.equal(second.status, 304);
+  });
   await t.test("complete menu drafts round-trip and reject stale revisions", async () => {
     const draft = { items: [], title: "删除所有菜仍保留", template: "romance", templateName: "二人世界", date: "2026-10-02", subtitle: "验收", occasion: "朋友相聚", chefCredit: "阿德", guestCount: 2, courseEdits: { main: { label: "手工标题", english: "CUSTOM" } }, dishEdits: {}, message: "手工祝福" };
     assert.equal((await api("/api/menu-drafts", { scope: "free", draft, revision: 0 }, true, "PUT")).status, 200);
@@ -217,6 +246,8 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
       assert.ok((await readFile(path.join(backupDir, name, "uploads/dish-images/cola-wings"))).length);
     }
     assert.equal(await readFile(path.join(backupDir, second, "uploads/new-photo"), "utf8"), "second");
+    const status = await api("/api/admin/backups", undefined, true);
+    assert.equal(status.status, 200); assert.equal(status.data.healthy, true); assert.ok(status.data.versions.some(version => version.name === second && version.hasUploads));
   });
   await t.test("spoofing forwarding headers cannot bypass login attempt limits", async () => {
     let last;

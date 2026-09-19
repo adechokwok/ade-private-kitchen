@@ -6,6 +6,9 @@ import Image from "next/image";
 import { kitchenDate, courseForRecipe, procurementKey } from "./kitchen-domain";
 import { categories, type Dish, type Ingredient } from "./menu";
 import { activeGuestOrderStorageKey, isGuestOrderToken } from "./order-memory";
+import { displayIngredientAmount, normalizeIngredientAmount } from "./ingredient-units";
+import { BackupStatusPanel } from "./components/backup-status-panel";
+import { normalizedIngredientName, prepActionForIngredient, shoppingLocation } from "./procurement-domain";
 
 type Cart = Record<string, number>;
 type OrderItem = { dishId: string; quantity: number };
@@ -20,6 +23,7 @@ type Order = {
   note: string;
   dishes: string;
   dishSnapshot: string;
+  dishesUpdatedAt: string;
   inviteId: string;
   guestToken: string;
   progressNote: string;
@@ -70,7 +74,7 @@ type BulkRecipePreview = {
   fileName: string;
 };
 type BulkRecipeResult = { total: number; inserted: number; updated: number; totalDishes: number; backupFile: string };
-type DinnerInvite = { id: string; token: string; title: string; message: string; mealDate: string; theme: "warm" | "romance" | "fine" | "festival"; dishIds: string[]; recommendedDishIds: string[]; mode: "single" | "shared"; active: boolean; createdAt: string };
+type DinnerInvite = { id: string; token: string; title: string; message: string; mealDate: string; theme: "warm" | "romance" | "fine" | "festival"; dishIds: string[]; recommendedDishIds: string[]; mode: "single" | "shared"; sharedOrderId?: string; active: boolean; createdAt: string };
 type SharedDinner = { mode: "shared"; guests: Array<{ id: string; displayName: string }>; selections: Array<{ guestId: string; displayName: string; items: OrderItem[] }>; aggregate: OrderItem[]; guestToken: string; guestId: string; orderToken: string };
 type DinnerJournal = { id: string; inviteId: string; orderId: string; title: string; note: string; imageUrls: string[]; updatedAt?: string; createdAt: string };
 type RecipeScreenshot = { id: string; file: File; preview: string; rotation: 0 | 90 | 180 | 270 };
@@ -225,8 +229,9 @@ function parsePublishedMenu(order?: Order): PublishedMenu | null {
 }
 
 function formatAmount(value: number, unit: string) {
-  const rounded = Number.isInteger(value) ? value : Number(value.toFixed(1));
-  return `${rounded}${unit}`;
+  const display = displayIngredientAmount(value, unit);
+  const rounded = Number.isInteger(display.amount) ? display.amount : Number(display.amount.toFixed(1));
+  return `${rounded}${display.unit}`;
 }
 
 function dishThumbnailUrl(value?: string) {
@@ -247,29 +252,6 @@ function formatCountdown(milliseconds: number) {
   const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
   const minutes = Math.floor(seconds / 60);
   return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
-function prepActionForIngredient(type: string, name: string) {
-  if (type === "生鲜") return /肉|鸡|鸭|牛|羊|排骨/.test(name) ? "分切 / 腌制" : "清洗 / 沥干";
-  if (type === "蔬菜") return /葱|姜|蒜|椒/.test(name) ? "清洗 / 切配" : "清洗 / 改刀";
-  if (type === "调料") return "提前称量";
-  return "备齐待用";
-}
-
-const ingredientAliases: Record<string, string> = {
-  香葱: "小葱", 葱花: "小葱", 青葱: "小葱", 姜: "生姜", 姜片: "生姜", 蒜: "大蒜", 蒜瓣: "大蒜",
-  酱油: "生抽", 食盐: "盐", 白砂糖: "白糖", 鸡蛋液: "鸡蛋", 土豆仔: "土豆", 西红柿: "番茄",
-};
-
-function normalizedIngredientName(name: string) {
-  const compact = name.trim().replace(/[（(].*?[）)]/g, "").replace(/\s+/g, "");
-  return ingredientAliases[compact] || compact;
-}
-
-function shoppingLocation(type: string) {
-  if (type === "生鲜" || type === "蔬菜") return "菜市场 / 生鲜区";
-  if (type === "调料") return "调味品区";
-  return "超市其他区";
 }
 
 function createClientRowId() {
@@ -412,7 +394,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const coverDragRef = useRef<{ pointerId: number; clientX: number; clientY: number; crop: ImageCrop } | null>(null);
   const recipeScreenshotUrlsRef = useRef<string[]>([]);
   const shoppingRequestChainsRef = useRef<Record<string, Promise<void>>>({});
+  const ordersEtagRef = useRef("");
   const invitePollingRef = useRef(false);
+  const inviteEtagRef = useRef("");
   const mode = initialMode;
   const [chefView, setChefView] = useState<ChefView>("accepting");
   const [activeCategory, setActiveCategory] = useState("全部");
@@ -428,6 +412,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [pantryOpen, setPantryOpen] = useState(false);
   const [editingDish, setEditingDish] = useState<ManagedDish | null>(null);
   const [shoppingChecks, setShoppingChecks] = useState<Record<string, boolean>>({});
+  const [shoppingScope, setShoppingScope] = useState("all");
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([newIngredientRow()]);
   const [imagePreview, setImagePreview] = useState("");
   const [imageCrop, setImageCrop] = useState<ImageCrop>(defaultImageCrop);
@@ -480,6 +465,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [sharedGuestName, setSharedGuestName] = useState("朋友");
   const sharedGuestNameDirtyRef = useRef(false);
   const [sharedGuestSaving, setSharedGuestSaving] = useState(false);
+  const [sharedSyncState, setSharedSyncState] = useState<"synced" | "syncing" | "error">("synced");
   const [inviteLoading, setInviteLoading] = useState(Boolean(initialInviteToken));
   const [orderProgressUrl, setOrderProgressUrl] = useState("");
   const [orderSuccessOpen, setOrderSuccessOpen] = useState(false);
@@ -517,6 +503,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [kitchenOpen, setKitchenOpen] = useState(true);
   const [kitchenStatusSaving, setKitchenStatusSaving] = useState(false);
   const [imageLightboxAspect, setImageLightboxAspect] = useState(1.48);
+  const [checkoutDraft, setCheckoutDraft] = useState(() => ({ customerName: "", mealDate: kitchenDate(), guestCount: "2", note: "" }));
 
   const [draftReady, setDraftReady] = useState(false);
   const draftCache = useRef<Record<string, { draft: BanquetDraft; revision: number }>>({});
@@ -573,13 +560,15 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     if (mode !== "menu") return;
     const timer = window.setTimeout(() => {
       try { orderRequestId.current = sessionStorage.getItem("ade-pending-order:" + (initialInviteToken || "normal")) || ""; } catch { /* ignore */ }
-      if (initialInviteToken) return;
       try {
-        const saved = JSON.parse(localStorage.getItem("ade-cart:normal") || "{}");
+        const scope = initialInviteToken || "normal";
+        const saved = JSON.parse(localStorage.getItem("ade-cart:" + scope) || "{}");
         if (saved && typeof saved === "object" && !Array.isArray(saved)) {
           const next = Object.fromEntries(Object.entries(saved).filter((entry): entry is [string, number] => typeof entry[1] === "number" && Number.isInteger(entry[1]) && entry[1] > 0 && entry[1] <= 10));
           cartRef.current = next; setCart(next);
         }
+        const fields = JSON.parse(localStorage.getItem("ade-checkout:" + scope) || "null");
+        if (fields && typeof fields === "object" && !Array.isArray(fields)) setCheckoutDraft({ customerName: typeof fields.customerName === "string" ? fields.customerName.slice(0, 30) : "", mealDate: typeof fields.mealDate === "string" ? fields.mealDate : kitchenDate(), guestCount: String(fields.guestCount || "2"), note: typeof fields.note === "string" ? fields.note.slice(0, 200) : "" });
       } catch { /* invalid local cart */ }
     }, 0);
     return () => window.clearTimeout(timer);
@@ -720,20 +709,27 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const cookingRecipeCount = new Set(activeOrders.flatMap((order) => parseItems(order).map((item) => item.dishId))).size;
   const cookingGuestCount = activeOrders.reduce((sum, order) => sum + order.guestCount, 0);
   const nextMealDate = cookingOrders[0]?.mealDate || "暂无饭局";
+  const shoppingScopeOrders = useMemo(() => {
+    if (shoppingScope.startsWith("order:")) return activeOrders.filter((order) => order.id === shoppingScope.slice(6));
+    if (shoppingScope.startsWith("date:")) return activeOrders.filter((order) => order.mealDate === shoppingScope.slice(5));
+    return activeOrders;
+  }, [activeOrders, shoppingScope]);
 
   const courseForDish = courseForRecipe;
 
   const banquetDishes = banquetItems.map(item => ({ ...item, dish: item.snapshot || dishCatalog.find(dish => dish.id === item.dishId) })).filter((item): item is BanquetItem & { dish: Dish } => Boolean(item.dish));
 
   const syncSelection = (dishId: string, quantity: number, token: string, guestToken: string) => {
+    setSharedSyncState("syncing");
     selectionVersion.current++;
     selectionPending.current.set(dishId, quantity);
     selectionQueue.current = selectionQueue.current.catch(() => {}).then(async () => {
       const response = await fetch("/api/invites/" + token, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "set-selection", guestToken, dishId, quantity }) });
       if (!response.ok) { const data = await response.json(); throw new Error(data.error || "选菜同步失败"); }
       if (selectionPending.current.get(dishId) === quantity) selectionPending.current.delete(dishId);
+      if (!selectionPending.current.size) setSharedSyncState("synced");
     });
-    void selectionQueue.current.catch(error => setNotice(error instanceof Error ? error.message : "选菜尚未同步，提交时会重试"));
+    void selectionQueue.current.catch(error => { setSharedSyncState("error"); setNotice(error instanceof Error ? error.message : "选菜尚未同步，提交时会重试"); });
   };
 
   const updateQuantity = (dishId: string, change: number) => {
@@ -934,10 +930,12 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const loadOrders = async (silent = false) => {
     if (!silent) setLoadingOrders(true);
     try {
-      const response = await fetch("/api/orders", { cache: "no-store" });
+      const response = await fetch("/api/orders", { cache: "no-store", headers: ordersEtagRef.current ? { "if-none-match": ordersEtagRef.current } : {} });
+      if (response.status === 304) return;
       const data = await response.json() as { orders?: Order[]; error?: string };
       if (!response.ok) throw new Error(data.error || "订单加载失败");
       const nextOrders = data.orders || [];
+      ordersEtagRef.current = response.headers.get("etag") || "";
       setOrders(nextOrders);
 
     } catch (error) {
@@ -1130,10 +1128,12 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     try {
       let guestToken = "";
       try { guestToken = window.localStorage.getItem(sharedGuestStorageKey(token)) || ""; } catch { /* 无痕模式仍可临时加入 */ }
-      const response = await fetch(`/api/invites/${token}${guestToken ? `?guestToken=${encodeURIComponent(guestToken)}` : ""}`, { cache: "no-store" });
+      const response = await fetch(`/api/invites/${token}${guestToken ? `?guestToken=${encodeURIComponent(guestToken)}` : ""}`, { cache: "no-store", headers: inviteEtagRef.current ? { "if-none-match": inviteEtagRef.current } : {} });
+      if (response.status === 304) return;
       const data = await response.json() as { invite?: DinnerInvite; dishes?: ManagedDish[]; categories?: MenuCategory[]; shared?: SharedDinner; error?: string };
       if (!response.ok || !data.invite) throw new Error(data.error || "邀请加载失败");
       setActiveInvite(data.invite);
+      inviteEtagRef.current = response.headers.get("etag") || "";
       setManagedCategories(data.categories || []);
       setCustomDishes(data.dishes || []);
       setMenuLoadState("ready");
@@ -1168,7 +1168,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       let timer = 0;
       const bootstrap = window.setTimeout(() => {
         loadOrders(); loadDishes(); loadShoppingChecks(); loadCategories(); loadPantry(); loadInvites(); loadRecipePreferences();
-        timer = window.setInterval(() => loadOrders(true), 30000);
+        timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadOrders(true); }, 45000);
       }, 0);
       return () => { window.clearTimeout(bootstrap); if (timer) window.clearInterval(timer); };
     }
@@ -1249,7 +1249,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
           } else { loadDishes(); loadCategories(); }
         };
         if (poll) {
-          timer = window.setInterval(poll, initialInviteToken ? 2000 : 15000);
+          timer = window.setInterval(poll, initialInviteToken ? 5000 : 30000);
           document.addEventListener("visibilitychange", poll);
         }
       }
@@ -1313,7 +1313,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const shoppingList = useMemo(() => {
     const totals = new Map<string, { itemKey: string; dishName: string; name: string; amount: number; unit: string; type: string; location: string; stockUsed: number; demand: string[] }>();
-    activeOrders.forEach((order) => {
+    shoppingScopeOrders.forEach((order) => {
       const snapshots = parseDishSnapshot(order);
       parseItems(order).forEach((item) => {
         const snapshot = snapshots.find((candidate) => candidate.dishId === item.dishId);
@@ -1323,17 +1323,19 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         // 采购永远按每道菜的原始配方分量显示，不按人数或点菜数量换算。
         ingredients.forEach((ingredient) => {
           const name = normalizedIngredientName(ingredient.name);
-          const key = `${item.dishId || dishName}::${name}::${ingredient.unit}`;
+          const normalized = normalizeIngredientAmount(ingredient.amount, ingredient.unit);
+          const key = `${item.dishId || dishName}::${name}::${normalized.unit}`;
           const current = totals.get(key);
           totals.set(key, {
             itemKey: key,
-            demand: [...(current?.demand || []), JSON.stringify([order.id, order.mealDate, ingredient.amount])],
+            demand: [...(current?.demand || []), JSON.stringify([order.id, order.mealDate, normalized.amount])],
             dishName,
             ...ingredient,
             name,
+            amount: (current?.amount || 0) + normalized.amount,
+            unit: normalized.unit,
             location: shoppingLocation(ingredient.type),
             stockUsed: 0,
-            amount: (current?.amount || 0) + ingredient.amount,
           });
         });
       });
@@ -1350,7 +1352,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       remainingStock.set(stockKey, Math.max(0, stocked - stockUsed));
       return { ...item, itemKey: procurementKey(item.itemKey, item.demand, item.amount, stockUsed), stockUsed, amount: Math.max(0, item.amount - stockUsed) };
     }).filter((item) => item.amount > 0.01).sort((a, b) => a.location.localeCompare(b.location, "zh-CN") || a.type.localeCompare(b.type, "zh-CN"));
-  }, [activeOrders, dishCatalog, pantryItems]);
+  }, [shoppingScopeOrders, dishCatalog, pantryItems]);
 
   const prepList = useMemo(() => {
     const merged = new Map<string, { key: string; name: string; amount: number; unit: string; type: string; action: string; dishes: Set<string> }>();
@@ -1364,9 +1366,10 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         // 制作台永远沿用菜谱原始分量；订单人数和点菜数量都不参与用料换算。
         ingredients.forEach((ingredient) => {
           const name = normalizedIngredientName(ingredient.name);
-          const key = `${name}-${ingredient.unit}`;
-          const current = merged.get(key) || { key, name, amount: 0, unit: ingredient.unit, type: ingredient.type, action: prepActionForIngredient(ingredient.type, name), dishes: new Set<string>() };
-          current.amount += ingredient.amount;
+          const normalized = normalizeIngredientAmount(ingredient.amount, ingredient.unit);
+          const key = `${name}-${normalized.unit}`;
+          const current = merged.get(key) || { key, name, amount: 0, unit: normalized.unit, type: ingredient.type, action: prepActionForIngredient(ingredient.type, name), dishes: new Set<string>() };
+          current.amount += normalized.amount;
           current.dishes.add(dishName);
           merged.set(key, current);
         });
@@ -1478,6 +1481,31 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     const response = await fetch(`/api/pantry?id=${encodeURIComponent(item.id)}`, { method: "DELETE" });
     if (!response.ok) return setNotice("库存删除失败");
     setPantryItems((current) => current.filter((candidate) => candidate.id !== item.id));
+  };
+
+  const changePantryAmount = async (item: PantryItem, action: "set" | "consume") => {
+    const answer = window.prompt(action === "consume" ? `实际用了多少 ${item.unit} ${item.name}？` : `把 ${item.name} 的库存改为多少 ${item.unit}？`, action === "consume" ? "" : String(item.amount));
+    if (answer === null) return;
+    const amount = Number(answer);
+    if (!Number.isFinite(amount) || amount < 0 || (action === "consume" && amount <= 0)) return setNotice("请输入有效数量");
+    const response = await fetch("/api/pantry", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: item.id, amount, unit: item.unit, action }) });
+    const data = await response.json() as { item?: PantryItem; error?: string };
+    if (!response.ok || !data.item) return setNotice(data.error || "库存更新失败");
+    setPantryItems((current) => current.map((candidate) => candidate.id === item.id ? data.item! : candidate));
+    setNotice(action === "consume" ? `已登记 ${item.name} 的实际消耗` : `已更新 ${item.name} 的库存`);
+  };
+
+  const updateCheckoutField = (field: keyof typeof checkoutDraft, value: string) => {
+    const next = { ...checkoutDraft, [field]: value };
+    setCheckoutDraft(next);
+    try { localStorage.setItem("ade-checkout:" + (initialInviteToken || "normal"), JSON.stringify(next)); } catch { /* form still works without persistence */ }
+  };
+
+  const openCheckout = () => {
+    const next = { ...checkoutDraft, customerName: checkoutDraft.customerName || (activeInvite?.mode === "shared" ? sharedGuestName : ""), mealDate: activeInvite?.mealDate || checkoutDraft.mealDate || kitchenDate() };
+    setCheckoutDraft(next);
+    try { localStorage.setItem("ade-checkout:" + (initialInviteToken || "normal"), JSON.stringify(next)); } catch { /* ignore */ }
+    setCheckoutOpen(true);
   };
 
   const addCategory = async (event: FormEvent<HTMLFormElement>) => {
@@ -1613,7 +1641,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       if (!response.ok) throw new Error(data.error || "提交失败，请再试一次");
       setCart({}); cartRef.current = {};
       orderRequestId.current = "";
-      try { sessionStorage.removeItem("ade-pending-order:" + (initialInviteToken || "normal")); localStorage.removeItem("ade-cart:" + (initialInviteToken || "normal")); } catch { /* ignore */ }
+      try { sessionStorage.removeItem("ade-pending-order:" + (initialInviteToken || "normal")); localStorage.removeItem("ade-cart:" + (initialInviteToken || "normal")); localStorage.removeItem("ade-checkout:" + (initialInviteToken || "normal")); } catch { /* ignore */ }
       setCheckoutOpen(false);
       setCartOpen(false);
       const progressToken = data.orderToken || data.guestToken;
@@ -1726,7 +1754,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       </div>
       {order.note && <p className="order-note">“{order.note}”</p>}
       {order.progressNote && <p className="order-progress-note"><span>最近通知</span>{order.progressNote}</p>}
-      {order.statusUpdatedAt && <p className={`order-progress-read${order.statusReadAt === order.statusUpdatedAt ? " read" : ""}`}><span>{order.statusReadAt === order.statusUpdatedAt ? "✓ 至少一位至少一位朋友已读" : "○ 等待朋友确认"}</span>{order.statusReadAt === order.statusUpdatedAt ? "提醒已确认" : "朋友打开进度页后会在这里显示"}</p>}
+      {order.dishesUpdatedAt && order.statusUpdatedAt && order.dishesUpdatedAt > order.statusUpdatedAt && <p className="order-change-alert"><strong>菜单有新变化</strong><span>接单后朋友又加菜或删菜，请重新核对采购与制作。</span></p>}
+      {order.dishesUpdatedAt && order.publishedMenuUpdatedAt && order.dishesUpdatedAt > order.publishedMenuUpdatedAt && <p className="order-change-alert stale"><strong>正式菜单已过期</strong><span>当前推送早于最近选菜变化，请重新编排并推送。</span></p>}
+      {order.statusUpdatedAt && <p className={`order-progress-read${order.statusReadAt === order.statusUpdatedAt ? " read" : ""}`}><span>{order.statusReadAt === order.statusUpdatedAt ? "✓ 至少一位朋友已读" : "○ 等待朋友确认"}</span>{order.statusReadAt === order.statusUpdatedAt ? "提醒已确认" : "朋友打开进度页后会在这里显示"}</p>}
       <div className="status-actions">
         {!archived && order.status === "new" && <button onClick={() => updateOrderStatus(order.id, "confirmed")}>确认接单</button>}
         {!archived && order.status === "confirmed" && <button onClick={() => updateOrderStatus(order.id, "shopping")}>开始买菜</button>}
@@ -2447,7 +2477,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               <div className="menu-count-pill"><strong>{allDishes.length}</strong><span>道拿手菜<br />等你翻牌</span></div>
             </div>
             {inviteLoading && <div className="invite-loading">正在把共享菜单端上来…</div>}
-            {activeInvite?.mode === "shared" && sharedDinner && <section className="shared-dinner-bar" aria-label="多人共享饭局"><div><span>SHARED DINNER · {sharedDinner.guests.length} 位朋友已加入</span><strong>大家选的菜会自动汇总到同一张单</strong></div><div className="shared-name-field"><label><small>你的称呼</small><input value={sharedGuestName} maxLength={30} onChange={(event) => { sharedGuestNameDirtyRef.current = true; setSharedGuestName(event.target.value); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void saveSharedGuestName(); } }} disabled={sharedGuestSaving} /></label><button type="button" onClick={() => void saveSharedGuestName()} disabled={sharedGuestSaving || !sharedDinner.guestToken}>{sharedGuestSaving ? "保存中…" : "确认称呼"}</button></div><p>{sharedDinner.guests.map((guest) => guest.displayName).join("、") || "等朋友加入"}</p><div className="shared-dinner-selections">{sharedDinner.selections.filter((guest) => guest.items.length).map((guest) => <span key={guest.guestId}><b>{guest.displayName}</b>：{guest.items.length} 道菜</span>)}{!sharedDinner.selections.some((guest) => guest.items.length) && <span>还没有人选菜，先挑一道你想吃的吧。</span>}</div>{sharedDinner.orderToken && <a className="shared-dinner-progress" href={`/order/${sharedDinner.orderToken}`}>这桌已送进厨房 · 查看实时进度与主厨菜单 →</a>}</section>}
+            {activeInvite?.mode === "shared" && sharedDinner && <section className="shared-dinner-bar" aria-label="多人共享饭局"><div><span>SHARED DINNER · {sharedDinner.guests.length} 位朋友已加入</span><strong>大家选的菜会自动汇总到同一张单</strong><em className={`shared-sync-state ${sharedSyncState}`}>{sharedSyncState === "syncing" ? "正在同步选菜…" : sharedSyncState === "error" ? "同步中断，请重试刚才的操作" : "✓ 已与这桌同步"}</em></div><div className="shared-name-field"><label><small>你的称呼</small><input value={sharedGuestName} maxLength={30} onChange={(event) => { sharedGuestNameDirtyRef.current = true; setSharedGuestName(event.target.value); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void saveSharedGuestName(); } }} disabled={sharedGuestSaving} /></label><button type="button" onClick={() => void saveSharedGuestName()} disabled={sharedGuestSaving || !sharedDinner.guestToken}>{sharedGuestSaving ? "保存中…" : "确认称呼"}</button></div><p>{sharedDinner.guests.map((guest) => guest.displayName).join("、") || "等朋友加入"}</p><div className="shared-dinner-selections">{sharedDinner.selections.filter((guest) => guest.items.length).map((guest) => <span key={guest.guestId}><b>{guest.displayName}</b>：{guest.items.length} 道菜</span>)}{!sharedDinner.selections.some((guest) => guest.items.length) && <span>还没有人选菜，先挑一道你想吃的吧。</span>}</div>{sharedDinner.orderToken && <a className="shared-dinner-progress" href={`/order/${sharedDinner.orderToken}`}>这桌已送进厨房 · 查看实时进度与主厨菜单 →</a>}</section>}
             {brandedInvite && brandedInvite.recommendedDishIds.length > 0 && <div className="recommended-combo"><span>主厨搭配</span><strong>如果不想纠结，就从这几道开始</strong><div>{brandedInvite.recommendedDishIds.map((id) => dishCatalog.find((dish) => dish.id === id)).filter(Boolean).map((dish) => <button type="button" key={dish!.id} disabled={menuReadOnly} onClick={() => updateQuantity(dish!.id, 1)}>{dish!.name}<i>＋</i></button>)}</div></div>}
             <div className="category-tabs-shell">
               <div className="category-tabs-heading"><div><span>MENU CATEGORIES</span><strong>想吃哪一类？</strong></div><small>{activeCategory === "全部" ? `全部 ${allDishes.length} 道` : `${activeCategory} · ${filteredDishes.length} 道`}</small></div>
@@ -2581,13 +2611,18 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               </section>
               <section className="dinner-overview panel" aria-labelledby="dinner-overview-title">
                 <div className="panel-title">
-                  <div><span>SHARED DINNERS</span><h2 id="dinner-overview-title">我的饭局</h2></div>
-                  <small>{invites.filter((invite) => invite.active).length} 场进行中</small>
+                  <div><span>DINNER CONTROL</span><h2 id="dinner-overview-title">饭局总览</h2></div>
+                  <small>{activeOrders.length} 场已下单 · {invites.filter((invite) => invite.active && !invite.sharedOrderId).length} 场待下单</small>
                 </div>
-                {invites.filter((invite) => invite.active).length === 0 ? (
+                {activeOrders.length === 0 && invites.filter((invite) => invite.active).length === 0 ? (
                   <div className="dinner-overview-empty"><span>🍽️</span><p>还没有进行中的饭局，请进入“共享饭局”一键生成分享链接。</p></div>
                 ) : (
                   <div className="dinner-overview-list">
+                    {activeOrders.slice(0, 8).map((order) => <article className="dinner-overview-card" key={order.id}>
+                      <div className="dinner-overview-date"><span>{order.mealDate}</span><b>{statusLabel[order.status]}</b></div>
+                      <div className="dinner-overview-copy"><div className="dinner-overview-title"><strong>{order.customerName}</strong><em><i aria-hidden="true" />{parseItems(order).length} 道菜</em></div><small>{order.guestCount} 人 · {order.note || "没有额外忌口"}</small><span>{order.dishesUpdatedAt && order.statusUpdatedAt && order.dishesUpdatedAt > order.statusUpdatedAt ? "选菜刚有变化，请重新核对" : "订单、采购、制作与正式菜单都从这里进入"}</span></div>
+                      <div className="dinner-overview-actions"><button type="button" onClick={() => { if (order.status === "new") setChefView("accepting"); else if (order.status === "confirmed") setChefView("shopping"); else if (order.status === "shopping" || order.status === "preparing") setChefView("cooking"); else setChefView("serving"); }}>进入当前环节</button><button type="button" className="quiet" onClick={() => composeFromOrder(order.id)}>编排正式菜单</button></div>
+                    </article>)}
                     {invites.filter((invite) => invite.active).slice(0, 6).map((invite) => (
                       <article className="dinner-overview-card" key={invite.id}>
                         <div className="dinner-overview-date"><span>{invite.mealDate}</span><b aria-hidden="true">{invite.mode === "shared" ? "多人" : "专属"}</b></div>
@@ -2663,6 +2698,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
                 <aside className="shopping-panel panel">
                   <div className="panel-title"><div><span>自动汇总</span><h2>采购清单</h2></div><div className="shopping-head-actions"><button className="shopping-reset" onClick={() => setPantryOpen((value) => !value)}>家中库存</button><button className="shopping-reset" onClick={shareShoppingList}>复制 / 分享</button><button className="shopping-reset" onClick={resetShoppingChecks}>重新开始</button></div></div>
+                  <label className="shopping-scope">查看范围<select value={shoppingScope} onChange={(event) => setShoppingScope(event.target.value)}><option value="all">全部进行中饭局</option>{Array.from(new Set(activeOrders.map((order) => order.mealDate))).sort().map((date) => <option key={date} value={`date:${date}`}>{date} 全部饭局</option>)}{activeOrders.map((order) => <option key={order.id} value={`order:${order.id}`}>{order.mealDate} · {order.customerName}</option>)}</select></label>
                   {shoppingList.length === 0 ? <div className="empty compact"><span>🧺</span><p>有新订单后，会自动拆解并合并食材用量。</p></div> : (
                     <div className="shopping-list">
                       {["菜市场 / 生鲜区", "调味品区", "超市其他区"].map((location) => {
@@ -2675,7 +2711,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                     </div>
                   )}
                   <div className="shopping-tip">每道菜按菜谱原始分量列出，并自动抵扣家中库存；仍显示在清单中的项目，就是需要补买的数量。</div>
-                  {pantryOpen && <div className="pantry-box"><div className="pantry-heading"><div><strong>家中库存</strong><small>相同名称和单位会自动从采购量中扣除</small></div><span>{pantryItems.length} 项</span></div><form onSubmit={submitPantryItem}><input name="name" required placeholder="食材名称" /><input name="amount" required type="number" min="0.1" step="0.1" placeholder="数量" /><input name="unit" required placeholder="单位" /><select name="type" defaultValue="其他"><option>生鲜</option><option>蔬菜</option><option>调料</option><option>其他</option></select><button>加入库存</button></form>{pantryItems.length > 0 && <div className="pantry-list">{pantryItems.map((item) => <div key={item.id}><span><strong>{item.name}</strong><small>{item.type}</small></span><b>{formatAmount(item.amount, item.unit)}</b><button onClick={() => deletePantryItem(item)} aria-label={`删除库存${item.name}`}>×</button></div>)}</div>}</div>}
+                  {pantryOpen && <div className="pantry-box"><div className="pantry-heading"><div><strong>家中库存</strong><small>kg / g、L / ml 会自动换算；可修改盘点数并登记实际消耗</small></div><span>{pantryItems.length} 项</span></div><form onSubmit={submitPantryItem}><input name="name" required placeholder="食材名称" /><input name="amount" required type="number" min="0.1" step="0.1" placeholder="数量" /><input name="unit" required placeholder="单位，如 kg / g" /><select name="type" defaultValue="其他"><option>生鲜</option><option>蔬菜</option><option>调料</option><option>其他</option></select><button>加入库存</button></form>{pantryItems.length > 0 && <div className="pantry-list">{pantryItems.map((item) => <div key={item.id}><span><strong>{item.name}</strong><small>{item.type}</small></span><b>{formatAmount(item.amount, item.unit)}</b><span className="pantry-actions"><button type="button" onClick={() => void changePantryAmount(item, "set")}>盘点修改</button><button type="button" onClick={() => void changePantryAmount(item, "consume")}>登记消耗</button><button type="button" onClick={() => void deletePantryItem(item)} aria-label={`删除库存${item.name}`}>×</button></span></div>)}</div>}</div>}
                 </aside>
               </div>
             </>
@@ -2867,6 +2903,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 <article className="data-transfer-card panel"><span className="data-transfer-icon">↓</span><div><span>EXPORT ALL DATA</span><h3>导出全部数据</h3><p>生成一个 ZIP 压缩包，包含 SQLite 业务数据与 uploads 下的所有原图、缩略图和元数据。适合下载到电脑或另一台服务器。</p></div><button type="button" className="primary-button" onClick={() => void exportAllData()}>导出 ZIP <span>→</span></button></article>
                 <article className="data-transfer-card panel"><span className="data-transfer-icon">↑</span><div><span>IMPORT BACKUP</span><h3>导入备份</h3><p>选择之前导出的 ZIP，整体替换当前业务数据和照片。导入前会自动备份当前 SQLite，SESSION_SECRET 等运行时密钥始终保留。</p></div><label className={`primary-button data-import-picker${dataImporting ? " is-loading" : ""}`}><input type="file" accept=".zip,application/zip" disabled={dataImporting} onChange={importAllData} />{dataImporting ? "正在导入…" : "选择 ZIP 导入"}<span>→</span></label></article>
               </div>
+              <BackupStatusPanel />
               <section className="data-transfer-notes panel"><strong>迁移前请确认</strong><ul><li>导入会替换当前菜谱、订单、邀请、采购和照片；请只选择可信的阿德小厨房导出包。</li><li>导入期间不要关闭页面或重启容器；完成后建议重新打开主厨工作台确认数据。</li><li>导出的压缩包可直接保存到电脑、云服务器或 NAS，不包含密码、会话密钥和 API Key。</li></ul></section>
             </section>
           ) : chefView === "invitations" ? (
@@ -2934,7 +2971,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             {activeInvite?.mode === "shared" && sharedDinner && <div className="shared-cart-summary"><strong>大家合计</strong>{sharedAggregateItems.map((item) => <span key={item.dishId}>{item.dish.name} × {item.quantity}</span>)}</div>}
             {Object.entries(cart).filter(([id]) => !allDishes.some(dish => dish.id === id)).map(([id, quantity]) => <div key={id}>已下架菜品（{quantity} 份）<button type="button" onClick={() => updateQuantity(id, -quantity)}>移除</button></div>)}
             <p className="cart-hint">{activeInvite?.mode === "shared" ? "每位朋友都能看到这张汇总单；选好后由任意一位通知主厨。" : "眼光不错呀。提交后我会和你确认时间，再认真去买菜。"}</p>
-            <button className="primary-button" onClick={() => setCheckoutOpen(true)}>{activeInvite?.mode === "shared" ? "通知主厨，汇总这一桌" : "把这顿饭约起来"} <span>→</span></button>
+            <button className="primary-button" onClick={openCheckout}>{activeInvite?.mode === "shared" ? "通知主厨，汇总这一桌" : "把这顿饭约起来"} <span>→</span></button>
           </aside>
         </div>
       )}
@@ -2944,9 +2981,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
           <form className="checkout-card" onSubmit={submitOrder}>
             <button type="button" className="close" onClick={() => setCheckoutOpen(false)} aria-label="关闭">×</button>
             <span className="eyebrow">ALMOST DINNER TIME</span><h2>{activeInvite?.mode === "shared" ? "把大家的选择送进厨房" : "最后，把饭局约起来"}</h2><p>{activeInvite?.mode === "shared" ? "这一桌会按大家当前选好的菜汇总，任意一位朋友都可以通知主厨。" : "告诉我谁来、哪天来。你负责期待，我负责好吃。"}</p>
-            <label><span>你的称呼</span><input name="customerName" required maxLength={30} placeholder="例如：小林" /></label>
-            <div className="form-row"><label><span>想哪天吃</span><input name="mealDate" type="date" min={today} defaultValue={activeInvite?.mealDate || today} readOnly={Boolean(activeInvite)} required /></label><label><span>几个人</span><input name="guestCount" type="number" min="1" max="20" defaultValue="2" required /></label></div>
-            <label><span>口味或忌口</span><textarea name="note" maxLength={200} placeholder="例如：少辣、不吃香菜，或者任何想说的话…" /></label>
+            <label><span>你的称呼</span><input name="customerName" required maxLength={30} placeholder="例如：小林" value={checkoutDraft.customerName} onChange={(event) => updateCheckoutField("customerName", event.target.value)} /></label>
+            <div className="form-row"><label><span>想哪天吃</span><input name="mealDate" type="date" min={today} value={activeInvite?.mealDate || checkoutDraft.mealDate} onChange={(event) => updateCheckoutField("mealDate", event.target.value)} readOnly={Boolean(activeInvite)} required /></label><label><span>几个人</span><input name="guestCount" type="number" min="1" max="20" value={checkoutDraft.guestCount} onChange={(event) => updateCheckoutField("guestCount", event.target.value)} required /></label></div>
+            <label><span>口味或忌口</span><textarea name="note" maxLength={200} placeholder="例如：少辣、不吃香菜，或者任何想说的话…" value={checkoutDraft.note} onChange={(event) => updateCheckoutField("note", event.target.value)} /></label>
             <button className="primary-button" disabled={submitting}>{submitting ? "正在提交…" : `确认点菜 · ${activeInvite?.mode === "shared" ? sharedAggregateItems.length : cartItems.length} 道 / ${activeInvite?.mode === "shared" ? sharedAggregatePortionCount : cartCount} 份`}<span>→</span></button>
           </form>
         </div>
