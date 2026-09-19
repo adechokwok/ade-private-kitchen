@@ -10,6 +10,7 @@ export const orders = sqliteTable("orders", {
   note: text("note").notNull().default(""),
   dishes: text("dishes").notNull(),
   dishSnapshot: text("dish_snapshot").notNull().default("[]"),
+  dishesUpdatedAt: text("dishes_updated_at").notNull().default(""),
   inviteId: text("invite_id").notNull().default(""),
   guestToken: text("guest_token").notNull().default(""),
   progressNote: text("progress_note").notNull().default(""),

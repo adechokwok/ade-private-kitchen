@@ -67,7 +67,11 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /form\.set\("image", croppedCover/);
   assert.match(page, /网络图片还没有预览成功/);
   assert.match(page, /loadInvite\(initialInviteToken, true\)/);
-  assert.match(page, /initialInviteToken \? 2000 : 15000/);
+  assert.match(page, /initialInviteToken \? 5000 : 30000/);
+  assert.match(page, /if-none-match/);
+  assert.match(page, /饭局总览/);
+  assert.match(page, /正式菜单已过期/);
+  assert.match(page, /登记消耗/);
   assert.match(page, /chef-magazine-v2\.jpg/);
   assert.match(page, /阿德私厨志/);
   assert.match(page, /chef-serving-wide\.jpg/);
@@ -355,8 +359,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(orderMemory, /a-f0-9/);
   assert.match(statusClient, /localStorage/);
   assert.match(statusClient, /setTimeout\(\(\) => void load\(\), 0\)/);
-  assert.match(statusClient, /setInterval\(\(\) => void load\(\), 15000\)/);
-  assert.match(statusClient, /每 15 秒自动更新/);
+  assert.match(statusClient, /setInterval\(refresh, 30000\)/);
+  assert.match(statusClient, /页面可见时每 30 秒检查/);
   assert.match(orderStatusPage, /dynamic = "force-dynamic"/);
   assert.match(orderStatusPage, /orders\.archivedAt/);
   assert.match(orderStatusPage, /order\?\.archivedAt/);

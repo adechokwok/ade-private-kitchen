@@ -5,7 +5,7 @@ import { dinnerInvites, dinnerJournals, orders } from "../../../../db/schema";
 
 const parseList = (value: string) => { try { return JSON.parse(value); } catch { return []; } };
 
-export async function GET(_request: Request, context: { params: Promise<{ token: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ token: string }> }) {
   const { token } = await context.params;
   if (!/^[a-f0-9]{32}$/i.test(token)) return Response.json({ error: "进度链接无效" }, { status: 404 });
   await ensureOrdersSchema();
@@ -21,7 +21,9 @@ export async function GET(_request: Request, context: { params: Promise<{ token:
   let [journalRow] = await getDb().select().from(dinnerJournals).where(eq(dinnerJournals.orderId, order.id)).limit(1);
   if (!journalRow && order.inviteId) [journalRow] = await getDb().select().from(dinnerJournals).where(and(eq(dinnerJournals.inviteId, order.inviteId), eq(dinnerJournals.orderId, ""))).limit(1);
   if (journalRow) journal = { ...journalRow, imageUrls: parseList(journalRow.imageUrls) };
-  return Response.json({ order: { customerName: order.customerName, mealDate: order.mealDate, guestCount: order.guestCount, dishes: parseList(order.dishes), dishSnapshot: parseList(order.dishSnapshot), status: order.status, progressNote: order.progressNote, statusUpdatedAt: order.statusUpdatedAt, statusReadAt: order.statusReadAt, publishedMenu: order.publishedMenu ? (() => { try { return JSON.parse(order.publishedMenu); } catch { return null; } })() : null, publishedMenuUpdatedAt: order.publishedMenuUpdatedAt, menuReadAt: order.menuReadAt, archivedAt: order.archivedAt, createdAt: order.createdAt }, invite, journal });
+  const etag = `W/\"order-${order.statusUpdatedAt}-${order.dishesUpdatedAt}-${order.publishedMenuUpdatedAt}-${order.statusReadAt}-${order.menuReadAt}-${journalRow?.updatedAt || ""}\"`;
+  if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: { etag } });
+  return Response.json({ order: { customerName: order.customerName, mealDate: order.mealDate, guestCount: order.guestCount, dishes: parseList(order.dishes), dishSnapshot: parseList(order.dishSnapshot), dishesUpdatedAt: order.dishesUpdatedAt, status: order.status, progressNote: order.progressNote, statusUpdatedAt: order.statusUpdatedAt, statusReadAt: order.statusReadAt, publishedMenu: order.publishedMenu ? (() => { try { return JSON.parse(order.publishedMenu); } catch { return null; } })() : null, publishedMenuUpdatedAt: order.publishedMenuUpdatedAt, menuReadAt: order.menuReadAt, archivedAt: order.archivedAt, createdAt: order.createdAt }, invite, journal }, { headers: { etag, "cache-control": "private, no-cache" } });
 }
 
 async function handlePOST(request: Request, context: { params: Promise<{ token: string }> }) {

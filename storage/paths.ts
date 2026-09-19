@@ -21,6 +21,12 @@ export function getDatabasePath() {
     : path.join(getDataDir(), "ade-kitchen.sqlite");
 }
 
+export function getBackupDir() {
+  return process.env.BACKUP_DIR
+    ? path.resolve(/* turbopackIgnore: true */ process.env.BACKUP_DIR)
+    : path.join(/* turbopackIgnore: true */ process.cwd(), "backups");
+}
+
 export function ensureDataDirectories() {
   mkdirSync(getDataDir(), { recursive: true });
   mkdirSync(getUploadsDir(), { recursive: true });

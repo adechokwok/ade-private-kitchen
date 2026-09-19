@@ -57,6 +57,7 @@ async function initializeensureOrdersSchema() {
     note TEXT NOT NULL DEFAULT '',
     dishes TEXT NOT NULL,
     dish_snapshot TEXT NOT NULL DEFAULT '[]',
+    dishes_updated_at TEXT NOT NULL DEFAULT '',
     invite_id TEXT NOT NULL DEFAULT '',
     guest_token TEXT NOT NULL DEFAULT '',
     progress_note TEXT NOT NULL DEFAULT '',
@@ -74,6 +75,7 @@ async function initializeensureOrdersSchema() {
   getSqlite().exec("CREATE UNIQUE INDEX IF NOT EXISTS orders_request_id_idx ON orders (request_id) WHERE request_id <> ''");
   const hadArchivedAt = columns.has("archived_at");
   addColumn("orders", columns, "dish_snapshot", "TEXT NOT NULL DEFAULT '[]'");
+  addColumn("orders", columns, "dishes_updated_at", "TEXT NOT NULL DEFAULT ''");
   addColumn("orders", columns, "invite_id", "TEXT NOT NULL DEFAULT ''");
   addColumn("orders", columns, "guest_token", "TEXT NOT NULL DEFAULT ''");
   addColumn("orders", columns, "progress_note", "TEXT NOT NULL DEFAULT ''");

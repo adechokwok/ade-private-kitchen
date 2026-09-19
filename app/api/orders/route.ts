@@ -124,7 +124,10 @@ export async function GET(request: Request) {
   try {
     await ensureOrdersSchema();
     const rows = await getDb().select().from(orders).orderBy(desc(orders.createdAt));
-    return Response.json({ orders: rows });
+    const version = rows.reduce((latest, row) => [row.createdAt, row.statusUpdatedAt, row.dishesUpdatedAt, row.publishedMenuUpdatedAt, row.archivedAt].sort().at(-1)! > latest ? [row.createdAt, row.statusUpdatedAt, row.dishesUpdatedAt, row.publishedMenuUpdatedAt, row.archivedAt].sort().at(-1)! : latest, "");
+    const etag = `W/\"orders-${rows.length}-${version}\"`;
+    if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: { etag } });
+    return Response.json({ orders: rows }, { headers: { etag, "cache-control": "private, no-cache" } });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
   }

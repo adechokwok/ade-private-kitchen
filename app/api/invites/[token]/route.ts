@@ -1,4 +1,5 @@
 import { withDataWrite } from "../../../../storage/maintenance";
+import { createHash } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 import { ensureDinnerInvitesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb, getSqlite } from "../../../../db";
 import { appSettings, customDishes, dinnerInviteGuests, dinnerInviteSelections, dinnerInvites, dinnerJournals, menuCategories, orders } from "../../../../db/schema";
@@ -6,6 +7,10 @@ import { appSettings, customDishes, dinnerInviteGuests, dinnerInviteSelections, 
 import { validMealDate } from "../../../kitchen-domain";
 
 const parseList = (value: string) => { try { return JSON.parse(value); } catch { return []; } };
+const afterOrderUpdates = (order: { statusUpdatedAt: string; dishesUpdatedAt: string; publishedMenuUpdatedAt: string }) => {
+  const latest = Math.max(0, ...[order.statusUpdatedAt, order.dishesUpdatedAt, order.publishedMenuUpdatedAt].map((value) => Date.parse(value) || 0));
+  return new Date(Math.max(Date.now(), latest + 1)).toISOString();
+};
 
 export async function GET(_request: Request, context: { params: Promise<{ token: string }> }) {
   const { token } = await context.params;
@@ -51,7 +56,9 @@ export async function GET(_request: Request, context: { params: Promise<{ token:
       orderToken: invite.sharedOrderId ? (await getDb().select({ guestToken: orders.guestToken }).from(orders).where(eq(orders.id, invite.sharedOrderId)).limit(1))[0]?.guestToken || "" : "",
     };
   }
-  return Response.json(response);
+  const etag = `W/\"invite-${createHash("sha256").update(JSON.stringify(response)).digest("base64url").slice(0, 24)}\"`;
+  if (_request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: { etag } });
+  return Response.json(response, { headers: { etag, "cache-control": "private, no-cache" } });
 }
 
 async function handlePOST(request: Request, context: { params: Promise<{ token: string }> }) {
@@ -116,7 +123,9 @@ async function handlePOST(request: Request, context: { params: Promise<{ token: 
         // Keep previously submitted dietary restrictions, including legacy notes.
         const addition = incomingNote ? guest.displayName + "：" + incomingNote : "";
         const note = existing?.note ? existing.note.split("\n").includes(addition) || !addition ? existing.note : existing.note + "\n" + addition : addition;
-        const values = { customerName: existing?.customerName || "多人饭局（" + participants.map(g => g.displayName).join("、").slice(0, 60) + "）", mealDate: existing?.mealDate || invite.mealDate, guestCount: existing?.guestCount || Math.min(20, Math.max(count, participants.length)), note, dishes: JSON.stringify(normalized), dishSnapshot: JSON.stringify(dishSnapshot) };
+        const dishes = JSON.stringify(normalized);
+        const dishesUpdatedAt = existing && (existing.dishes !== dishes || existing.dishSnapshot !== JSON.stringify(dishSnapshot)) ? afterOrderUpdates(existing) : existing?.dishesUpdatedAt || "";
+        const values = { customerName: existing?.customerName || "多人饭局（" + participants.map(g => g.displayName).join("、").slice(0, 60) + "）", mealDate: existing?.mealDate || invite.mealDate, guestCount: existing?.guestCount || Math.min(20, Math.max(count, participants.length)), note, dishes, dishSnapshot: JSON.stringify(dishSnapshot), dishesUpdatedAt };
         const order = existing
           ? db.update(orders).set(values).where(eq(orders.id, existing.id)).returning().get()
           : db.insert(orders).values({ ...values, id: crypto.randomUUID(), inviteId: invite.id, guestToken: crypto.randomUUID().replaceAll("-", "") }).returning().get();
