@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { activeGuestOrderStorageKey } from "../../order-memory";
@@ -22,7 +22,7 @@ const statusNotices: Record<string, { mark: string; title: string; description: 
 };
 
 type StatusData = {
-  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; statusReadAt: string; publishedMenuUpdatedAt: string; menuReadAt: string; archivedAt: string; publishedMenu?: { title: string; date: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; guestCount?: number; chefCredit?: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
+  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; statusReadAt: string; dishesUpdatedAt: string; publishedMenuUpdatedAt: string; menuReadAt: string; archivedAt: string; publishedMenu?: { title: string; date: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; guestCount?: number; chefCredit?: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
   invite?: { token: string; title: string; message: string; theme: string } | null;
   journal?: { title: string; note: string; imageUrls: string[] } | null;
 };
@@ -31,6 +31,7 @@ type PendingReadReceipt = { action: "read-status" | "read-menu"; updateKey: stri
 const templateMarks: Record<string, string> = { home: "家", romance: "♡", fine: "FD", spring: "春", midautumn: "月", birthday: "★", housewarming: "宅", summer: "夏", christmas: "✦", brunch: "☀" };
 
 export default function OrderStatusClient({ token }: { token: string }) {
+  const etagRef = useRef("");
   const [data, setData] = useState<StatusData | null>(null);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -52,10 +53,12 @@ export default function OrderStatusClient({ token }: { token: string }) {
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      const response = await fetch(`/api/order-status/${token}`, { cache: "no-store" });
+      const response = await fetch(`/api/order-status/${token}`, { cache: "no-store", headers: etagRef.current ? { "if-none-match": etagRef.current } : {} });
+      if (response.status === 304) { setUpdatedAt(new Date()); setError(""); return; }
       const payload = await response.json() as StatusData & { error?: string };
       if (!response.ok) throw new Error(payload.error || "进度加载失败");
       setData(payload);
+      etagRef.current = response.headers.get("etag") || "";
       setUpdatedAt(new Date());
       setError("");
     } catch (reason) {
@@ -72,10 +75,13 @@ export default function OrderStatusClient({ token }: { token: string }) {
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void load(), 0);
-    const timer = window.setInterval(() => void load(), 15000);
+    const refresh = () => { if (document.visibilityState === "visible") void load(); };
+    const timer = window.setInterval(refresh, 30000);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
       window.clearTimeout(initialLoad);
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
     };
   }, [load]);
 
@@ -179,7 +185,8 @@ export default function OrderStatusClient({ token }: { token: string }) {
       <span>PRIVATE DINNER · 实时进度</span>
       <h1>{data.invite?.title || `${data.order.customerName}的这顿饭`}</h1>
       <p>{data.invite?.message || "慢慢等，好好吃，厨房正在认真准备。"}</p>
-      <div className="status-live"><span><i />实时同步中</span><small>{updatedAt ? `最近更新 ${updatedAt.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "正在获取最新状态"} · 每 15 秒自动更新 · 新进度弹窗提醒</small></div>
+      <div className="status-live"><span><i />实时同步中</span><small>{updatedAt ? `最近检查 ${updatedAt.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "正在获取最新状态"} · 页面可见时每 30 秒检查 · 新进度弹窗提醒</small></div>
+      {data.order.publishedMenu && data.order.dishesUpdatedAt > data.order.publishedMenuUpdatedAt && <div className="status-sync-warning">这桌刚调整过选菜，主厨正在重新核对正式菜单；下方菜单卡暂时以最新推送版本为准。</div>}
       {error && <div className="status-sync-warning">这次同步没有成功：{error}。已有进度仍然保留，可以稍后重试。</div>}
       {readSyncError && <div className="status-sync-warning">{readSyncError}</div>}
       <div className="status-meta"><strong>{data.order.mealDate}</strong><small>{data.order.guestCount} 位 · {data.order.dishSnapshot.length} 道菜</small></div>
