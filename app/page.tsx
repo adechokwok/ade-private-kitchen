@@ -14,7 +14,7 @@ type Cart = Record<string, number>;
 type OrderItem = { dishId: string; quantity: number };
 type DishSnapshot = { dishId: string; name: string; baseServings: number; ingredients: Ingredient[]; steps?: string[]; minutes?: number; recipeSummary?: string; source?: string; difficulty?: string };
 type PublishedMenuCourse = { id: BanquetCourse; label: string; english: string; dishes: Array<{ name: string; description: string }> };
-type PublishedMenu = { title: string; date: string; message: string; template: BanquetTemplate; templateName: string; subtitle: string; occasion: string; guestCount?: number; chefCredit?: string; courses: PublishedMenuCourse[] };
+type PublishedMenu = { title: string; date: string; time?: string; message: string; template: BanquetTemplate; templateName: string; subtitle: string; occasion: string; fontId?: BanquetFontId; guestCount?: number; chefCredit?: string; courses: PublishedMenuCourse[] };
 type Order = {
   id: string;
   customerName: string;
@@ -81,8 +81,9 @@ type RecipeScreenshot = { id: string; file: File; preview: string; rotation: 0 |
 type ImageCrop = { x: number; y: number; zoom: number };
 type BanquetCourse = "starter" | "main" | "staple" | "soup";
 type BanquetItem = { dishId: string; course: BanquetCourse; snapshot?: Dish };
-type BanquetDraft = { template: BanquetTemplate; items: BanquetItem[]; title: string; templateName: string; date: string; message: string; subtitle: string; occasion: string; chefCredit: string; guestCount: number; courseEdits: Partial<Record<BanquetCourse, { label: string; english: string }>>; dishEdits: Record<string, { name: string; description: string }> };
+type BanquetDraft = { template: BanquetTemplate; items: BanquetItem[]; title: string; templateName: string; date: string; time?: string; message: string; subtitle: string; occasion: string; chefCredit: string; fontId?: BanquetFontId; guestCount: number; courseEdits: Partial<Record<BanquetCourse, { label: string; english: string }>>; dishEdits: Record<string, { name: string; description: string }> };
 type BanquetTemplate = "home" | "romance" | "fine" | "spring" | "midautumn" | "birthday" | "housewarming" | "summer" | "christmas" | "brunch" | "jiangnan" | "hotpot" | "birthday-party" | "archive-ledger" | "xuan-paper" | "ingredient-atlas" | "antique-post" | "bistro-handwritten";
+type BanquetFontId = "system-serif" | "zcool-xiaowei" | "zcool-kuaile" | "long-cang" | "zhi-mang-xing" | "ma-shan-zheng" | "liu-jian-mao-cao";
 type ChefView = "accepting" | "shopping" | "cooking" | "serving" | "menuManager" | "invitations" | "journals" | "dataTransfer";
 type StatusUpdateDraft = { orderId: string; status: Order["status"]; note: string };
 
@@ -179,6 +180,18 @@ const banquetCourseOrder: Record<BanquetCourse, number> = {
   staple: 2,
   soup: 3,
 };
+
+const banquetFonts: Array<{ id: BanquetFontId; name: string; style: string }> = [
+  { id: "system-serif", name: "宋体雅排", style: "清晰稳重 · 通用" },
+  { id: "zcool-xiaowei", name: "站酷小薇", style: "秀气手写 · 易读推荐" },
+  { id: "zcool-kuaile", name: "站酷快乐体", style: "圆润轻松 · 明快" },
+  { id: "long-cang", name: "龙藏体", style: "舒展手写 · 标题感" },
+  { id: "zhi-mang-xing", name: "钟齐志莽行书", style: "浓墨行书 · 适合短句" },
+  { id: "ma-shan-zheng", name: "马善政毛笔楷书", style: "传统书写 · 有笔意" },
+  { id: "liu-jian-mao-cao", name: "刘建毛草", style: "奔放草书 · 装饰感" },
+];
+const validBanquetFonts = new Set<BanquetFontId>(banquetFonts.map((font) => font.id));
+const defaultBanquetFont: BanquetFontId = "zcool-xiaowei";
 
 function sortBanquetItemsByCourse(items: BanquetItem[]) {
   return items
@@ -493,6 +506,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [banquetTitle, setBanquetTitle] = useState("今晚家宴");
   const [banquetTemplateName, setBanquetTemplateName] = useState(banquetTemplates[0].name);
   const [banquetDate, setBanquetDate] = useState(() => kitchenDate());
+  const [banquetTime, setBanquetTime] = useState("18:30");
+  const [banquetFontId, setBanquetFontId] = useState<BanquetFontId>(defaultBanquetFont);
   const [banquetMessage, setBanquetMessage] = useState("为喜欢的人认真做一桌饭");
   const [banquetSubtitle, setBanquetSubtitle] = useState(banquetTemplates[0].subtitle);
   const [banquetOccasion, setBanquetOccasion] = useState(banquetTemplates[0].occasion);
@@ -517,9 +532,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const draftCache = useRef<Record<string, { draft: BanquetDraft; revision: number }>>({});
   const draftQueue = useRef(Promise.resolve());
   const draftBlocked = useRef(new Set<string>());
-  const currentDraft = useMemo<BanquetDraft>(() => ({ template: banquetTemplate, items: banquetItems, title: banquetTitle, templateName: banquetTemplateName, date: banquetDate, message: banquetMessage, subtitle: banquetSubtitle, occasion: banquetOccasion, chefCredit: banquetChefCredit, guestCount: banquetGuestCount, courseEdits: banquetCourseEdits, dishEdits: banquetDishEdits }), [banquetTemplate, banquetItems, banquetTitle, banquetTemplateName, banquetDate, banquetMessage, banquetSubtitle, banquetOccasion, banquetChefCredit, banquetGuestCount, banquetCourseEdits, banquetDishEdits]);
+  const currentDraft = useMemo<BanquetDraft>(() => ({ template: banquetTemplate, items: banquetItems, title: banquetTitle, templateName: banquetTemplateName, date: banquetDate, time: banquetTime, message: banquetMessage, subtitle: banquetSubtitle, occasion: banquetOccasion, chefCredit: banquetChefCredit, fontId: banquetFontId, guestCount: banquetGuestCount, courseEdits: banquetCourseEdits, dishEdits: banquetDishEdits }), [banquetTemplate, banquetItems, banquetTitle, banquetTemplateName, banquetDate, banquetTime, banquetMessage, banquetSubtitle, banquetOccasion, banquetChefCredit, banquetFontId, banquetGuestCount, banquetCourseEdits, banquetDishEdits]);
   const restoreDraft = (draft: BanquetDraft) => {
-    setBanquetTemplate(draft.template); setBanquetItems(draft.items); setBanquetTitle(draft.title); setBanquetTemplateName(draft.templateName); setBanquetDate(draft.date); setBanquetMessage(draft.message); setBanquetSubtitle(draft.subtitle); setBanquetOccasion(draft.occasion); setBanquetChefCredit(draft.chefCredit); setBanquetGuestCount(draft.guestCount); setBanquetCourseEdits(draft.courseEdits); setBanquetDishEdits(draft.dishEdits);
+    setBanquetTemplate(draft.template); setBanquetItems(draft.items); setBanquetTitle(draft.title); setBanquetTemplateName(draft.templateName); setBanquetDate(draft.date); setBanquetTime(draft.time || "18:30"); setBanquetFontId(draft.fontId && validBanquetFonts.has(draft.fontId) ? draft.fontId : defaultBanquetFont); setBanquetMessage(draft.message); setBanquetSubtitle(draft.subtitle); setBanquetOccasion(draft.occasion); setBanquetChefCredit(draft.chefCredit); setBanquetGuestCount(draft.guestCount); setBanquetCourseEdits(draft.courseEdits); setBanquetDishEdits(draft.dishEdits);
   };
   const cacheDraft = (scope: string, draft: BanquetDraft) => {
     draftCache.current[scope] = { draft, revision: draftCache.current[scope]?.revision || 0 };
@@ -864,8 +879,10 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       const publishedMenu: PublishedMenu = {
         title: banquetTitle || activeBanquetTemplate.defaultTitle,
         date: banquetDate,
+        time: banquetTime,
         message: banquetMessage || activeBanquetTemplate.defaultMessage,
         template: banquetTemplate,
+        fontId: banquetFontId,
         templateName: banquetTemplateName || activeBanquetTemplate.name,
         subtitle: banquetSubtitle || activeBanquetTemplate.subtitle,
         occasion: banquetOccasion || activeBanquetTemplate.occasion,
@@ -2377,9 +2394,11 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               <label><span>菜单标题</span><input value={banquetTitle} onChange={(event) => setBanquetTitle(event.target.value)} maxLength={32} /></label>
               <label><span>菜单署名</span><input value={banquetTemplateName} onChange={(event) => setBanquetTemplateName(event.target.value)} maxLength={24} /></label>
               <label><span>用餐日期</span><input type="date" value={banquetDate} onChange={(event) => setBanquetDate(event.target.value)} /></label>
+              <label><span>聚会时间</span><input type="time" value={banquetTime} onChange={(event) => setBanquetTime(event.target.value)} /></label>
               <label><span>菜单副标题</span><input value={banquetSubtitle} onChange={(event) => setBanquetSubtitle(event.target.value)} maxLength={60} /></label>
               <label><span>场合文字</span><input value={banquetOccasion} onChange={(event) => setBanquetOccasion(event.target.value)} maxLength={32} /></label>
               <label><span>用餐人数</span><input type="number" min="1" max="20" value={banquetGuestCount || ""} placeholder="自由菜单可选" onChange={(event) => setBanquetGuestCount(Math.min(20, Math.max(0, Number(event.target.value) || 0)))} /></label>
+          <label className="wide"><span>菜单字体</span><select value={banquetFontId} onChange={(event) => setBanquetFontId(event.target.value as BanquetFontId)}>{banquetFonts.map((font) => <option key={font.id} value={font.id}>{font.name} · {font.style}</option>)}</select><small className={`banquet-font-specimen menu-font-${banquetFontId}`}>阿德小厨房 · 今晚家宴 · {banquetFonts.find((font) => font.id === banquetFontId)?.style}</small><small className="banquet-font-hint">字体会应用到当前整张菜单，并随草稿和推送菜单保存；书写感更强的字体适合标题，正文可选清晰字体。</small></label>
               <label className="wide"><span>写给客人的话</span><input value={banquetMessage} onChange={(event) => setBanquetMessage(event.target.value)} maxLength={70} /></label>
               <label className="wide"><span>菜单落款</span><input value={banquetChefCredit} onChange={(event) => setBanquetChefCredit(event.target.value)} maxLength={50} /></label>
             </div>
@@ -2408,20 +2427,16 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       </div>
 
       <aside className="banquet-preview-wrap">
-        <div ref={banquetPreviewRef} className={`banquet-preview template-${banquetTemplate}`}>
+        <div ref={banquetPreviewRef} className={`banquet-preview template-${banquetTemplate} menu-font-${banquetFontId}`}>
           <div className="menu-card-header">
-            {banquetTemplate === "archive-ledger" && <svg className="archive-card-arc" viewBox="0 0 460 100" aria-hidden="true"><defs><path id="archive-ledger-arc" d="M 24 95 C 75 0 385 0 436 95" /></defs><text><textPath href="#archive-ledger-arc" startOffset="50%" textAnchor="middle">阿德小厨房 · PRIVATE KITCHEN</textPath></text></svg>}
-            <small>阿德小厨房 · PRIVATE KITCHEN</small>
-            <h2>{banquetTemplate === "archive-ledger" ? "阿德小厨房" : banquetTitle || activeBanquetTemplate.defaultTitle}</h2>
-            <p><strong>{banquetTemplate === "archive-ledger" ? "ADE'S PRIVATE KITCHEN" : banquetTemplateName || activeBanquetTemplate.name}</strong><span>{banquetSubtitle || activeBanquetTemplate.subtitle}</span></p>
-            <div className="archive-card-meta"><span>{banquetDate || "择日相聚"}</span><span>{banquetOccasion || activeBanquetTemplate.occasion}</span>{banquetGuestCount > 0 && <span>{banquetGuestCount} 位宾客</span>}</div>
-            {banquetTemplate === "archive-ledger" && <>
-              <div className="archive-card-fields"><span><small>AUTHOR</small><strong>{banquetChefCredit || "ADE"}</strong></span><span><small>TITLE</small><strong>{banquetTitle || activeBanquetTemplate.defaultTitle}</strong></span><span><small>DATE</small><strong>{banquetDate || "TODAY"}</strong></span><span><small>GUEST</small><strong>{banquetTemplateName || activeBanquetTemplate.name}</strong></span><span><small>NO.</small><strong>{banquetGuestCount || "—"}</strong></span></div>
-              <div className="archive-card-ribbon">阿德小厨房 · 朋友家宴</div>
-              <div className="archive-card-tagline">{banquetMessage || activeBanquetTemplate.defaultMessage}</div>
-            </>}
+            {banquetTemplate === "archive-ledger" && <svg className="archive-card-arc" viewBox="0 0 460 100" aria-hidden="true"><defs><path id="archive-ledger-arc" d="M 18 95 C 70 -2 390 -2 442 95" /></defs><text><textPath href="#archive-ledger-arc" startOffset="50%" textAnchor="middle">阿德小厨房</textPath></text></svg>}
+            {banquetTemplate !== "archive-ledger" && <small>阿德小厨房 · PRIVATE KITCHEN</small>}
+            {banquetTemplate !== "archive-ledger" && <h2>{banquetTitle || activeBanquetTemplate.defaultTitle}</h2>}
+            {banquetTemplate !== "archive-ledger" && <p><strong>{banquetTemplateName || activeBanquetTemplate.name}</strong><span>{banquetSubtitle || activeBanquetTemplate.subtitle}</span></p>}
+            <div className="archive-card-meta"><span>{banquetDate || "择日相聚"}{banquetTime ? ` · ${banquetTime}` : ""}</span>{banquetTemplate !== "archive-ledger" && <span>{banquetOccasion || activeBanquetTemplate.occasion}</span>}{banquetGuestCount > 0 && <span>{banquetGuestCount} 位宾客</span>}</div>
+            {banquetTemplate === "archive-ledger" && <div className="archive-card-ribbon">{banquetTitle || activeBanquetTemplate.defaultTitle}</div>}
           </div>
-          {banquetTemplate === "archive-ledger" && <><div className="archive-card-side-note left">阿德小厨房</div><div className="archive-card-side-note right">阿德小厨房</div></>}
+          {banquetTemplate === "archive-ledger" && <><div className="archive-card-side-note left">唤醒久困英雄，指引迷途君子</div><div className="archive-card-side-note right">唤醒久困英雄，指引迷途君子</div></>}
           <div className="menu-card-courses">
             {banquetCourses.map((course) => {
               const courseDishes = banquetDishes.filter((item) => item.course === course.id);

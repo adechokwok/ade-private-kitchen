@@ -14,8 +14,9 @@
 - 朋友下单后，当前浏览器会记住尚未归档的饭局；再次打开普通菜单或邀请链接时会自动回到进度页。只有主厨确认归档后，朋友再次进入才会看到新的点菜页面。
 - 主厨端通过“一键生成共享饭局”创建多人饭局：无需再手动挑菜或设置推荐，系统自动使用当前所有已上架菜品；同一链接可发给一桌朋友，每个人用自己的称呼加入并实时同步选菜，服务器汇总后生成一份兼容现有订单、进度提醒和正式菜单推送的饭局。后台上架、下架和推荐变化会动态同步到共享点菜页，另一场饭局使用另一条链接，数据完全隔离。
 - 制作执行台会同步日期、人数、忌口、按菜谱原始分量列出的用料和完整步骤；订单人数与点菜数量都不会改变单道菜的原始用量，并提供合并备菜、按开饭时间倒排、单菜计时器与库存不足提醒。
-- 宴席编排器提供 18 套独立主题：温馨家宴、二人世界、Fine Dining、新春团圆、中秋雅宴、生日烛光、乔迁暖居、夏日晚风、冬日圣诞、周末早午餐、江南雅集、围炉夜话、欢乐生日派对、复古档案卡、宣纸手书、黑底食材图鉴、仿古宴帖和暖灯手写菜单；背景烘托氛围，菜名和正文保留为可编辑文字，并使用低对比底层保证易读。
-- 手写菜单在本地托管 Ma Shan Zheng 与 Liu Jian Mao Cao 字体，并随字体文件附带 SIL Open Font License 1.1；字体来源分别为 [googlefonts/mashanzheng](https://github.com/googlefonts/mashanzheng) 和 [googlefonts/liujianmaocao](https://github.com/googlefonts/liujianmaocao)。
+- 宴席编排器提供 18 套独立主题：温馨家宴、二人世界、Fine Dining、新春团圆、中秋雅宴、生日烛光、乔迁暖居、夏日晚风、冬日圣诞、周末早午餐、江南雅集、围炉夜话、欢乐生日派对、复古档案卡、宣纸手书、黑底食材图鉴、仿古宴帖和暖灯手写菜单；每套都能单独选择字体，实时预览会显示所选字体样张，字体设置随草稿和正式菜单保存。
+- 菜单提供系统宋体、站酷小薇、站酷快乐体、龙藏体、钟齐志莽行书、马善政毛笔楷书和刘建毛草 7 种本地字体；其中手写风格覆盖秀气、圆润、行楷和毛笔字，正文优先选清晰字体。字体均随仓库保存 SIL Open Font License 1.1 许可文件，来源为 [ZCOOL XiaoWei](https://github.com/google/fonts/tree/main/ofl/zcoolxiaowei)、[ZCOOL KuaiLe](https://github.com/google/fonts/tree/main/ofl/zcoolkuaile)、[Long Cang](https://github.com/google/fonts/tree/main/ofl/longcang)、[Zhi Mang Xing](https://github.com/google/fonts/tree/main/ofl/zhimangxing)、[Ma Shan Zheng](https://github.com/google/fonts/tree/main/ofl/mashanzheng) 和 [Liu Jian Mao Cao](https://github.com/google/fonts/tree/main/ofl/liujianmaocao)。
+- 复古档案卡只保留一处放大的“阿德小厨房”品牌字样和其下方的聚会日期、时间；菜单标题及菜品排在主厨插画下方，两侧固定使用“唤醒久困英雄，指引迷途君子”。黑底食材图鉴使用协调暗色的文字卡，避免浅色卡片跳出画面；仿古宴帖标题框与底图朱红题签对齐，品牌文字单独居中。
 - 通义千问会为识别出的菜谱生成 22–42 字、凝练有画面的菜品介绍，以及通常 10–24 字、以菜品知识作底并带口语吐槽反转的“阿德式”点菜 slogan；两项都能在菜单编辑中修改或单独重新生成，完整风格基准见 `COPY_STYLE.md`。
 - 主厨端支持批量导入结构化 JSON 菜谱：先预览新增与更新数量，确认时自动备份数据库并按菜名合并，原有菜品照片和菜单状态不会被覆盖。
 - 菜谱截图、菜品封面、制作过程图和餐桌日记照片在电脑端都可直接拖入对应上传区；点击选择和手机相册上传方式继续保留。
