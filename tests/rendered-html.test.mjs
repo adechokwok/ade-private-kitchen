@@ -46,7 +46,7 @@ test("ships the private menu and chef workflow", async () => {
     "订单和采购提醒", "制作执行台", "合并备菜清单", "倒排烹饪顺序", "单菜计时器", "库存不足提醒",
     "等待通知与确认归档", "菜单管理", "自定义新类型", "批量加入大类", "点菜端 slogan", "千问再生成", "家中库存",
     "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "一键生成共享饭局", "餐桌日记，想写的时候再写", "温馨家宴", "二人世界", "Fine Dining",
-    "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐", "多人共享一张单",
+    "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐", "江南雅集", "围炉夜话", "欢乐生日派对", "多人共享一张单",
   ]) assert.match(page, new RegExp(phrase));
   assert.match(page, /function ImageDropField/);
   assert.match(page, /onDrop=\{dropFiles\}/);
@@ -320,6 +320,17 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /按前菜 → 热菜 → 主食 → 汤饮甜品自动排列/);
   assert.match(page, /换栏目后会自动归位/);
   assert.match(globalStyles, /\.banquet-course-group/);
+  for (const template of ["jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"]) {
+    assert.match(globalStyles, new RegExp(`\\.template-${template}`));
+    const asset = await readFile(new URL(`../public/banquet/${template}.webp`, import.meta.url));
+    assert.ok(asset.byteLength > 5_000 && asset.byteLength < 300_000, `${template} 背景应存在并保持轻量`);
+  }
+  assert.match(globalStyles, /@font-face\s*\{\s*font-family:\s*"Ma Shan Zheng"/);
+  assert.match(globalStyles, /@font-face\s*\{\s*font-family:\s*"Liu Jian Mao Cao"/);
+  for (const font of ["MaShanZheng-Regular.ttf", "LiuJianMaoCao-Regular.ttf", "OFL-MaShanZheng.txt", "OFL-LiuJianMaoCao.txt"]) {
+    const asset = await readFile(new URL(`../public/fonts/${font}`, import.meta.url));
+    assert.ok(asset.byteLength > 1_000, `${font} 字体或许可证应已随项目保存`);
+  }
   assert.doesNotMatch(page, /duplicateDish/);
   assert.doesNotMatch(page, />复制<\/button>/);
   assert.match(page, /managed-card-actions\$\{dish\.active \? "" : " archived"\}/);
@@ -352,6 +363,9 @@ test("ships the private menu and chef workflow", async () => {
   for (const emoji of ["🥰", "🛒", "🔥", "😋", "🥺", "📜"]) assert.match(statusClient, new RegExp(emoji, "u"));
   assert.match(globalStyles, /Apple Color Emoji/);
   assert.match(statusClient, /guest-published-menu/);
+  assert.doesNotMatch(page, /className="menu-card-ornament"/);
+  assert.doesNotMatch(statusClient, /className="menu-card-ornament"/);
+  assert.match(globalStyles, /\.menu-card-header h2 \{ margin: 24px 0 12px/);
   assert.match(statusClient, /ade-order-menu-update/);
   assert.match(statusClient, /activeGuestOrderStorageKey/);
   assert.match(statusClient, /data\?\.order\.archivedAt/);
