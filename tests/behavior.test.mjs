@@ -171,12 +171,20 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     const inv = await invite(); await select(inv); const order = (await submit(inv)).data.order;
     const accepted = await api("/api/orders", { action: "update-status", id: order.id, status: "confirmed", progressNote: "接单" }, true);
     assert.equal(accepted.status, 200);
-    const publishedMenu = { title: "测试家宴", date: "2026-10-02", message: "开饭", template: "home", templateName: "温馨家宴", subtitle: "DINNER", occasion: "朋友相聚", courses: [{ id: "main", label: "主厨热菜", english: "MAIN", dishes: [{ name: dish.name, description: "测试菜" }] }] };
+    const publishedMenu = { title: "测试家宴", date: "2026-10-02", time: "19:00", message: "开饭", template: "home", fontId: "long-cang", templateName: "温馨家宴", subtitle: "DINNER", occasion: "朋友相聚", courses: [{ id: "main", label: "主厨热菜", english: "MAIN", dishes: [{ name: dish.name, description: "测试菜" }] }] };
     const published = await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu }, true); assert.equal(published.status, 200);
+    assert.equal(JSON.parse(published.data.order.publishedMenu).fontId, "long-cang");
+    assert.equal(JSON.parse(published.data.order.publishedMenu).time, "19:00");
     for (const template of ["jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"]) {
       const themed = await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, template } }, true);
       assert.equal(themed.status, 200); assert.equal(JSON.parse(themed.data.order.publishedMenu).template, template);
     }
+    for (const fontId of ["system-serif", "zcool-xiaowei", "zcool-kuaile", "long-cang", "zhi-mang-xing", "ma-shan-zheng", "liu-jian-mao-cao"]) {
+      const selected = await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, fontId } }, true);
+      assert.equal(selected.status, 200); assert.equal(JSON.parse(selected.data.order.publishedMenu).fontId, fontId);
+    }
+    assert.equal((await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, fontId: "external-font" } }, true)).status, 400);
+    assert.equal((await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, time: "29:90" } }, true)).status, 400);
     await select(inv, 2); const changed = await submit(inv); assert.equal(changed.status, 200);
     assert.ok(changed.data.order.dishesUpdatedAt > changed.data.order.statusUpdatedAt);
     assert.ok(changed.data.order.dishesUpdatedAt > changed.data.order.publishedMenuUpdatedAt);
@@ -195,7 +203,7 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     const second = await fetch(base + "/api/orders", { headers: { cookie, "if-none-match": etag } }); assert.equal(second.status, 304);
   });
   await t.test("complete menu drafts round-trip and reject stale revisions", async () => {
-    let draft = { items: [], title: "删除所有菜仍保留", template: "romance", templateName: "二人世界", date: "2026-10-02", subtitle: "验收", occasion: "朋友相聚", chefCredit: "阿德", guestCount: 2, courseEdits: { main: { label: "手工标题", english: "CUSTOM" } }, dishEdits: {}, message: "手工祝福" };
+    let draft = { items: [], title: "删除所有菜仍保留", template: "romance", templateName: "二人世界", date: "2026-10-02", time: "19:30", fontId: "zcool-xiaowei", subtitle: "验收", occasion: "朋友相聚", chefCredit: "阿德", guestCount: 2, courseEdits: { main: { label: "手工标题", english: "CUSTOM" } }, dishEdits: {}, message: "手工祝福" };
     let revision = 0;
     for (const template of ["jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"]) {
       draft = { ...draft, template };
@@ -205,6 +213,8 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     const result = await api("/api/menu-drafts", undefined, true);
     assert.deepEqual(result.data.drafts.free.draft, draft);
     assert.equal((await api("/api/menu-drafts", { scope: "free", draft: { ...draft, title: "stale" }, revision: 0 }, true, "PUT")).status, 409);
+    assert.equal((await api("/api/menu-drafts", { scope: "free", draft: { ...draft, fontId: "external-font" }, revision }, true, "PUT")).status, 400);
+    assert.equal((await api("/api/menu-drafts", { scope: "free", draft: { ...draft, time: "25:80" }, revision }, true, "PUT")).status, 400);
     assert.equal((await api("/api/menu-drafts", { scope: "free", draft: { items: [] }, revision: 1 }, true, "PUT")).status, 400);
     assert.equal((await api("/api/menu-drafts")).status, 401);
   });

@@ -320,14 +320,24 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /按前菜 → 热菜 → 主食 → 汤饮甜品自动排列/);
   assert.match(page, /换栏目后会自动归位/);
   assert.match(globalStyles, /\.banquet-course-group/);
+  assert.match(page, /banquet-font-specimen/);
+  assert.match(page, /菜单字体/);
+  assert.match(page, /阿德小厨房 · 今晚家宴/);
+  assert.match(page, /阿德小厨房<\/textPath>/);
+  assert.match(page, /唤醒久困英雄，指引迷途君子/);
+  assert.match(globalStyles, /\.template-ingredient-atlas \.menu-card-courses > section[^\n]*background: rgba\(20,19,18,\.96\)/);
+  assert.match(globalStyles, /\.template-antique-post \.menu-card-header h2 \{ top: calc\(5\.78cqw - 72px\)/);
   for (const template of ["jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"]) {
     assert.match(globalStyles, new RegExp(`\\.template-${template}`));
     const asset = await readFile(new URL(`../public/banquet/${template}.webp`, import.meta.url));
     assert.ok(asset.byteLength > 5_000 && asset.byteLength < 300_000, `${template} 背景应存在并保持轻量`);
   }
-  assert.match(globalStyles, /@font-face\s*\{\s*font-family:\s*"Ma Shan Zheng"/);
-  assert.match(globalStyles, /@font-face\s*\{\s*font-family:\s*"Liu Jian Mao Cao"/);
-  for (const font of ["MaShanZheng-Regular.ttf", "LiuJianMaoCao-Regular.ttf", "OFL-MaShanZheng.txt", "OFL-LiuJianMaoCao.txt"]) {
+  const archiveBackground = await readFile(new URL("../public/banquet/archive-ledger-v2.webp", import.meta.url));
+  assert.ok(archiveBackground.byteLength > 5_000 && archiveBackground.byteLength < 300_000, "复古档案卡新版底图应存在并保持轻量");
+  for (const face of ["Ma Shan Zheng", "Liu Jian Mao Cao", "Long Cang", "ZCOOL XiaoWei", "Zhi Mang Xing", "ZCOOL KuaiLe"]) {
+    assert.match(globalStyles, new RegExp(`@font-face\\s*\\{\\s*font-family:\\s*"${face}"`));
+  }
+  for (const font of ["MaShanZheng-Regular.ttf", "LiuJianMaoCao-Regular.ttf", "LongCang-Regular.ttf", "ZCOOLXiaoWei-Regular.ttf", "ZhiMangXing-Regular.ttf", "ZCOOLKuaiLe-Regular.ttf", "OFL-MaShanZheng.txt", "OFL-LiuJianMaoCao.txt", "OFL-LongCang.txt", "OFL-ZCOOLXiaoWei.txt", "OFL-ZhiMangXing.txt", "OFL-ZCOOLKuaiLe.txt"]) {
     const asset = await readFile(new URL(`../public/fonts/${font}`, import.meta.url));
     assert.ok(asset.byteLength > 1_000, `${font} 字体或许可证应已随项目保存`);
   }

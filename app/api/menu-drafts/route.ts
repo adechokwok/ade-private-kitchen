@@ -5,11 +5,14 @@ import { ensureMenuLibrary, getDb, getSqlite } from "../../../db";
 import { appSettings } from "../../../db/schema";
 
 const prefix = "banquet_draft_v1:";
+const validMenuFonts = new Set(["system-serif", "zcool-xiaowei", "zcool-kuaile", "long-cang", "zhi-mang-xing", "ma-shan-zheng", "liu-jian-mao-cao"]);
 function validDraft(draft: unknown): boolean {
   if (!draft || typeof draft !== "object" || Array.isArray(draft)) return false;
   const value = draft as Record<string, unknown>;
   if (!["home", "romance", "fine", "spring", "midautumn", "birthday", "housewarming", "summer", "christmas", "brunch", "jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"].includes(String(value.template))) return false;
   if (!["title", "templateName", "date", "message", "subtitle", "occasion", "chefCredit"].every(key => typeof value[key] === "string")) return false;
+  if (value.time !== undefined && (typeof value.time !== "string" || (value.time !== "" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)))) return false;
+  if (value.fontId !== undefined && (typeof value.fontId !== "string" || !validMenuFonts.has(value.fontId))) return false;
   if (typeof value.guestCount !== "number" || !Number.isInteger(value.guestCount) || value.guestCount < 0 || value.guestCount > 20) return false;
   if (!["courseEdits", "dishEdits"].every(key => value[key] && typeof value[key] === "object" && !Array.isArray(value[key]))) return false;
   return Array.isArray(value.items) && value.items.length <= 120 && value.items.every(item => item && typeof item === "object" && typeof item.dishId === "string" && ["starter", "main", "staple", "soup"].includes(item.course));
