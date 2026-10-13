@@ -8,7 +8,7 @@ const prefix = "banquet_draft_v1:";
 function validDraft(draft: unknown): boolean {
   if (!draft || typeof draft !== "object" || Array.isArray(draft)) return false;
   const value = draft as Record<string, unknown>;
-  if (!["home", "romance", "fine", "spring", "midautumn", "birthday", "housewarming", "summer", "christmas", "brunch"].includes(String(value.template))) return false;
+  if (!["home", "romance", "fine", "spring", "midautumn", "birthday", "housewarming", "summer", "christmas", "brunch", "jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"].includes(String(value.template))) return false;
   if (!["title", "templateName", "date", "message", "subtitle", "occasion", "chefCredit"].every(key => typeof value[key] === "string")) return false;
   if (typeof value.guestCount !== "number" || !Number.isInteger(value.guestCount) || value.guestCount < 0 || value.guestCount > 20) return false;
   if (!["courseEdits", "dishEdits"].every(key => value[key] && typeof value[key] === "object" && !Array.isArray(value[key]))) return false;

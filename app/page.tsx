@@ -82,7 +82,7 @@ type ImageCrop = { x: number; y: number; zoom: number };
 type BanquetCourse = "starter" | "main" | "staple" | "soup";
 type BanquetItem = { dishId: string; course: BanquetCourse; snapshot?: Dish };
 type BanquetDraft = { template: BanquetTemplate; items: BanquetItem[]; title: string; templateName: string; date: string; message: string; subtitle: string; occasion: string; chefCredit: string; guestCount: number; courseEdits: Partial<Record<BanquetCourse, { label: string; english: string }>>; dishEdits: Record<string, { name: string; description: string }> };
-type BanquetTemplate = "home" | "romance" | "fine" | "spring" | "midautumn" | "birthday" | "housewarming" | "summer" | "christmas" | "brunch";
+type BanquetTemplate = "home" | "romance" | "fine" | "spring" | "midautumn" | "birthday" | "housewarming" | "summer" | "christmas" | "brunch" | "jiangnan" | "hotpot" | "birthday-party" | "archive-ledger" | "xuan-paper" | "ingredient-atlas" | "antique-post" | "bistro-handwritten";
 type ChefView = "accepting" | "shopping" | "cooking" | "serving" | "menuManager" | "invitations" | "journals" | "dataTransfer";
 type StatusUpdateDraft = { orderId: string; status: Order["status"]; note: string };
 
@@ -198,6 +198,14 @@ const banquetTemplates: Array<{ id: BanquetTemplate; name: string; occasion: str
   { id: "summer", name: "夏日晚风", occasion: "露台 · 小聚", subtitle: "A BREEZY SUMMER TABLE", mark: "夏", defaultTitle: "夏日晚风宴", defaultMessage: "趁晚风温柔，一起慢慢吃饭" },
   { id: "christmas", name: "冬日圣诞", occasion: "圣诞 · 冬夜", subtitle: "A COZY WINTER FEAST", mark: "✦", defaultTitle: "冬日圣诞小宴", defaultMessage: "灯火温暖，愿今晚的快乐如约而至" },
   { id: "brunch", name: "周末早午餐", occasion: "周末 · Brunch", subtitle: "SLOW MORNING, GOOD FOOD", mark: "☀", defaultTitle: "周末早午餐", defaultMessage: "睡到自然醒，再认真吃一顿" },
+  { id: "jiangnan", name: "江南雅集", occasion: "品茶 · 雅聚", subtitle: "烟雨入席，清味成章", mark: "雅", defaultTitle: "江南清雅宴", defaultMessage: "慢品一席江南味，也慢叙这一晚" },
+  { id: "hotpot", name: "围炉夜话", occasion: "火锅 · 好友局", subtitle: "围炉有热气，举筷皆欢喜", mark: "炉", defaultTitle: "今晚围炉", defaultMessage: "锅里滚着热气，桌边坐着想见的人" },
+  { id: "birthday-party", name: "欢乐生日派对", occasion: "生日 · 好友欢聚", subtitle: "CAKE, CHEERS & HAPPY TEARS", mark: "🎂", defaultTitle: "今天你最大", defaultMessage: "愿望交给蜡烛，好吃的交给阿德" },
+  { id: "archive-ledger", name: "复古档案卡", occasion: "好友私厨 · 趣味小聚", subtitle: "A LITTLE ARCHIVE OF GOOD TASTE", mark: "档", defaultTitle: "今日私厨菜单", defaultMessage: "把这一桌好味道，认真登记给老朋友" },
+  { id: "xuan-paper", name: "宣纸手书", occasion: "雅宴 · 私房菜单", subtitle: "一纸清欢，慢尝人间", mark: "笺", defaultTitle: "一席清味", defaultMessage: "纸短情长，菜热情也热" },
+  { id: "ingredient-atlas", name: "黑底食材图鉴", occasion: "创意菜单 · 主厨私宴", subtitle: "AN INGREDIENT FIELD GUIDE", mark: "鉴", defaultTitle: "风味图鉴", defaultMessage: "从一味食材开始，慢慢认识今晚" },
+  { id: "antique-post", name: "仿古宴帖", occasion: "家宴 · 传统雅集", subtitle: "古帖新宴 · 故友相逢", mark: "帖", defaultTitle: "家宴请帖", defaultMessage: "循着旧帖来赴宴，尝一桌新鲜滋味" },
+  { id: "bistro-handwritten", name: "暖灯手写菜单", occasion: "夜宴 · 好友小馆", subtitle: "TONIGHT AT ADE'S TABLE", mark: "夜", defaultTitle: "今晚菜单", defaultMessage: "灯暖，菜热，熟悉的人刚好都在" },
 ];
 
 const statusLabel = { new: "待确认", confirmed: "已确认", shopping: "买菜中", preparing: "制作中", done: "已开饭", cancelled: "已取消" };
@@ -809,6 +817,10 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const selectBanquetTemplate = (template: typeof banquetTemplates[number]) => {
     setBanquetTemplate(template.id);
     setBanquetTemplateName(template.name);
+    setBanquetTitle(template.defaultTitle);
+    setBanquetMessage(template.defaultMessage);
+    setBanquetSubtitle(template.subtitle);
+    setBanquetOccasion(template.occasion);
   };
 
   const addBanquetDish = () => {
@@ -2397,13 +2409,19 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
       <aside className="banquet-preview-wrap">
         <div ref={banquetPreviewRef} className={`banquet-preview template-${banquetTemplate}`}>
-          <div className="menu-card-ornament" aria-hidden="true"><span>{activeBanquetTemplate.mark}</span></div>
           <div className="menu-card-header">
+            {banquetTemplate === "archive-ledger" && <svg className="archive-card-arc" viewBox="0 0 460 100" aria-hidden="true"><defs><path id="archive-ledger-arc" d="M 24 95 C 75 0 385 0 436 95" /></defs><text><textPath href="#archive-ledger-arc" startOffset="50%" textAnchor="middle">阿德小厨房 · PRIVATE KITCHEN</textPath></text></svg>}
             <small>阿德小厨房 · PRIVATE KITCHEN</small>
-            <h2>{banquetTitle || activeBanquetTemplate.defaultTitle}</h2>
-            <p><strong>{banquetTemplateName || activeBanquetTemplate.name}</strong><span>{banquetSubtitle || activeBanquetTemplate.subtitle}</span></p>
-            <div><span>{banquetDate || "择日相聚"}</span><span>{banquetOccasion || activeBanquetTemplate.occasion}</span>{banquetGuestCount > 0 && <span>{banquetGuestCount} 位宾客</span>}</div>
+            <h2>{banquetTemplate === "archive-ledger" ? "阿德小厨房" : banquetTitle || activeBanquetTemplate.defaultTitle}</h2>
+            <p><strong>{banquetTemplate === "archive-ledger" ? "ADE'S PRIVATE KITCHEN" : banquetTemplateName || activeBanquetTemplate.name}</strong><span>{banquetSubtitle || activeBanquetTemplate.subtitle}</span></p>
+            <div className="archive-card-meta"><span>{banquetDate || "择日相聚"}</span><span>{banquetOccasion || activeBanquetTemplate.occasion}</span>{banquetGuestCount > 0 && <span>{banquetGuestCount} 位宾客</span>}</div>
+            {banquetTemplate === "archive-ledger" && <>
+              <div className="archive-card-fields"><span><small>AUTHOR</small><strong>{banquetChefCredit || "ADE"}</strong></span><span><small>TITLE</small><strong>{banquetTitle || activeBanquetTemplate.defaultTitle}</strong></span><span><small>DATE</small><strong>{banquetDate || "TODAY"}</strong></span><span><small>GUEST</small><strong>{banquetTemplateName || activeBanquetTemplate.name}</strong></span><span><small>NO.</small><strong>{banquetGuestCount || "—"}</strong></span></div>
+              <div className="archive-card-ribbon">阿德小厨房 · 朋友家宴</div>
+              <div className="archive-card-tagline">{banquetMessage || activeBanquetTemplate.defaultMessage}</div>
+            </>}
           </div>
+          {banquetTemplate === "archive-ledger" && <><div className="archive-card-side-note left">阿德小厨房</div><div className="archive-card-side-note right">阿德小厨房</div></>}
           <div className="menu-card-courses">
             {banquetCourses.map((course) => {
               const courseDishes = banquetDishes.filter((item) => item.course === course.id);

@@ -14,7 +14,7 @@ type ChefOrderMutation = {
   publishedMenu?: unknown;
 };
 const validStatuses = ["new", "confirmed", "shopping", "preparing", "done", "cancelled"] as const;
-const validMenuTemplates = new Set(["home", "romance", "fine", "spring", "midautumn", "birthday", "housewarming", "summer", "christmas", "brunch"]);
+const validMenuTemplates = new Set(["home", "romance", "fine", "spring", "midautumn", "birthday", "housewarming", "summer", "christmas", "brunch", "jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"]);
 const validMenuCourses = new Set(["starter", "main", "staple", "soup"]);
 
 function normalizePublishedMenu(value: unknown) {
