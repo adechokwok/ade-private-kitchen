@@ -5,6 +5,7 @@ import { ensureDinnerInvitesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb
 import { appSettings, customDishes, dinnerInviteGuests, dinnerInviteSelections, dinnerInvites, dinnerJournals, menuCategories, orders } from "../../../../db/schema";
 
 import { validMealDate } from "../../../kitchen-domain";
+import { isChefRequest } from "../../../chef-auth";
 
 const parseList = (value: string) => { try { return JSON.parse(value); } catch { return []; } };
 const afterOrderUpdates = (order: { statusUpdatedAt: string; dishesUpdatedAt: string; publishedMenuUpdatedAt: string }) => {
@@ -77,16 +78,18 @@ async function handlePOST(request: Request, context: { params: Promise<{ token: 
       if (invite.sharedOrderId && (!existing || existing.archivedAt || ["done", "cancelled"].includes(existing.status))) return Response.json({ error: "这场饭局已结束，不能再加菜" }, { status: 409 });
       const action = typeof payload.action === "string" ? payload.action : "join";
       if (!["join", "set-selection", "submit"].includes(action)) return Response.json({ error: "无效的操作" }, { status: 400 });
+      const chefSubmitting = action === "submit" && isChefRequest(request);
+      if (action === "submit" && !chefSubmitting) return Response.json({ error: "共享菜单由主厨在工作台统一提交" }, { status: 403 });
       const kitchen = db.select().from(appSettings).where(eq(appSettings.key, "kitchen_open_v1")).get();
       if (action !== "join" && kitchen?.value === "closed") return Response.json({ error: "阿德今天休息，等绿灯亮起再来点菜吧" }, { status: 409 });
       let guestToken = typeof payload.guestToken === "string" ? payload.guestToken : "";
       let guest = db.select().from(dinnerInviteGuests).where(and(eq(dinnerInviteGuests.inviteId, invite.id), eq(dinnerInviteGuests.guestToken, guestToken))).get();
-      if (!guest && action !== "join") return Response.json({ error: "请先加入这场饭局" }, { status: 409 });
+      if (!guest && action !== "join" && !chefSubmitting) return Response.json({ error: "请先加入这场饭局" }, { status: 409 });
       const displayName = typeof payload.displayName === "string" ? payload.displayName.trim().slice(0, 30) : action === "submit" && typeof payload.customerName === "string" ? payload.customerName.trim().slice(0, 30) : "";
       if (!guest) {
         guestToken = crypto.randomUUID().replaceAll("-", "");
         guest = db.insert(dinnerInviteGuests).values({ id: crypto.randomUUID(), inviteId: invite.id, guestToken, displayName: displayName || "朋友" }).returning().get();
-      } else if (displayName) {
+      } else if (guest && displayName) {
         guest = db.update(dinnerInviteGuests).set({ displayName, updatedAt: new Date().toISOString() }).where(eq(dinnerInviteGuests.id, guest.id)).returning().get();
       }
       if (action === "set-selection") {
@@ -121,7 +124,7 @@ async function handlePOST(request: Request, context: { params: Promise<{ token: 
         if (!validMealDate(invite.mealDate)) return Response.json({ error: "请主厨设置有效的饭局日期" }, { status: 400 });
         const incomingNote = typeof payload.note === "string" ? payload.note.trim().slice(0, 200) : "";
         // Keep previously submitted dietary restrictions, including legacy notes.
-        const addition = incomingNote ? guest.displayName + "：" + incomingNote : "";
+        const addition = incomingNote ? (guest?.displayName || "主厨") + "：" + incomingNote : "";
         const note = existing?.note ? existing.note.split("\n").includes(addition) || !addition ? existing.note : existing.note + "\n" + addition : addition;
         const dishes = JSON.stringify(normalized);
         const dishesUpdatedAt = existing && (existing.dishes !== dishes || existing.dishSnapshot !== JSON.stringify(dishSnapshot)) ? afterOrderUpdates(existing) : existing?.dishesUpdatedAt || "";
@@ -130,7 +133,7 @@ async function handlePOST(request: Request, context: { params: Promise<{ token: 
           ? db.update(orders).set(values).where(eq(orders.id, existing.id)).returning().get()
           : db.insert(orders).values({ ...values, id: crypto.randomUUID(), inviteId: invite.id, guestToken: crypto.randomUUID().replaceAll("-", "") }).returning().get();
         db.update(dinnerInvites).set({ sharedOrderId: order.id, updatedAt: new Date().toISOString() }).where(eq(dinnerInvites.id, invite.id)).run();
-        return Response.json({ ok: true, guestToken, order, orderToken: order.guestToken });
+        return Response.json({ ok: true, guestToken: guest?.guestToken || "", order, orderToken: order.guestToken });
       }
       return Response.json({ ok: true, guestToken });
     })();
