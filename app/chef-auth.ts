@@ -11,16 +11,24 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 type ChefSession = { sub: "chef"; exp: number };
 
-function configuredPassword() {
+function configuredPasswordSetting() {
   const file = process.env.CHEF_PASSWORD_FILE?.trim();
   if (file) {
-    try { return readFileSync(file, "utf8").trim(); } catch { return ""; }
+    try { return { required: true, value: readFileSync(file, "utf8").trim() }; } catch { return { required: true, value: "" }; }
   }
-  return process.env.CHEF_PASSWORD?.trim() || "";
+  const value = process.env.CHEF_PASSWORD?.trim() || "";
+  return { required: value.length > 0, value };
+}
+
+function configuredPassword() { return configuredPasswordSetting().value; }
+
+export function isChefPasswordRequired() {
+  return configuredPasswordSetting().required;
 }
 
 export function isChefConfigured() {
-  return configuredPassword().length >= 10;
+  const setting = configuredPasswordSetting();
+  return setting.required && setting.value.length >= 10;
 }
 
 export function verifyChefPassword(candidate: string) {
@@ -85,15 +93,18 @@ function cookieFromRequest(request: Request) {
 }
 
 export async function getChefSession() {
+  if (!isChefPasswordRequired()) return true;
   return verifyChefSession((await cookies()).get(CHEF_SESSION_COOKIE)?.value);
 }
 
 export function chefApiGuard(request: Request): Response | null {
+  if (!isChefPasswordRequired()) return null;
   if (!verifyChefSession(cookieFromRequest(request))) return Response.json({ error: "请先登录主厨工作台" }, { status: 401 });
   return null;
 }
 
 export function isChefRequest(request: Request) {
+  if (!isChefPasswordRequired()) return true;
   return verifyChefSession(cookieFromRequest(request));
 }
 
@@ -102,3 +113,4 @@ export function sessionCookieOptions(request: Request) {
   const secure = forwardedProtocol === "https" || new URL(request.url).protocol === "https:";
   return { httpOnly: true, sameSite: "lax" as const, secure, path: "/", maxAge: SESSION_TTL_SECONDS };
 }
+
