@@ -130,23 +130,28 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     return { ...result.data.invite, guestToken: joined.data.guestToken };
   }
   const select = (inv, quantity = 1) => api("/api/invites/" + inv.token, { action: "set-selection", guestToken: inv.guestToken, dishId: dish.id, quantity });
-  const submit = (inv, extra = {}) => api("/api/invites/" + inv.token, { action: "submit", guestToken: inv.guestToken, guestCount: 6, ...extra });
+  const submit = (inv, extra = {}, chef = false) => api("/api/invites/" + inv.token, { action: "submit", guestToken: inv.guestToken, guestCount: 6, ...extra }, chef);
   let original;
   await t.test("shared submissions preserve dietary notes and basic dinner information", async () => {
     original = await invite(); await select(original);
-    const first = await submit(original, { note: "花生过敏，绝对不要放" }); assert.equal(first.status, 200);
+    assert.equal((await submit(original, { note: "花生过敏，绝对不要放" })).status, 403);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM orders WHERE invite_id = ?").get(original.id).n, 0);
+    const first = await submit(original, { note: "花生过敏，绝对不要放" }, true); assert.equal(first.status, 200);
     original.order = first.data.order;
     const joined = await api("/api/invites/" + original.token, { action: "join", displayName: "测试乙" });
-    const second = await submit({ ...original, guestToken: joined.data.guestToken }, { note: "", mealDate: "2026-10-03", guestCount: 2 });
+    const secondGuest = { ...original, guestToken: joined.data.guestToken };
+    await select(secondGuest, 2);
+    assert.equal((await submit(secondGuest, { note: "不吃香菜" })).status, 403);
+    const second = await submit(secondGuest, { note: "", mealDate: "2026-10-03", guestCount: 2 }, true);
     assert.equal(second.data.order.id, first.data.order.id);
     assert.match(second.data.order.note, /花生过敏/);
     assert.equal(second.data.order.mealDate, "2026-10-02"); assert.equal(second.data.order.guestCount, 6);
-    const added = await submit({ ...original, guestToken: joined.data.guestToken }, { note: "不吃香菜" });
+    const added = await submit(secondGuest, { note: "不吃香菜" }, true);
     assert.match(added.data.order.note, /花生过敏/); assert.match(added.data.order.note, /不吃香菜/);
   });
   await t.test("concurrent submission creates exactly one shared order", async () => {
     const inv = await invite(); await select(inv);
-    const results = await Promise.all(Array.from({ length: 5 }, () => submit(inv)));
+    const results = await Promise.all(Array.from({ length: 5 }, () => submit(inv, {}, true)));
     assert.ok(results.every(r => r.status === 200));
     assert.equal(new Set(results.map(r => r.data.order.id)).size, 1);
     assert.equal(db.prepare("SELECT count(*) AS n FROM orders WHERE invite_id = ?").get(inv.id).n, 1);
@@ -165,12 +170,12 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
   await t.test("sold-out and archived selections cannot become empty or incomplete orders", async () => {
     const inv = await invite(); await select(inv);
     db.prepare("UPDATE custom_dishes SET sold_out = 1 WHERE id = ?").run(dish.id);
-    assert.equal((await submit(inv)).status, 409);
+    assert.equal((await submit(inv, {}, true)).status, 409);
     assert.equal((await select(inv, 0)).status, 200);
     db.prepare("UPDATE custom_dishes SET sold_out = 0 WHERE id = ?").run(dish.id);
     await select(inv);
     db.prepare("UPDATE custom_dishes SET active = 0 WHERE id = ?").run(dish.id);
-    assert.equal((await submit(inv)).status, 409);
+    assert.equal((await submit(inv, {}, true)).status, 409);
     assert.equal((await select(inv, 0)).status, 200);
     db.prepare("UPDATE custom_dishes SET active = 1 WHERE id = ?").run(dish.id);
     assert.equal(db.prepare("SELECT count(*) AS n FROM orders WHERE invite_id = ?").get(inv.id).n, 0);
@@ -178,7 +183,7 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
   await t.test("rest mode blocks shared selections and submissions", async () => {
     const inv = await invite();
     await api("/api/kitchen-status", { open: false }, true, "PUT");
-    assert.equal((await select(inv)).status, 409); assert.equal((await submit(inv)).status, 409);
+    assert.equal((await select(inv)).status, 409); assert.equal((await submit(inv, {}, true)).status, 409);
     await api("/api/kitchen-status", { open: true }, true, "PUT");
   });
   const normal = { customerName: "普通测试", mealDate: "2026-10-04", guestCount: 2, dishes: [{ dishId: dish.id, quantity: 1 }] };
@@ -193,7 +198,7 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     assert.equal(new Set(results.map(r => r.data.order.id)).size, 1);
   });
   await t.test("chef date edits and menu ordering reach shared pages", async () => {
-    const inv = await invite(); await select(inv); const order = (await submit(inv)).data.order;
+    const inv = await invite(); await select(inv); const order = (await submit(inv, {}, true)).data.order;
     assert.equal((await api("/api/invites", { id: inv.id, mealDate: "2026-10-05" }, true, "PATCH")).status, 200);
     assert.equal(db.prepare("SELECT meal_date FROM orders WHERE id = ?").get(order.id).meal_date, "2026-10-05");
     db.prepare("UPDATE custom_dishes SET sort_order = -99 WHERE id = ?").run(dish.id);
@@ -201,7 +206,7 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     assert.equal(result.data.dishes[0].id, dish.id); assert.ok(result.data.categories.length);
   });
   await t.test("accepted shared dinners flag later dish changes and stale formal menus", async () => {
-    const inv = await invite(); await select(inv); const order = (await submit(inv)).data.order;
+    const inv = await invite(); await select(inv); const order = (await submit(inv, {}, true)).data.order;
     const accepted = await api("/api/orders", { action: "update-status", id: order.id, status: "confirmed", progressNote: "接单" }, true);
     assert.equal(accepted.status, 200);
     const publishedMenu = { title: "测试家宴", date: "2026-10-02", time: "19:00", message: "开饭", template: "home", fontId: "long-cang", showDescriptions: false, templateName: "温馨家宴", subtitle: "DINNER", occasion: "朋友相聚", courses: [{ id: "main", label: "主厨热菜", english: "MAIN", dishes: [{ name: dish.name, description: "测试菜" }] }] };
@@ -222,7 +227,7 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     assert.equal((await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, fontId: "external-font" } }, true)).status, 400);
     assert.equal((await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, showDescriptions: "hidden" } }, true)).status, 400);
     assert.equal((await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, time: "29:90" } }, true)).status, 400);
-    await select(inv, 2); const changed = await submit(inv); assert.equal(changed.status, 200);
+    await select(inv, 2); const changed = await submit(inv, {}, true); assert.equal(changed.status, 200);
     assert.ok(changed.data.order.dishesUpdatedAt > changed.data.order.statusUpdatedAt);
     assert.ok(changed.data.order.dishesUpdatedAt > changed.data.order.publishedMenuUpdatedAt);
   });
@@ -377,3 +382,4 @@ test("chef access is open only when no password is configured", { timeout: 12000
     assert.equal(loginPage.status, 200); assert.match(await loginPage.text(), /主厨密码配置无效/);
   });
 });
+
