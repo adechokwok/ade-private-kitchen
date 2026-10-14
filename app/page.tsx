@@ -2473,7 +2473,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
           <Link className={mode === "menu" ? "active" : ""} href="/">朋友点菜</Link>
           <Link className={mode === "chef" ? "active" : ""} href="/chef">主厨入口</Link>
           {mode === "chef" && chefUser && <span className="chef-user">{chefUser}</span>}
-          {mode === "chef" && <form className="chef-logout" action="/api/auth/logout" method="post"><button type="submit">退出</button></form>}
+          {mode === "chef" && showChefLogout && <form className="chef-logout" action="/api/auth/logout" method="post"><button type="submit">退出</button></form>}
         </nav>
       </header>
 

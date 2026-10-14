@@ -22,7 +22,7 @@ export default async function ChefLoginPage({ searchParams }: { searchParams: Pr
         <h1>主厨回来啦</h1>
         <p>菜单、订单和今晚要买的菜，都安安稳稳保存在这台服务器上。</p>
         {!configured ? (
-          <div className="chef-login-alert"><strong>还差一步初始化</strong><span>请先在 Docker 环境变量中设置至少 10 位的 CHEF_PASSWORD，然后重新启动容器。</span></div>
+          <div className="chef-login-alert"><strong>主厨密码配置无效</strong><span>请检查 CHEF_PASSWORD 或 CHEF_PASSWORD_FILE，密码需至少 10 位；修正后重新启动容器。</span></div>
         ) : (
           <form action="/api/auth/login" method="post">
             <input type="hidden" name="returnTo" value={returnTo} />
@@ -37,3 +37,4 @@ export default async function ChefLoginPage({ searchParams }: { searchParams: Pr
     </main>
   );
 }
+

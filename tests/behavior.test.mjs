@@ -75,6 +75,9 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.ok(ready, logs);
+  const chefPage = await fetch(base + "/chef", { redirect: "manual" });
+  assert.equal(chefPage.status, 307); assert.match(chefPage.headers.get("location"), /^\/chef\/login\?/);
+  assert.equal((await fetch(base + "/api/menu-drafts")).status, 401);
   const login = await fetch(base + "/api/auth/login", { method: "POST", redirect: "manual", body: new URLSearchParams({ password }) });
   const cookie = login.headers.get("set-cookie")?.split(";")[0]; assert.ok(cookie);
   async function api(url, body, chef = false, method = body ? "POST" : "GET") {
@@ -272,5 +275,63 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     let last;
     for (let i = 0; i < 9; i++) last = await fetch(base + "/api/auth/login", { method: "POST", redirect: "manual", headers: { "x-forwarded-for": `192.0.2.${i}` }, body: new URLSearchParams({ password: "wrong" }) });
     assert.match(last.headers.get("location"), /error=locked/);
+  });
+});
+
+test("chef access is open only when no password is configured", { timeout: 120000 }, async t => {
+  const servers = [];
+  t.after(async () => {
+    for (const server of servers) {
+      if (server.child.exitCode === null) {
+        const exited = once(server.child, "exit");
+        server.child.kill();
+        await exited.catch(() => {});
+      }
+      await rm(server.temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
+  async function start(password) {
+    const temp = await mkdtemp(path.join(tmpdir(), "ade-auth-mode-"));
+    const listener = net.createServer();
+    listener.listen(0, "127.0.0.1"); await once(listener, "listening");
+    const port = listener.address().port; await new Promise(resolve => listener.close(resolve));
+    const base = `http://127.0.0.1:${port}`;
+    const env = { ...process.env, DATA_DIR: temp, DATABASE_PATH: path.join(temp, "ade-kitchen.sqlite"), UPLOADS_DIR: path.join(temp, "uploads"), BACKUP_DIR: path.join(temp, "backups"), TRUST_PROXY: "false" };
+    delete env.CHEF_PASSWORD;
+    delete env.CHEF_PASSWORD_FILE;
+    if (password !== undefined) env.CHEF_PASSWORD = password;
+    const child = spawn(process.execPath, [path.join(root, "node_modules/next/dist/bin/next"), "start", "-H", "127.0.0.1", "-p", String(port)], { cwd: root, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    let logs = ""; child.stdout.on("data", c => logs += c); child.stderr.on("data", c => logs += c);
+    servers.push({ child, temp });
+    for (let i = 0; i < 100; i++) {
+      try { if ((await fetch(base + "/api/health")).ok) return base; } catch { /* boot */ }
+      if (child.exitCode !== null) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.fail(`auth-mode test server failed to start: ${logs}`);
+  }
+
+  await t.test("empty password opens the chef page and admin APIs", async () => {
+    const base = await start();
+    const page = await fetch(base + "/chef", { redirect: "manual" });
+    assert.equal(page.status, 200);
+    assert.doesNotMatch(await page.text(), /class="chef-logout"/);
+    const loginPage = await fetch(base + "/chef/login", { redirect: "manual" });
+    assert.equal(loginPage.status, 307); assert.equal(loginPage.headers.get("location"), "/chef");
+    assert.equal((await fetch(base + "/api/menu-drafts")).status, 200);
+    const category = await fetch(base + "/api/categories", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "免密码验收分类" }) });
+    assert.equal(category.status, 201);
+    const login = await fetch(base + "/api/auth/login", { method: "POST", redirect: "manual", body: new URLSearchParams() });
+    assert.equal(login.status, 303); assert.equal(login.headers.get("location"), "/chef"); assert.equal(login.headers.get("set-cookie"), null);
+  });
+
+  await t.test("a configured but invalid short password fails closed", async () => {
+    const base = await start("123456789");
+    const page = await fetch(base + "/chef", { redirect: "manual" });
+    assert.equal(page.status, 307); assert.match(page.headers.get("location"), /^\/chef\/login\?/);
+    assert.equal((await fetch(base + "/api/menu-drafts")).status, 401);
+    const loginPage = await fetch(base + "/chef/login");
+    assert.equal(loginPage.status, 200); assert.match(await loginPage.text(), /主厨密码配置无效/);
   });
 });
