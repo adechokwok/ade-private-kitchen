@@ -42,7 +42,7 @@ export const TEMPLATE_DEFAULT_FONTS: Record<string, string> = {
   christmas: "zcool-xiaowei",
   brunch: "zcool-kuaile",
   jiangnan: "zhi-mang-xing",
-  hotpot: "zcool-kuaile",
+  hotpot: "long-cang",
   "birthday-party": "zcool-kuaile",
   "archive-ledger": "ma-shan-zheng",
   "xuan-paper": "zhi-mang-xing",

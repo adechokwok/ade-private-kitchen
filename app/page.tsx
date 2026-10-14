@@ -211,7 +211,7 @@ const banquetTemplates: Array<{ id: BanquetTemplate; name: string; occasion: str
   { id: "christmas", name: "冬日圣诞", occasion: "圣诞 · 冬夜", subtitle: "A COZY WINTER FEAST", mark: "✦", defaultTitle: "冬日圣诞小宴", defaultMessage: "灯火温暖，愿今晚的快乐如约而至" },
   { id: "brunch", name: "周末早午餐", occasion: "周末 · Brunch", subtitle: "SLOW MORNING, GOOD FOOD", mark: "☀", defaultTitle: "周末早午餐", defaultMessage: "睡到自然醒，再认真吃一顿" },
   { id: "jiangnan", name: "江南雅集", occasion: "品茶 · 雅聚", subtitle: "烟雨入席，清味成章", mark: "雅", defaultTitle: "江南清雅宴", defaultMessage: "慢品一席江南味，也慢叙这一晚" },
-  { id: "hotpot", name: "围炉夜话", occasion: "火锅 · 好友局", subtitle: "围炉有热气，举筷皆欢喜", mark: "炉", defaultTitle: "今晚围炉", defaultMessage: "锅里滚着热气，桌边坐着想见的人" },
+  { id: "hotpot", name: "老友生日", occasion: "生日 · 老友相聚", subtitle: "HAPPY BIRTHDAY · OLD FRIENDS", mark: "友", defaultTitle: "老友生日", defaultMessage: "老友围炉，生日有你" },
   { id: "birthday-party", name: "欢乐生日派对", occasion: "生日 · 好友欢聚", subtitle: "CAKE, CHEERS & HAPPY TEARS", mark: "🎂", defaultTitle: "今天你最大", defaultMessage: "愿望交给蜡烛，好吃的交给阿德" },
   { id: "archive-ledger", name: "复古档案卡", occasion: "好友私厨 · 趣味小聚", subtitle: "A LITTLE ARCHIVE OF GOOD TASTE", mark: "档", defaultTitle: "今日私厨菜单", defaultMessage: "把这一桌好味道，认真登记给老朋友" },
   { id: "xuan-paper", name: "宣纸手书", occasion: "雅宴 · 私房菜单", subtitle: "一纸清欢，慢尝人间", mark: "笺", defaultTitle: "一席清味", defaultMessage: "纸短情长，菜热情也热" },
