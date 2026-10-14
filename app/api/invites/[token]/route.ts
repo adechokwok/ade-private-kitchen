@@ -86,13 +86,16 @@ async function handlePOST(request: Request, context: { params: Promise<{ token: 
       let guest = db.select().from(dinnerInviteGuests).where(and(eq(dinnerInviteGuests.inviteId, invite.id), eq(dinnerInviteGuests.guestToken, guestToken))).get();
       if (!guest && action !== "join" && !chefSubmitting) return Response.json({ error: "请先加入这场饭局" }, { status: 409 });
       const displayName = typeof payload.displayName === "string" ? payload.displayName.trim().slice(0, 30) : action === "submit" && typeof payload.customerName === "string" ? payload.customerName.trim().slice(0, 30) : "";
-      if (!guest) {
+      if (action === "join" && (!displayName || displayName === "朋友")) return Response.json({ error: "请先填写自己的称呼，再开始点菜" }, { status: 400 });
+      if (action === "join" && db.select().from(dinnerInviteGuests).where(eq(dinnerInviteGuests.inviteId, invite.id)).all().some((other) => other.id !== guest?.id && other.displayName.trim().toLocaleLowerCase("zh-CN") === displayName.toLocaleLowerCase("zh-CN"))) return Response.json({ error: "这桌已有相同称呼，请换一个方便大家区分" }, { status: 409 });
+      if (!guest && action === "join") {
         guestToken = crypto.randomUUID().replaceAll("-", "");
-        guest = db.insert(dinnerInviteGuests).values({ id: crypto.randomUUID(), inviteId: invite.id, guestToken, displayName: displayName || "朋友" }).returning().get();
-      } else if (guest && displayName) {
+        guest = db.insert(dinnerInviteGuests).values({ id: crypto.randomUUID(), inviteId: invite.id, guestToken, displayName }).returning().get();
+      } else if (guest && action === "join") {
         guest = db.update(dinnerInviteGuests).set({ displayName, updatedAt: new Date().toISOString() }).where(eq(dinnerInviteGuests.id, guest.id)).returning().get();
       }
       if (action === "set-selection") {
+        if (!guest || !guest.displayName.trim() || guest.displayName.trim() === "朋友") return Response.json({ error: "请先确认自己的称呼，再开始点菜" }, { status: 409 });
         const dishId = typeof payload.dishId === "string" ? payload.dishId : "";
         const quantity = payload.quantity;
         if (!dishId || typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 0 || quantity > 10) return Response.json({ error: "菜品数量需为 0–10 份" }, { status: 400 });

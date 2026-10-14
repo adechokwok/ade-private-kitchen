@@ -203,7 +203,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /!isSharedInvite && kitchenOpen/);
   assert.doesNotMatch(page, /每位朋友都能看到这张汇总单；选好后由任意一位通知主厨/);
   assert.match(page, /这桌已选 \{total\} 份/);
-  assert.match(page, /guest\.items\.length} 道菜/);
+  assert.match(page, /shared-guest-grid/);
+  assert.match(page, /item\.dishId\)\?\.name \|\| "已下架菜品"/);
   assert.match(page, /invite-created-success/);
   assert.match(page, /copyInviteLink/);
   assert.match(page, /generateInviteQr/);

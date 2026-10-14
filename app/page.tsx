@@ -485,7 +485,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [qrSharing, setQrSharing] = useState(false);
   const [activeInvite, setActiveInvite] = useState<DinnerInvite | null>(null);
   const [sharedDinner, setSharedDinner] = useState<SharedDinner | null>(null);
-  const [sharedGuestName, setSharedGuestName] = useState("朋友");
+  const [sharedGuestName, setSharedGuestName] = useState("");
   const sharedGuestNameDirtyRef = useRef(false);
   const [sharedGuestSaving, setSharedGuestSaving] = useState(false);
   const [sharedSyncState, setSharedSyncState] = useState<"synced" | "syncing" | "error">("synced");
@@ -711,12 +711,15 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const cartCount = Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
   const menuReadOnly = mode === "menu" && !kitchenOpen;
   const isSharedInvite = activeInvite?.mode === "shared";
+  const currentSharedGuest = sharedDinner?.guests.find((guest) => guest.id === sharedDinner.guestId);
+  const sharedNameRequired = isSharedInvite && (!currentSharedGuest?.displayName.trim() || currentSharedGuest.displayName.trim() === "朋友");
+  const menuSelectionDisabled = menuReadOnly || sharedNameRequired || Boolean(initialInviteToken && (!activeInvite || inviteLoading));
   const brandedInvite = activeInvite && !isSharedInvite ? activeInvite : null;
   const cartItems = allDishes
     .filter((dish) => cart[dish.id])
     .map((dish) => ({ ...dish, quantity: cart[dish.id] }));
   const sharedAggregateItems = sharedDinner?.aggregate.map((item) => ({ ...item, dish: allDishes.find((dish) => dish.id === item.dishId) })).filter((item): item is OrderItem & { dish: Dish } => Boolean(item.dish)) || [];
-  const sharedAggregatePortionCount = sharedAggregateItems.reduce((sum, item) => sum + item.quantity, 0);
+  const sharedAggregatePortionCount = (sharedDinner?.aggregate || []).reduce((sum, item) => sum + item.quantity, 0);
   const sharedDishSelections = useMemo(() => {
     const selections = new Map<string, Array<{ guestId: string; displayName: string; quantity: number }>>();
     sharedDinner?.selections.forEach((guest) => {
@@ -777,6 +780,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const updateQuantity = (dishId: string, change: number) => {
     if (!kitchenOpen || submitting) { setNotice("当前暂不能修改选菜"); return; }
+    if (initialInviteToken && (!activeInvite || inviteLoading)) { setNotice("邀请菜单正在加载，请稍候再点菜"); return; }
+    if (sharedNameRequired || (activeInvite?.mode === "shared" && !sharedDinner?.guestToken)) { setNotice("请先在上方填写并确认你的称呼，再开始点菜"); return; }
     const next = Math.min(10, Math.max(0, (cartRef.current[dishId] || 0) + change));
     const updated = { ...cartRef.current, [dishId]: next };
     if (!next) delete updated[dishId];
@@ -1117,17 +1122,20 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   };
 
   const saveSharedGuestName = async () => {
-    if (!activeInvite || activeInvite.mode !== "shared" || !sharedDinner?.guestToken) return;
-    const displayName = sharedGuestName.trim().slice(0, 30) || "朋友";
+    if (!activeInvite || activeInvite.mode !== "shared") return;
+    const displayName = sharedGuestName.trim().slice(0, 30);
+    if (!displayName || displayName === "朋友") { setNotice("请输入能让大家认出你的称呼"); return; }
     setSharedGuestSaving(true);
     try {
-      const response = await fetch(`/api/invites/${activeInvite.token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "join", guestToken: sharedDinner.guestToken, displayName }) });
-      if (!response.ok) throw new Error();
+      const response = await fetch(`/api/invites/${activeInvite.token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "join", guestToken: sharedDinner?.guestId ? sharedDinner.guestToken : "", displayName }) });
+      const data = await response.json() as { guestToken?: string; error?: string };
+      if (!response.ok || !data.guestToken) throw new Error(data.error || "称呼保存失败，请稍后再试");
+      try { window.localStorage.setItem(sharedGuestStorageKey(activeInvite.token), data.guestToken); } catch { /* 无痕模式仅保留当前页面 */ }
       sharedGuestNameDirtyRef.current = false;
       setSharedGuestName(displayName);
       await loadInvite(activeInvite.token, true);
       setNotice(`已确认称呼：${displayName}，大家会看到你点的菜`);
-    } catch { setNotice("称呼保存失败，请稍后再试"); }
+    } catch (error) { setNotice(error instanceof Error ? error.message : "称呼保存失败，请稍后再试"); }
     finally { setSharedGuestSaving(false); }
   };
 
@@ -1194,16 +1202,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         setSharedDinner(data.shared);
         const currentGuest = data.shared.guests.find((guest) => guest.id === data.shared?.guestId);
         if (currentGuest && !sharedGuestNameDirtyRef.current) setSharedGuestName(currentGuest.displayName);
+        if (!currentGuest) { cartRef.current = {}; setCart({}); }
         const own = data.shared.selections.find((item) => item.guestId === data.shared?.guestId);
         if (own && !selectionPending.current.size && version === selectionVersion.current) { const next = Object.fromEntries(own.items.map(item => [item.dishId, item.quantity])); cartRef.current = next; setCart(next); }
-        if (!guestToken || !data.shared.guestId) {
-          const joinResponse = await fetch(`/api/invites/${token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "join", guestToken, displayName: sharedGuestName || "朋友" }) });
-          const joined = await joinResponse.json().catch(() => ({})) as { guestToken?: string };
-          if (joined.guestToken) {
-            try { window.localStorage.setItem(sharedGuestStorageKey(token), joined.guestToken); } catch { /* ignore */ }
-            if (!silent) await loadInvite(token, true);
-          }
-        }
       } else {
         setSharedDinner(null);
       }
@@ -2579,8 +2580,32 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               <div className="menu-count-pill"><strong>{allDishes.length}</strong><span>道拿手菜<br />等你翻牌</span></div>
             </div>
             {inviteLoading && <div className="invite-loading">正在把共享菜单端上来…</div>}
-            {activeInvite?.mode === "shared" && sharedDinner && <section className="shared-dinner-bar" aria-label="多人共享饭局"><div><span>SHARED DINNER · {sharedDinner.guests.length} 位朋友已加入</span><strong>大家选的菜会自动汇总到同一张单</strong><em className={`shared-sync-state ${sharedSyncState}`}>{sharedSyncState === "syncing" ? "正在同步选菜…" : sharedSyncState === "error" ? "同步中断，请重试刚才的操作" : "✓ 已与这桌同步"}</em></div><div className="shared-name-field"><label><small>你的称呼</small><input value={sharedGuestName} maxLength={30} onChange={(event) => { sharedGuestNameDirtyRef.current = true; setSharedGuestName(event.target.value); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void saveSharedGuestName(); } }} disabled={sharedGuestSaving} /></label><button type="button" onClick={() => void saveSharedGuestName()} disabled={sharedGuestSaving || !sharedDinner.guestToken}>{sharedGuestSaving ? "保存中…" : "确认称呼"}</button></div><p>{sharedDinner.guests.map((guest) => guest.displayName).join("、") || "等朋友加入"}</p><div className="shared-dinner-selections">{sharedDinner.selections.filter((guest) => guest.items.length).map((guest) => <span key={guest.guestId}><b>{guest.displayName}</b>：{guest.items.length} 道菜</span>)}{!sharedDinner.selections.some((guest) => guest.items.length) && <span>还没有人选菜，先挑一道你想吃的吧。</span>}</div>{sharedDinner.orderToken && <a className="shared-dinner-progress" href={`/order/${sharedDinner.orderToken}`}>这桌已送进厨房 · 查看实时进度与主厨菜单 →</a>}</section>}
-            {brandedInvite && brandedInvite.recommendedDishIds.length > 0 && <div className="recommended-combo"><span>主厨搭配</span><strong>如果不想纠结，就从这几道开始</strong><div>{brandedInvite.recommendedDishIds.map((id) => dishCatalog.find((dish) => dish.id === id)).filter(Boolean).map((dish) => <button type="button" key={dish!.id} disabled={menuReadOnly} onClick={() => updateQuantity(dish!.id, 1)}>{dish!.name}<i>＋</i></button>)}</div></div>}
+            {activeInvite?.mode === "shared" && sharedDinner && <section className="shared-dinner-bar" aria-label="多人共享饭局">
+              <div className="shared-dinner-intro">
+                <span>SHARED DINNER · {sharedDinner.guests.length} 位朋友已加入</span>
+                <strong>大家点了什么，一眼就能看见</strong>
+                <em className={`shared-sync-state ${sharedSyncState}`}>{sharedSyncState === "syncing" ? "正在同步选菜…" : sharedSyncState === "error" ? "同步中断，请重试刚才的操作" : "✓ 已与这桌同步"}</em>
+              </div>
+              <div className={`shared-name-field${sharedNameRequired ? " needs-name" : ""}`}>
+                {sharedNameRequired && <p className="shared-name-alert" role="alert">先写下你的称呼并点“确认称呼”，才能开始点菜。每位朋友请用自己的称呼。</p>}
+                <label htmlFor="shared-guest-name"><small>你的称呼 {sharedNameRequired ? "· 必填" : "· 可修改"}</small></label>
+                <div className="shared-name-actions"><input id="shared-guest-name" value={sharedGuestName} maxLength={30} placeholder="例如：小明" aria-required={sharedNameRequired} onChange={(event) => { sharedGuestNameDirtyRef.current = true; setSharedGuestName(event.target.value); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void saveSharedGuestName(); } }} disabled={sharedGuestSaving} /><button type="button" onClick={() => void saveSharedGuestName()} disabled={sharedGuestSaving || !sharedGuestName.trim() || sharedGuestName.trim() === "朋友"}>{sharedGuestSaving ? "保存中…" : "确认称呼"}</button></div>
+              </div>
+              <div className="shared-dinner-selections" aria-label="大家点的菜">
+                <header><div><small>这桌的点菜清单</small><h3>大家点了什么</h3></div><span>合计 {sharedDinner.aggregate.length} 道菜 · {sharedAggregatePortionCount} 份</span></header>
+                <div className="shared-guest-grid">{sharedDinner.guests.map((guest) => {
+                  const items = sharedDinner.selections.find((selection) => selection.guestId === guest.id)?.items || [];
+                  return <article className="shared-guest-card" key={guest.id}>
+                    <div className="shared-guest-card-title"><strong>{guest.displayName}</strong>{guest.id === sharedDinner.guestId && <em>我</em>}<small>{items.reduce((sum, item) => sum + item.quantity, 0)} 份</small></div>
+                    {items.length ? <ul>{items.map((item) => <li key={item.dishId}><span>{allDishes.find((dish) => dish.id === item.dishId)?.name || "已下架菜品"}</span><b>× {item.quantity}</b></li>)}</ul> : <p>还没有选菜</p>}
+                  </article>;
+                })}</div>
+                {!sharedDinner.guests.length && <p>还没有朋友加入。确认称呼后，就可以挑想吃的菜了。</p>}
+                <p className="shared-dinner-chef-note">朋友只负责选菜，整桌菜单由主厨统一提交。</p>
+              </div>
+              {sharedDinner.orderToken && <a className="shared-dinner-progress" href={`/order/${sharedDinner.orderToken}`}>这桌已送进厨房 · 查看实时进度与主厨菜单 →</a>}
+            </section>}
+            {brandedInvite && brandedInvite.recommendedDishIds.length > 0 && <div className="recommended-combo"><span>主厨搭配</span><strong>如果不想纠结，就从这几道开始</strong><div>{brandedInvite.recommendedDishIds.map((id) => dishCatalog.find((dish) => dish.id === id)).filter(Boolean).map((dish) => <button type="button" key={dish!.id} disabled={menuSelectionDisabled} onClick={() => updateQuantity(dish!.id, 1)}>{dish!.name}<i>＋</i></button>)}</div></div>}
             <div className="category-tabs-shell">
               <div className="category-tabs-heading"><div><span>MENU CATEGORIES</span><strong>想吃哪一类？</strong></div><small>{activeCategory === "全部" ? `全部 ${allDishes.length} 道` : `${activeCategory} · ${filteredDishes.length} 道`}</small></div>
               <div className="category-tabs" role="tablist" aria-label="菜品大类">
@@ -2598,7 +2623,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   return <article className={`${quantity ? "desktop-ade-pick-card selected" : "desktop-ade-pick-card"}${dish.soldOut ? " sold-out" : ""}`} key={`desktop-ade-pick-${dish.id}`}>
                     <div className={`desktop-ade-pick-photo tone-${dish.tone}`}>{dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={(event) => openDishLightbox(dish, event.currentTarget)} aria-label={`查看${dish.name}大图`}><img src={dishThumbnailUrl(dish.imageUrl)} loading="lazy" decoding="async" style={dishImageStyle(dish.imagePosition)} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}<b>阿德推荐</b></div>
                     <div className="desktop-ade-pick-copy"><small>{dish.category}</small><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p>{renderSharedDishSelections(dish.id)}</div>
-                    <div className="desktop-ade-pick-action">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut || menuReadOnly} onClick={() => updateQuantity(dish.id, 1)}>{dish.soldOut ? "今天已售罄" : menuReadOnly ? "今天只看看" : "就想吃这道"}<b>＋</b></button>}</div>
+                    <div className="desktop-ade-pick-action">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut || menuSelectionDisabled} onClick={() => updateQuantity(dish.id, 1)}>{dish.soldOut ? "今天已售罄" : menuReadOnly ? "今天只看看" : "就想吃这道"}<b>＋</b></button>}</div>
                   </article>;
                 })}
               </div>
@@ -2610,7 +2635,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                   const quantity = cart[dish.id] || 0;
                   return <article className={`${quantity ? "mobile-ade-pick-card selected" : "mobile-ade-pick-card"}${dish.soldOut ? " sold-out" : ""}`} key={`ade-pick-${dish.id}`}>
                     <div className={`mobile-ade-pick-photo tone-${dish.tone}`}>{dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={(event) => openDishLightbox(dish, event.currentTarget)} aria-label={`查看${dish.name}大图`}><img src={dishThumbnailUrl(dish.imageUrl)} loading="lazy" decoding="async" style={dishImageStyle(dish.imagePosition)} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}<b>阿德推荐</b></div>
-                    <div className="mobile-ade-pick-body"><small>{dish.category}</small><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p><div className="mobile-dish-control">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut || menuReadOnly} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? "下次" : menuReadOnly ? "看看" : "想吃"}<b>＋</b></button>}</div></div>
+                    <div className="mobile-ade-pick-body"><small>{dish.category}</small><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p><div className="mobile-dish-control">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut || menuSelectionDisabled} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? "下次" : menuReadOnly ? "看看" : "想吃"}<b>＋</b></button>}</div></div>
                   </article>;
                 })}
               </div>
@@ -2627,7 +2652,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                     return <article className={`${quantity ? "mobile-dish-row selected" : "mobile-dish-row"}${dish.soldOut ? " sold-out" : ""}`} key={`${group.name}-${dish.id}`}>
                       <div className={`mobile-dish-photo tone-${dish.tone}`}>{dish.imageUrl ? <button type="button" className="dish-image-trigger" onClick={(event) => openDishLightbox(dish, event.currentTarget)} aria-label={`查看${dish.name}大图`}><img src={dishThumbnailUrl(dish.imageUrl)} loading="lazy" decoding="async" style={dishImageStyle(dish.imagePosition)} alt={dish.name} /><span className="dish-image-zoom" aria-hidden="true">⌕</span></button> : <span>{dish.emoji}</span>}{(dish.featured || dish.soldOut) && <b>{dish.soldOut ? "售罄" : "推荐"}</b>}</div>
                       <div className="mobile-dish-copy"><h4>{dish.name}</h4><p>{dish.slogan || dish.description}</p><small>{dish.category}</small>{renderSharedDishSelections(dish.id)}</div>
-                      <div className="mobile-dish-control">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut || menuReadOnly} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? "下次" : menuReadOnly ? "看看" : "想吃"}<b>＋</b></button>}</div>
+                      <div className="mobile-dish-control">{quantity > 0 ? <div aria-label={`${dish.name}已选 ${quantity} 份`}><button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}>−</button><strong>{quantity}</strong><button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}>＋</button></div> : <button type="button" disabled={dish.soldOut || menuSelectionDisabled} onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? "下次" : menuReadOnly ? "看看" : "想吃"}<b>＋</b></button>}</div>
                     </article>;
                   })}</div>
                 </section>)}
@@ -2654,7 +2679,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                           <button type="button" onClick={() => updateQuantity(dish.id, -1)} aria-label={`减少${dish.name}`}><span className="control-mark minus" aria-hidden="true" /></button>
                           <strong><small>已选</small>{quantity} 份</strong>
                           <button type="button" onClick={() => updateQuantity(dish.id, 1)} aria-label={`增加${dish.name}`}><span className="control-mark plus" aria-hidden="true" /></button>
-                        </div> : <button type="button" disabled={dish.soldOut || menuReadOnly} className="add" onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? <span>下次再约</span> : menuReadOnly ? <span>今天只看看</span> : <><span>想吃这道</span><b className="plus-mark" aria-hidden="true" /></>}</button>}
+                        </div> : <button type="button" disabled={dish.soldOut || menuSelectionDisabled} className="add" onClick={() => updateQuantity(dish.id, 1)} aria-label={`添加${dish.name}`}>{dish.soldOut ? <span>下次再约</span> : menuReadOnly ? <span>今天只看看</span> : <><span>想吃这道</span><b className="plus-mark" aria-hidden="true" /></>}</button>}
                       </div>
                     </div>
                   </article>
