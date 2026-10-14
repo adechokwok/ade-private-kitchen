@@ -197,6 +197,11 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /确认称呼/);
   assert.match(page, /sharedDishTotals/);
   assert.match(page, /sharedAggregatePortionCount/);
+  assert.match(page, /handleChefSubmitUnlockTap/);
+  assert.match(page, /chefSubmitUnlocked && invite\.mode === "shared"/);
+  assert.match(page, /菜单会实时同步，由主厨统一提交/);
+  assert.match(page, /!isSharedInvite && kitchenOpen/);
+  assert.doesNotMatch(page, /每位朋友都能看到这张汇总单；选好后由任意一位通知主厨/);
   assert.match(page, /这桌已选 \{total\} 份/);
   assert.match(page, /guest\.items\.length} 道菜/);
   assert.match(page, /invite-created-success/);
@@ -228,6 +233,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(inviteRoute, /DELETE FROM dinner_invite_guests/);
   assert.match(inviteTokenRoute, /mode === "shared"/);
   assert.match(inviteTokenRoute, /dinnerInviteSelections/);
+  assert.match(inviteTokenRoute, /action === "submit" && !chefSubmitting/);
+  assert.match(inviteTokenRoute, /isChefRequest\(request\)/);
   assert.match(database, /dinner_invite_guests/);
   assert.match(database, /dinner_invite_selections/);
   assert.match(database, /recommended_dish_ids/);
@@ -491,3 +498,4 @@ test("includes a reproducible amd64 Docker deployment, updates, and backups", as
   assert.equal(manifest.dependencies["better-sqlite3"].startsWith("^"), true);
   assert.equal(manifest.devDependencies.vinext, undefined);
 });
+
