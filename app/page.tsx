@@ -1673,43 +1673,35 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     setSubmitting(true);
     const form = new FormData(formElement);
     try {
-      const shared = activeInvite?.mode === "shared" && sharedDinner?.guestToken;
-      if (shared) {
-        await selectionQueue.current.catch(() => {});
-        for (const [dishId, quantity] of selectionPending.current) syncSelection(dishId, quantity, activeInvite!.token, sharedDinner!.guestToken);
-        await selectionQueue.current;
-        if (selectionPending.current.size) throw new Error("仍有选菜未同步，请检查网络后重试");
-      }
       if (!orderRequestId.current) orderRequestId.current = createClientRowId();
       try { sessionStorage.setItem("ade-pending-order:" + (initialInviteToken || "normal"), orderRequestId.current); } catch { /* in-memory retry */ }
-      const response = await fetch(shared ? `/api/invites/${activeInvite!.token}` : "/api/orders", {
+      const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          ...(shared ? { action: "submit", guestToken: sharedDinner!.guestToken } : {}),
           requestId: orderRequestId.current,
           customerName: form.get("customerName"),
           mealDate: form.get("mealDate"),
           guestCount: Number(form.get("guestCount")),
           note: form.get("note"),
-          ...(shared ? {} : { dishes: Object.entries(cartRef.current).map(([dishId, quantity]) => ({ dishId, quantity })), inviteToken: initialInviteToken || undefined }),
+          dishes: Object.entries(cartRef.current).map(([dishId, quantity]) => ({ dishId, quantity })),
+          inviteToken: initialInviteToken || undefined,
         }),
       });
-      const data = await response.json() as { error?: string; guestToken?: string; orderToken?: string };
+      const data = await response.json() as { error?: string; orderToken?: string };
       if (!response.ok) throw new Error(data.error || "提交失败，请再试一次");
       setCart({}); cartRef.current = {};
       orderRequestId.current = "";
       try { sessionStorage.removeItem("ade-pending-order:" + (initialInviteToken || "normal")); localStorage.removeItem("ade-cart:" + (initialInviteToken || "normal")); localStorage.removeItem("ade-checkout:" + (initialInviteToken || "normal")); } catch { /* ignore */ }
       setCheckoutOpen(false);
       setCartOpen(false);
-      const progressToken = data.orderToken || data.guestToken;
+      const progressToken = data.orderToken;
       if (progressToken) {
         try { window.localStorage.setItem(activeGuestOrderStorageKey, progressToken); } catch { /* 当前进度链接仍可正常打开 */ }
         setOrderProgressUrl(`/order/${progressToken}`);
         setOrderSuccessOpen(true);
       }
-      if (shared) await loadInvite(activeInvite!.token, true);
-      setNotice(shared ? "已把这一桌大家选的菜汇总送进厨房 🍽️" : "点菜成功！厨房进度卡已经准备好 🍽️");
+      setNotice("点菜成功！厨房进度卡已经准备好 🍽️");
       formElement.reset();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "提交失败，请再试一次");
