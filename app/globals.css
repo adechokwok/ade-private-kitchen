@@ -1,12 +1,5 @@
 @import "tailwindcss";
 
-@font-face { font-family: "Ma Shan Zheng"; src: url("/fonts/MaShanZheng-Regular.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
-@font-face { font-family: "Liu Jian Mao Cao"; src: url("/fonts/LiuJianMaoCao-Regular.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
-@font-face { font-family: "Long Cang"; src: url("/fonts/LongCang-Regular.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
-@font-face { font-family: "ZCOOL XiaoWei"; src: url("/fonts/ZCOOLXiaoWei-Regular.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
-@font-face { font-family: "Zhi Mang Xing"; src: url("/fonts/ZhiMangXing-Regular.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
-@font-face { font-family: "ZCOOL KuaiLe"; src: url("/fonts/ZCOOLKuaiLe-Regular.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
-
 :root {
   --ink: #29231f;
   --muted: #766d66;
@@ -315,7 +308,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .banquet-free-menu-button { margin-top: 9px; min-height: 34px; }
 .banquet-hint { margin: 8px 0 0; color: var(--muted); font: 10px/1.5 system-ui, sans-serif; }
 .template-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }.template-choice { min-height: 92px; display: grid; grid-template-columns: 34px 1fr; grid-template-rows: 1fr 1fr; align-items: center; column-gap: 8px; border: 1px solid var(--line); background: #fff; padding: 10px; text-align: left; cursor: pointer; transition: transform .18s, box-shadow .18s, border-color .18s; }.template-choice:hover { transform: translateY(-2px); }.template-choice.active { border-color: var(--red); box-shadow: inset 0 0 0 1px var(--red), 0 6px 15px rgba(73,48,30,.08); }.template-choice > span { grid-row: 1 / 3; width: 34px; height: 48px; display: grid; place-items: center; border-radius: 99px; background: #eee3d4; color: #7d3d33; font-size: 14px; }.template-choice strong { align-self: end; font-size: 12px; }.template-choice small { align-self: start; color: var(--muted); font: 9px system-ui, sans-serif; }.template-choice.home > span { background: #efe1c9; color: #735542; }.template-choice.romance > span { background: #702f41; color: #f9dfe5; }.template-choice.fine > span { background: #171717; color: #d8b66a; }.template-choice.spring > span { background: #b72d24; color: #f5d68b; }.template-choice.midautumn > span { background: #253751; color: #e8dcae; }.template-choice.birthday > span { background: #79546f; color: #f7e4e7; }.template-choice.housewarming > span { background: #c67852; color: #fff7e8; }.template-choice.summer > span { background: #cce4e7; color: #467167; }.template-choice.christmas > span { background: #173c2c; color: #e8c976; }.template-choice.brunch > span { background: #f4cf66; color: #35647b; }.template-choice.jiangnan > span { background: #dce4d7; color: #38594e; }.template-choice.hotpot > span { background: #9f3327; color: #ffe7b2; }.template-choice.birthday-party > span { background: #ffd45c; color: #b83f45; }
-.banquet-fields { display: grid; grid-template-columns: 1.3fr .7fr; gap: 10px; }.banquet-fields label { display: grid; gap: 6px; color: var(--muted); font: 10px system-ui, sans-serif; }.banquet-fields label.wide { grid-column: 1 / -1; }.banquet-fields select { width: 100%; min-height: 42px; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 10px 12px; }.banquet-font-hint { color: var(--muted); font: 9px/1.5 system-ui,sans-serif; }
+.banquet-fields { display: grid; grid-template-columns: 1.3fr .7fr; gap: 10px; }.banquet-fields label,.banquet-fields > .wide { display: grid; gap: 6px; color: var(--muted); font: 10px system-ui, sans-serif; }.banquet-fields label.wide,.banquet-fields > .wide { grid-column: 1 / -1; }.banquet-fields select { width: 100%; min-height: 42px; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 10px 12px; }.banquet-font-hint { color: var(--muted); font: 9px/1.5 system-ui,sans-serif; }
 .banquet-add-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }.banquet-add-row button { border: 0; background: var(--ink); color: #fff; padding: 0 15px; cursor: pointer; }
 .banquet-empty { min-height: 125px; display: grid; place-content: center; justify-items: center; color: var(--muted); text-align: center; }.banquet-empty span { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--red); font-size: 18px; }.banquet-empty p { margin: 8px 0 0; font: 10px system-ui, sans-serif; }
 .banquet-arrangement { margin-top: 12px; display: grid; gap: 12px; }.banquet-auto-order-note { display: flex; align-items: center; gap: 7px; margin: 0; border-radius: 9px; background: #f0e8dc; color: #75695f; padding: 9px 11px; font: 9px/1.55 system-ui,sans-serif; }.banquet-auto-order-note span { width: 18px; height: 18px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #dcebdc; color: #34734c; font-size: 9px; }.banquet-course-group { overflow: hidden; border: 1px solid rgba(45,41,36,.1); border-radius: 11px; background: #fff; }.banquet-course-group > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border-bottom: 1px solid rgba(45,41,36,.08); background: #efe6d9; }.banquet-course-group > header div { display: flex; align-items: baseline; gap: 7px; }.banquet-course-group > header strong { color: var(--red); font-size: 11px; }.banquet-course-group > header small { margin: 0; font-size: 7px; letter-spacing: .1em; }.banquet-course-group > header > span { color: #8a7d72; font: 8px system-ui,sans-serif; }.banquet-course-group > div { display: grid; gap: 1px; background: rgba(45,41,36,.08); }.banquet-arrangement article { display: grid; grid-template-columns: 30px minmax(130px, 1fr) 105px auto; gap: 9px; align-items: center; padding: 9px; background: #f9f6f1; }.arrange-number { color: var(--red); font: 11px Georgia, serif; }.banquet-arrangement strong, .banquet-arrangement small { display: block; }.banquet-arrangement strong { font-size: 12px; }.banquet-arrangement small { margin-top: 3px; color: var(--muted); font: 9px system-ui, sans-serif; }.banquet-arrangement select { width: 100%; border: 1px solid var(--line); background: #fff; padding: 7px; font: 10px system-ui, sans-serif; }.arrange-actions { display: flex; gap: 3px; }.arrange-actions button { width: 27px; height: 29px; border: 1px solid var(--line); background: #fff; cursor: pointer; }.arrange-actions button:disabled { opacity: .25; }.arrange-actions button.remove { color: var(--red); }
@@ -339,6 +332,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .menu-card-placeholder { min-height: 300px; display: grid; place-content: center; justify-items: center; text-align: center; color: var(--menu-soft); }.menu-card-placeholder span { font: 40px Georgia, serif; letter-spacing: .18em; opacity: .16; }.menu-card-placeholder p { max-width: 220px; font-size: 11px; line-height: 1.8; }
 .menu-card-footer { text-align: center; color: var(--menu-soft); }.menu-card-footer > span { color: var(--menu-accent); }.menu-card-footer p { margin: 6px 0 10px; font-size: 11px; letter-spacing: .08em; }.menu-card-footer small { font: 7px system-ui, sans-serif; letter-spacing: .22em; }
 .preview-actions { width: min(100%, 540px); display: grid; grid-template-columns: .65fr 1.35fr; gap: 8px; margin: 12px auto 0; }.preview-actions button { min-height: 48px; border: 1px solid var(--line); cursor: pointer; }.preview-actions button:disabled { opacity: .6; cursor: wait; }.preview-actions .quiet { background: transparent; }.export-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }.preview-actions .export { display: grid; place-items: center; padding: 0 7px; background: var(--red); color: #fff; border-color: var(--red); font: 800 9px system-ui,sans-serif; }.preview-tip { margin: 9px 0 0; text-align: center; color: var(--muted); font: 9px system-ui, sans-serif; }
+.menu-description-control { width: min(100%, 540px); display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 auto 10px; }.menu-description-control button { min-height: 38px; border: 1px solid #d9c7b4; border-radius: 10px; background: #fffaf3; color: #72443c; padding: 0 12px; font: 800 10px system-ui,sans-serif; cursor: pointer; }.menu-description-control button[aria-pressed="false"] { background: #70443c; color: #fffaf3; border-color: #70443c; }.menu-description-control small { color: var(--muted); font: 9px/1.5 system-ui,sans-serif; text-align: right; }
 
 .template-home { --menu-bg: #f4e7cf; --menu-ink: #49392d; --menu-accent: #9a503a; --menu-soft: rgba(73,57,45,.7); background-image: url("/banquet/home.webp"); }.template-home::before { border-radius: 22px 22px 6px 6px; }.template-home .menu-card-ornament { border-radius: 14px 14px 14px 4px; background: #76533d; }
 .template-romance { --menu-bg: #f8ece4; --menu-ink: #542b35; --menu-accent: #9e3f52; --menu-soft: rgba(84,43,53,.7); background-image: url("/banquet/romance.webp"); }.template-romance::before { border-radius: 180px 180px 18px 18px; inset: 20px; }.template-romance .menu-card-ornament { border: 1px solid var(--menu-accent); background: rgba(255,250,246,.72); color: var(--menu-accent); }.template-romance .menu-card-header h2 { font-style: italic; font-weight: 400; }
@@ -444,6 +438,26 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 
 /* Menu font picker: show the selected face at a useful reading size. */
 .banquet-font-specimen { display: block; width: 100%; margin-top: 3px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #f8f4ed; color: #49392d; font-family: var(--menu-font-family); font-size: 19px; line-height: 1.35; }
+.menu-font-library { margin-top: 14px; padding: 14px; border: 1px solid #e5d9cb; border-radius: 12px; background: #fbf8f2; }
+.menu-font-library-heading,.menu-font-library-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.menu-font-library-heading > div { display: grid; gap: 3px; }
+.menu-font-library-heading strong { color: #3d3027; font-size: 14px; }
+.menu-font-library-heading small,.menu-font-library-foot > span { color: #81756c; font-size: 11px; line-height: 1.45; }
+.menu-font-upload,.menu-font-library-foot button { flex: 0 0 auto; border: 1px solid #c98570; border-radius: 8px; padding: 8px 11px; background: #fff; color: #8c3f31; font-size: 12px; font-weight: 700; cursor: pointer; }
+.menu-font-library-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; max-height: 246px; margin-top: 12px; overflow-y: auto; }
+.menu-font-library-item { display: flex; min-width: 0; align-items: center; gap: 5px; border: 1px solid #ece3d8; border-radius: 9px; padding: 5px 6px 5px 9px; background: #fff; }
+.menu-font-library-item.selected { border-color: #bd705c; box-shadow: 0 0 0 2px rgba(189,112,92,.12); }
+.menu-font-library-choice { display: grid; flex: 1; min-width: 0; gap: 3px; border: 0; padding: 4px 2px; background: transparent; color: #3c3028; text-align: left; cursor: pointer; }
+.menu-font-library-choice strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.menu-font-library-choice small { overflow: hidden; color: #81756c; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.menu-font-kind { flex: 0 0 auto; border-radius: 20px; padding: 3px 6px; background: #f1eee9; color: #74665c; font-size: 9px; }
+.menu-font-kind-custom { background: #eaf2e8; color: #496744; }
+.menu-font-remove { flex: 0 0 auto; border: 0; padding: 5px 3px; background: transparent; color: #a94a3f; font-size: 10px; cursor: pointer; }
+.menu-font-library-foot { margin-top: 10px; }
+.menu-font-library-foot button { border-color: #ded2c4; padding: 6px 8px; color: #645348; }
+.menu-font-library-message,.menu-font-library-error { margin: 8px 0 0; color: #466d46; font-size: 12px; }
+.menu-font-library-error { color: #a63f35; }
+.menu-font-library button:disabled { opacity: .55; cursor: wait; }
 
 /* Dark templates use dark, warm menu plates instead of pale cards that clash with the artwork. */
 .template-ingredient-atlas .menu-card-courses > section { border-color: rgba(207,179,126,.38); background: rgba(20,19,18,.96); box-shadow: 0 8px 22px rgba(0,0,0,.42); }
@@ -452,13 +466,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 
 /* The archive card reserves one clean brand area, then a separate menu area below the illustration. */
 .template-archive-ledger { container-type: inline-size; padding: 20px 42px 28px; background-size: cover; }
-.template-archive-ledger .menu-card-header { position: relative; height: clamp(450px, 96cqw, 520px); flex: 0 0 clamp(450px, 96cqw, 520px); }
-.template-archive-ledger .archive-card-arc { top: -7px; left: 0; width: 100%; height: 84px; fill: #a72d29; font-family: var(--menu-font-family); font-size: 28px; font-weight: 600; letter-spacing: .1em; }
+.template-archive-ledger .menu-card-header { position: relative; height: clamp(580px,130cqw,700px); flex: 0 0 clamp(580px,130cqw,700px); }
+.template-archive-ledger .archive-card-arc { top: 36px; left: 0; width: 100%; height: 130px; fill: #a72d29; font-family: var(--menu-font-family); font-size: 50px; font-weight: 800; letter-spacing: .55em; }
 .template-archive-ledger .menu-card-header h2,
 .template-archive-ledger .menu-card-header > p { display: none; }
-.template-archive-ledger .menu-card-header > .archive-card-meta { top: 65px; left: 0; width: 100%; gap: 12px; padding: 7px 0; border-color: rgba(55,125,143,.68); background: rgba(207,228,216,.72); font: 600 12px/1.35 var(--menu-font-family); letter-spacing: .04em; }
+.template-archive-ledger .menu-card-header > .archive-card-meta { top: 30cqw; left: 50%; width: fit-content; max-width: 100%; transform: translateX(-50%); gap: 12px; padding: 7px 14px; border-color: rgba(55,125,143,.68); background: rgba(207,228,216,.72); font: 600 12px/1.35 var(--menu-font-family); letter-spacing: .04em; }
 .template-archive-ledger .archive-card-ribbon { top: auto; bottom: 9px; left: 8%; width: 84%; min-height: 34px; padding: 4px 10px; background: rgba(207,228,216,.96); font-size: 16px; }
-.template-archive-ledger .archive-card-side-note { top: 46cqw; color: #9d2e2a; font-size: 10px; font-weight: 600; }
+.template-archive-ledger .archive-card-side-note { top: 51cqw; color: #9d2e2a; font-size: clamp(44px,9.5cqw,54px); font-weight: 700; letter-spacing: .82em; line-height: 1.05; }
 .template-archive-ledger .archive-card-side-note.left { left: 21px; }
 .template-archive-ledger .archive-card-side-note.right { right: 21px; }
 .template-archive-ledger .menu-card-courses { padding: 12px 0 18px; }
@@ -470,12 +484,19 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 
 /* Center the antique invitation title directly over the red plaque in its background. */
 .template-antique-post { container-type: inline-size; background-position: center top; background-size: 100% auto; }
-.template-antique-post .menu-card-header { min-height: 330px; }
-.template-antique-post .menu-card-header > small { position: absolute; top: 198px; left: 0; display: block; width: 100%; text-align: center; }
-.template-antique-post .menu-card-header h2 { top: calc(5.78cqw - 72px); left: 50%; width: min(12cqw,65px); min-width: 54px; height: clamp(165px,39cqw,210px); padding: 10px 7px; transform: translateX(-50%); text-align: center; }
+.template-antique-post::after { display: none; }
+.template-antique-post .menu-card-header { min-height: 370px; }
+.template-antique-post .menu-card-header > small { position: absolute; top: calc(61cqw - 72px); left: 0; display: block; width: 100%; color: #8f3029; text-align: center; }
+.template-antique-post .menu-card-header h2 { top: calc(7.2cqw - 72px); left: 50%; width: min(15cqw,68px); min-width: 44px; height: clamp(145px,48cqw,210px); padding: 8px 3px; transform: translateX(-50%); background: transparent; box-shadow: none; font-size: clamp(20px,7cqw,30px); text-align: center; }
 .template-antique-post .menu-card-header > p { top: 222px; left: 0; width: 100%; text-align: center; }
 .template-antique-post .menu-card-header > p strong { display: block; width: 100%; text-align: center; }
-.template-antique-post .menu-card-header > .archive-card-meta { position: absolute; top: 260px; left: 0; display: flex; width: 100%; justify-content: center; gap: 8px 14px; margin: 0; padding: 8px 0; border-color: rgba(159,39,37,.3); text-align: center; }
+.template-antique-post .menu-card-header > .archive-card-meta { position: absolute; top: 278px; left: 50%; display: flex; width: min(100%,390px); justify-content: center; gap: 5px 14px; margin: 0; padding: 9px 8px; transform: translateX(-50%); border-color: rgba(143,48,41,.34); background: rgba(248,242,226,.72); color: #514037; font-size: 10px; line-height: 1.45; letter-spacing: .06em; text-align: center; }
+.template-antique-post .menu-card-header > p strong { margin-bottom: 2px; color: #8f3029; font-size: 16px; line-height: 1.45; }
+.template-antique-post .menu-card-header > p span { display: block; color: #514037; font-size: 12px; line-height: 1.5; }
+.template-antique-post .menu-card-courses { padding: 24px 14px 18px; border-inline: 1px solid rgba(143,48,41,.12); background: rgba(248,242,226,.94); box-shadow: 0 0 20px 15px rgba(248,242,226,.52); }
+.template-antique-post .menu-card-courses > section { padding: 4px 0; background: transparent; }
+.template-antique-post .menu-card-courses section + section { margin-top: 18px; }
+.template-antique-post .menu-card-footer { padding: 12px 14px 8px; border: 1px solid rgba(143,48,41,.12); border-top: 0; background: rgba(248,242,226,.97); }
 
 @media (max-width: 600px) {
   .template-archive-ledger { padding-inline: 30px; }
@@ -483,8 +504,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
   .template-archive-ledger .archive-card-side-note.right { right: 18px; }
   .template-archive-ledger .menu-card-courses article strong { font-size: 13px; }
   .template-archive-ledger .menu-card-courses article span { font-size: 8px; }
-  .template-antique-post .menu-card-header > small { top: 198px; }
-  .template-antique-post .menu-card-header h2 { top: calc(5.78cqw - 58px); }
+  .template-antique-post .menu-card-header > small { top: calc(61cqw - 58px); }
+  .template-antique-post .menu-card-header h2 { top: calc(7.2cqw - 58px); }
+  .template-antique-post .menu-card-header > .archive-card-meta { top: 278px; }
 }
 
 @media (max-width: 600px) {

@@ -8,4 +8,3 @@ export default async function ChefPage() {
   if (!(await getChefSession())) redirect("/chef/login?returnTo=/chef");
   return <Home initialMode="chef" chefUser="阿德" showChefLogout={isChefPasswordRequired()} />;
 }
-

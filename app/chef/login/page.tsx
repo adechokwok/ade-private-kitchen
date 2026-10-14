@@ -37,4 +37,3 @@ export default async function ChefLoginPage({ searchParams }: { searchParams: Pr
     </main>
   );
 }
-

@@ -8,13 +8,15 @@ import { categories, type Dish, type Ingredient } from "./menu";
 import { activeGuestOrderStorageKey, isGuestOrderToken } from "./order-memory";
 import { displayIngredientAmount, normalizeIngredientAmount } from "./ingredient-units";
 import { BackupStatusPanel } from "./components/backup-status-panel";
+import { MenuFontLibrary } from "./components/menu-font-library";
 import { normalizedIngredientName, prepActionForIngredient, shoppingLocation } from "./procurement-domain";
+import { BUILTIN_MENU_FONTS, SYSTEM_MENU_FONT, TEMPLATE_DEFAULT_FONTS, menuFontCss, type MenuFont } from "./menu-fonts-shared";
 
 type Cart = Record<string, number>;
 type OrderItem = { dishId: string; quantity: number };
 type DishSnapshot = { dishId: string; name: string; baseServings: number; ingredients: Ingredient[]; steps?: string[]; minutes?: number; recipeSummary?: string; source?: string; difficulty?: string };
 type PublishedMenuCourse = { id: BanquetCourse; label: string; english: string; dishes: Array<{ name: string; description: string }> };
-type PublishedMenu = { title: string; date: string; time?: string; message: string; template: BanquetTemplate; templateName: string; subtitle: string; occasion: string; fontId?: BanquetFontId; guestCount?: number; chefCredit?: string; courses: PublishedMenuCourse[] };
+type PublishedMenu = { title: string; date: string; time?: string; message: string; template: BanquetTemplate; templateName: string; subtitle: string; occasion: string; fontId?: BanquetFontId; showDescriptions?: boolean; guestCount?: number; chefCredit?: string; courses: PublishedMenuCourse[] };
 type Order = {
   id: string;
   customerName: string;
@@ -81,9 +83,9 @@ type RecipeScreenshot = { id: string; file: File; preview: string; rotation: 0 |
 type ImageCrop = { x: number; y: number; zoom: number };
 type BanquetCourse = "starter" | "main" | "staple" | "soup";
 type BanquetItem = { dishId: string; course: BanquetCourse; snapshot?: Dish };
-type BanquetDraft = { template: BanquetTemplate; items: BanquetItem[]; title: string; templateName: string; date: string; time?: string; message: string; subtitle: string; occasion: string; chefCredit: string; fontId?: BanquetFontId; guestCount: number; courseEdits: Partial<Record<BanquetCourse, { label: string; english: string }>>; dishEdits: Record<string, { name: string; description: string }> };
+type BanquetDraft = { template: BanquetTemplate; items: BanquetItem[]; title: string; templateName: string; date: string; time?: string; message: string; subtitle: string; occasion: string; chefCredit: string; fontId?: BanquetFontId; showDescriptions?: boolean; guestCount: number; courseEdits: Partial<Record<BanquetCourse, { label: string; english: string }>>; dishEdits: Record<string, { name: string; description: string }> };
 type BanquetTemplate = "home" | "romance" | "fine" | "spring" | "midautumn" | "birthday" | "housewarming" | "summer" | "christmas" | "brunch" | "jiangnan" | "hotpot" | "birthday-party" | "archive-ledger" | "xuan-paper" | "ingredient-atlas" | "antique-post" | "bistro-handwritten";
-type BanquetFontId = "system-serif" | "zcool-xiaowei" | "zcool-kuaile" | "long-cang" | "zhi-mang-xing" | "ma-shan-zheng" | "liu-jian-mao-cao";
+type BanquetFontId = string;
 type ChefView = "accepting" | "shopping" | "cooking" | "serving" | "menuManager" | "invitations" | "journals" | "dataTransfer";
 type StatusUpdateDraft = { orderId: string; status: Order["status"]; note: string };
 
@@ -181,17 +183,14 @@ const banquetCourseOrder: Record<BanquetCourse, number> = {
   soup: 3,
 };
 
-const banquetFonts: Array<{ id: BanquetFontId; name: string; style: string }> = [
-  { id: "system-serif", name: "宋体雅排", style: "清晰稳重 · 通用" },
-  { id: "zcool-xiaowei", name: "站酷小薇", style: "秀气手写 · 易读推荐" },
-  { id: "zcool-kuaile", name: "站酷快乐体", style: "圆润轻松 · 明快" },
-  { id: "long-cang", name: "龙藏体", style: "舒展手写 · 标题感" },
-  { id: "zhi-mang-xing", name: "钟齐志莽行书", style: "浓墨行书 · 适合短句" },
-  { id: "ma-shan-zheng", name: "马善政毛笔楷书", style: "传统书写 · 有笔意" },
-  { id: "liu-jian-mao-cao", name: "刘建毛草", style: "奔放草书 · 装饰感" },
-];
+const banquetFonts: MenuFont[] = [SYSTEM_MENU_FONT, ...BUILTIN_MENU_FONTS.map((font) => ({ id: font.id, name: font.name, style: font.style, kind: font.kind, format: font.format, fileUrl: `/api/menu-fonts/${font.id}/file` }))];
 const validBanquetFonts = new Set<BanquetFontId>(banquetFonts.map((font) => font.id));
-const defaultBanquetFont: BanquetFontId = "zcool-xiaowei";
+const defaultBanquetFont: BanquetFontId = TEMPLATE_DEFAULT_FONTS.home;
+
+function defaultFontForTemplate(template: BanquetTemplate, fonts: MenuFont[]) {
+  const preferred = TEMPLATE_DEFAULT_FONTS[template] || SYSTEM_MENU_FONT.id;
+  return fonts.some((font) => font.id === preferred) ? preferred : SYSTEM_MENU_FONT.id;
+}
 
 function sortBanquetItemsByCourse(items: BanquetItem[]) {
   return items
@@ -500,6 +499,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     try { return JSON.parse(window.localStorage.getItem("ade-kitchen-cooking-checks") || "{}"); } catch { return {}; }
   });
   const [banquetTemplate, setBanquetTemplate] = useState<BanquetTemplate>("home");
+  const banquetTemplateRef = useRef(banquetTemplate);
   const [banquetOrderId, setBanquetOrderId] = useState("");
   const [banquetItems, setBanquetItems] = useState<BanquetItem[]>([]);
   const [banquetDishId, setBanquetDishId] = useState("");
@@ -508,6 +508,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [banquetDate, setBanquetDate] = useState(() => kitchenDate());
   const [banquetTime, setBanquetTime] = useState("18:30");
   const [banquetFontId, setBanquetFontId] = useState<BanquetFontId>(defaultBanquetFont);
+  const [banquetShowDescriptions, setBanquetShowDescriptions] = useState(true);
+  const [menuFonts, setMenuFonts] = useState<MenuFont[]>(banquetFonts);
   const [banquetMessage, setBanquetMessage] = useState("为喜欢的人认真做一桌饭");
   const [banquetSubtitle, setBanquetSubtitle] = useState(banquetTemplates[0].subtitle);
   const [banquetOccasion, setBanquetOccasion] = useState(banquetTemplates[0].occasion);
@@ -532,14 +534,29 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const draftCache = useRef<Record<string, { draft: BanquetDraft; revision: number }>>({});
   const draftQueue = useRef(Promise.resolve());
   const draftBlocked = useRef(new Set<string>());
-  const currentDraft = useMemo<BanquetDraft>(() => ({ template: banquetTemplate, items: banquetItems, title: banquetTitle, templateName: banquetTemplateName, date: banquetDate, time: banquetTime, message: banquetMessage, subtitle: banquetSubtitle, occasion: banquetOccasion, chefCredit: banquetChefCredit, fontId: banquetFontId, guestCount: banquetGuestCount, courseEdits: banquetCourseEdits, dishEdits: banquetDishEdits }), [banquetTemplate, banquetItems, banquetTitle, banquetTemplateName, banquetDate, banquetTime, banquetMessage, banquetSubtitle, banquetOccasion, banquetChefCredit, banquetFontId, banquetGuestCount, banquetCourseEdits, banquetDishEdits]);
+  const currentDraft = useMemo<BanquetDraft>(() => ({ template: banquetTemplate, items: banquetItems, title: banquetTitle, templateName: banquetTemplateName, date: banquetDate, time: banquetTime, message: banquetMessage, subtitle: banquetSubtitle, occasion: banquetOccasion, chefCredit: banquetChefCredit, fontId: banquetFontId, showDescriptions: banquetShowDescriptions, guestCount: banquetGuestCount, courseEdits: banquetCourseEdits, dishEdits: banquetDishEdits }), [banquetTemplate, banquetItems, banquetTitle, banquetTemplateName, banquetDate, banquetTime, banquetMessage, banquetSubtitle, banquetOccasion, banquetChefCredit, banquetFontId, banquetShowDescriptions, banquetGuestCount, banquetCourseEdits, banquetDishEdits]);
   const restoreDraft = (draft: BanquetDraft) => {
-    setBanquetTemplate(draft.template); setBanquetItems(draft.items); setBanquetTitle(draft.title); setBanquetTemplateName(draft.templateName); setBanquetDate(draft.date); setBanquetTime(draft.time || "18:30"); setBanquetFontId(draft.fontId && validBanquetFonts.has(draft.fontId) ? draft.fontId : defaultBanquetFont); setBanquetMessage(draft.message); setBanquetSubtitle(draft.subtitle); setBanquetOccasion(draft.occasion); setBanquetChefCredit(draft.chefCredit); setBanquetGuestCount(draft.guestCount); setBanquetCourseEdits(draft.courseEdits); setBanquetDishEdits(draft.dishEdits);
+    const storedFont = draft.fontId && (validBanquetFonts.has(draft.fontId) || /^custom-[a-f0-9-]{36}$/.test(draft.fontId)) ? draft.fontId : defaultFontForTemplate(draft.template, menuFonts);
+    setBanquetTemplate(draft.template); setBanquetItems(draft.items); setBanquetTitle(draft.title); setBanquetTemplateName(draft.templateName); setBanquetDate(draft.date); setBanquetTime(draft.time || "18:30"); setBanquetFontId(storedFont); setBanquetShowDescriptions(draft.showDescriptions !== false); setBanquetMessage(draft.message); setBanquetSubtitle(draft.subtitle); setBanquetOccasion(draft.occasion); setBanquetChefCredit(draft.chefCredit); setBanquetGuestCount(draft.guestCount); setBanquetCourseEdits(draft.courseEdits); setBanquetDishEdits(draft.dishEdits);
   };
   const cacheDraft = (scope: string, draft: BanquetDraft) => {
     draftCache.current[scope] = { draft, revision: draftCache.current[scope]?.revision || 0 };
     try { localStorage.setItem("ade-banquet-recovery:" + scope, JSON.stringify(draftCache.current[scope])); localStorage.setItem("ade-banquet-last", scope); } catch { /* server save still available */ }
   };
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/menu-fonts", { cache: "no-store" }).then(async (response) => {
+      const payload = await response.json() as { fonts?: MenuFont[] };
+      const fonts = payload.fonts;
+      if (!response.ok || !fonts) throw new Error("字体库暂时无法读取");
+      if (active) {
+        setMenuFonts(fonts);
+        setBanquetFontId((current) => fonts.some((font) => font.id === current) ? current : defaultFontForTemplate(banquetTemplateRef.current, fonts));
+      }
+    }).catch(() => { /* Bundled fonts remain available when the local server is offline. */ });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => { banquetTemplateRef.current = banquetTemplate; }, [banquetTemplate]);
   useEffect(() => {
     if (mode !== "chef") return;
     let active = true;
@@ -788,6 +805,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     if (!order) {
       setBanquetItems([]);
       setBanquetGuestCount(0);
+      setBanquetShowDescriptions(true);
       setBanquetTitle(activeBanquetTemplate.defaultTitle);
       setBanquetTemplateName(activeBanquetTemplate.name);
       setBanquetDate(kitchenDate());
@@ -810,6 +828,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       restoreDraft({ ...published, chefCredit: published.chefCredit || "", guestCount: published.guestCount || order.guestCount, items, courseEdits: Object.fromEntries(published.courses.map(course => [course.id, { label: course.label, english: course.english }])), dishEdits: edits });
       return;
     }
+    setBanquetShowDescriptions(true);
     const uniqueIds = Array.from(new Set(parseItems(order).map((item) => item.dishId)));
     setBanquetItems(sortBanquetItemsByCourse(uniqueIds.map((dishId) => ({ dishId, course: courseForDish(dishCatalog.find((dish) => dish.id === dishId)), snapshot: dishCatalog.find((dish) => dish.id === dishId) }))));
     setBanquetTitle(`${order.customerName}的${activeBanquetTemplate.name}`);
@@ -831,6 +850,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   const selectBanquetTemplate = (template: typeof banquetTemplates[number]) => {
     setBanquetTemplate(template.id);
+    setBanquetFontId(defaultFontForTemplate(template.id, menuFonts));
     setBanquetTemplateName(template.name);
     setBanquetTitle(template.defaultTitle);
     setBanquetMessage(template.defaultMessage);
@@ -883,6 +903,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         message: banquetMessage || activeBanquetTemplate.defaultMessage,
         template: banquetTemplate,
         fontId: banquetFontId,
+        showDescriptions: banquetShowDescriptions,
         templateName: banquetTemplateName || activeBanquetTemplate.name,
         subtitle: banquetSubtitle || activeBanquetTemplate.subtitle,
         occasion: banquetOccasion || activeBanquetTemplate.occasion,
@@ -2398,7 +2419,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               <label><span>菜单副标题</span><input value={banquetSubtitle} onChange={(event) => setBanquetSubtitle(event.target.value)} maxLength={60} /></label>
               <label><span>场合文字</span><input value={banquetOccasion} onChange={(event) => setBanquetOccasion(event.target.value)} maxLength={32} /></label>
               <label><span>用餐人数</span><input type="number" min="1" max="20" value={banquetGuestCount || ""} placeholder="自由菜单可选" onChange={(event) => setBanquetGuestCount(Math.min(20, Math.max(0, Number(event.target.value) || 0)))} /></label>
-          <label className="wide"><span>菜单字体</span><select value={banquetFontId} onChange={(event) => setBanquetFontId(event.target.value as BanquetFontId)}>{banquetFonts.map((font) => <option key={font.id} value={font.id}>{font.name} · {font.style}</option>)}</select><small className={`banquet-font-specimen menu-font-${banquetFontId}`}>阿德小厨房 · 今晚家宴 · {banquetFonts.find((font) => font.id === banquetFontId)?.style}</small><small className="banquet-font-hint">字体会应用到当前整张菜单，并随草稿和推送菜单保存；书写感更强的字体适合标题，正文可选清晰字体。</small></label>
+          <div className="wide"><span>菜单字体</span><select value={banquetFontId} onChange={(event) => setBanquetFontId(event.target.value)}>{menuFonts.map((font) => <option key={font.id} value={font.id}>{font.name} · {font.style}</option>)}</select><small className={`banquet-font-specimen menu-font-${banquetFontId}`}>阿德小厨房 · 今晚家宴 · {menuFonts.find((font) => font.id === banquetFontId)?.style || "当前模板默认字体"}</small><small className="banquet-font-hint">选择模板时会先套用该模板的默认字体；手动选择后会随草稿和正式菜单保存。</small><MenuFontLibrary fonts={menuFonts} selectedId={banquetFontId} onFontsChange={setMenuFonts} onSelect={setBanquetFontId} /></div>
               <label className="wide"><span>写给客人的话</span><input value={banquetMessage} onChange={(event) => setBanquetMessage(event.target.value)} maxLength={70} /></label>
               <label className="wide"><span>菜单落款</span><input value={banquetChefCredit} onChange={(event) => setBanquetChefCredit(event.target.value)} maxLength={50} /></label>
             </div>
@@ -2427,22 +2448,23 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       </div>
 
       <aside className="banquet-preview-wrap">
+        <div className="menu-description-control"><button type="button" aria-pressed={banquetShowDescriptions} onClick={() => setBanquetShowDescriptions((current) => !current)}>{banquetShowDescriptions ? "隐藏菜品介绍" : "显示菜品介绍"}</button><small>{banquetShowDescriptions ? "介绍会显示在预览、导出和朋友端菜单中" : "介绍已收起，预览、导出和朋友端菜单都会隐藏"}</small></div>
         <div ref={banquetPreviewRef} className={`banquet-preview template-${banquetTemplate} menu-font-${banquetFontId}`}>
           <div className="menu-card-header">
-            {banquetTemplate === "archive-ledger" && <svg className="archive-card-arc" viewBox="0 0 460 100" aria-hidden="true"><defs><path id="archive-ledger-arc" d="M 18 95 C 70 -2 390 -2 442 95" /></defs><text><textPath href="#archive-ledger-arc" startOffset="50%" textAnchor="middle">阿德小厨房</textPath></text></svg>}
+            {banquetTemplate === "archive-ledger" && <svg className="archive-card-arc" viewBox="0 0 460 100" aria-hidden="true"><defs><path id="archive-ledger-arc" d="M 12 110 C 58 -28 402 -28 448 110" /></defs><text><textPath href="#archive-ledger-arc" startOffset="50%" textAnchor="middle">阿德小厨房</textPath></text></svg>}
             {banquetTemplate !== "archive-ledger" && <small>阿德小厨房 · PRIVATE KITCHEN</small>}
             {banquetTemplate !== "archive-ledger" && <h2>{banquetTitle || activeBanquetTemplate.defaultTitle}</h2>}
             {banquetTemplate !== "archive-ledger" && <p><strong>{banquetTemplateName || activeBanquetTemplate.name}</strong><span>{banquetSubtitle || activeBanquetTemplate.subtitle}</span></p>}
             <div className="archive-card-meta"><span>{banquetDate || "择日相聚"}{banquetTime ? ` · ${banquetTime}` : ""}</span>{banquetTemplate !== "archive-ledger" && <span>{banquetOccasion || activeBanquetTemplate.occasion}</span>}{banquetGuestCount > 0 && <span>{banquetGuestCount} 位宾客</span>}</div>
             {banquetTemplate === "archive-ledger" && <div className="archive-card-ribbon">{banquetTitle || activeBanquetTemplate.defaultTitle}</div>}
           </div>
-          {banquetTemplate === "archive-ledger" && <><div className="archive-card-side-note left">唤醒久困英雄，指引迷途君子</div><div className="archive-card-side-note right">唤醒久困英雄，指引迷途君子</div></>}
+          {banquetTemplate === "archive-ledger" && <><div className="archive-card-side-note left">唤醒久困英雄</div><div className="archive-card-side-note right">指引迷途君子</div></>}
           <div className="menu-card-courses">
             {banquetCourses.map((course) => {
               const courseDishes = banquetDishes.filter((item) => item.course === course.id);
               if (!courseDishes.length) return null;
               const text = courseText(course);
-              return <section key={course.id}><h3><span>{text.label}</span><small>{text.english}</small></h3><div>{courseDishes.map(({ dish }) => { const dishCopy = dishText(dish); return <article key={dish.id}><strong>{dishCopy.name}</strong><span>{dishCopy.description}</span></article>; })}</div></section>;
+              return <section key={course.id}><h3><span>{text.label}</span><small>{text.english}</small></h3><div>{courseDishes.map(({ dish }) => { const dishCopy = dishText(dish); return <article key={dish.id}><strong>{dishCopy.name}</strong>{banquetShowDescriptions && <span>{dishCopy.description}</span>}</article>; })}</div></section>;
             })}
             {banquetDishes.length === 0 && <div className="menu-card-placeholder"><span>MENU</span><p>加入菜品后，这里会生成与“{activeBanquetTemplate.name}”相匹配的完整菜单。</p></div>}
           </div>
@@ -2464,6 +2486,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
 
   return (
     <main className={mode === "menu" ? "friend-menu" : "chef-shell"}>
+      <style>{menuFontCss(menuFonts)}</style>
       <header className="topbar">
         <Link className="brand" href="/" aria-label="回到菜单">
           <span className="brand-mark">德</span>

@@ -322,11 +322,30 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(globalStyles, /\.banquet-course-group/);
   assert.match(page, /banquet-font-specimen/);
   assert.match(page, /菜单字体/);
+  assert.match(page, /隐藏菜品介绍/);
+  assert.match(page, /显示菜品介绍/);
+  assert.match(page, /showDescriptions: banquetShowDescriptions/);
+  assert.match(statusClient, /showDescriptions !== false/);
   assert.match(page, /阿德小厨房 · 今晚家宴/);
   assert.match(page, /阿德小厨房<\/textPath>/);
-  assert.match(page, /唤醒久困英雄，指引迷途君子/);
+  assert.match(page, /className="archive-card-side-note left">唤醒久困英雄/);
+  assert.match(page, /className="archive-card-side-note right">指引迷途君子/);
+  assert.match(statusClient, /className="archive-card-side-note left">唤醒久困英雄/);
+  assert.match(statusClient, /className="archive-card-side-note right">指引迷途君子/);
+  assert.doesNotMatch(page, /唤醒久困英雄，指引迷途君子/);
+  assert.doesNotMatch(statusClient, /唤醒久困英雄，指引迷途君子/);
   assert.match(globalStyles, /\.template-ingredient-atlas \.menu-card-courses > section[^\n]*background: rgba\(20,19,18,\.96\)/);
-  assert.match(globalStyles, /\.template-antique-post \.menu-card-header h2 \{ top: calc\(5\.78cqw - 72px\)/);
+  assert.match(globalStyles, /\.template-antique-post \.menu-card-header h2 \{ top: calc\(7\.2cqw - 72px\)/);
+  assert.match(globalStyles, /\.template-antique-post \.menu-card-header h2 \{[^\n]*background: transparent; box-shadow: none;/);
+  assert.match(globalStyles, /\.template-antique-post \.menu-card-header > \.archive-card-meta \{ position: absolute; top: 278px;/);
+  assert.match(globalStyles, /\.template-antique-post::after \{ display: none; \}/);
+  assert.match(globalStyles, /\.template-antique-post \.menu-card-courses \{[^\n]*background: rgba\(248,242,226,\.94\)/);
+  assert.match(globalStyles, /\.template-archive-ledger \.archive-card-arc \{[^\n]*top: 36px;[^\n]*height: 130px;[^\n]*font-size: 50px;[^\n]*font-weight: 800; letter-spacing: \.55em/);
+  assert.match(globalStyles, /\.template-archive-ledger \.menu-card-header > \.archive-card-meta \{ top: 30cqw; left: 50%; width: fit-content; max-width: 100%; transform: translateX\(-50%\);/);
+  assert.match(globalStyles, /\.template-archive-ledger \.archive-card-side-note \{[^\n]*top: 51cqw;[^\n]*font-size: clamp\(44px,9\.5cqw,54px\)[^\n]*letter-spacing: \.82em/);
+  assert.match(globalStyles, /\.template-archive-ledger \.menu-card-header \{ position: relative; height: clamp\(580px,130cqw,700px\); flex: 0 0 clamp\(580px,130cqw,700px\); \}/);
+  assert.match(page, /M 12 110 C 58 -28 402 -28 448 110/);
+  assert.match(statusClient, /M 12 110 C 58 -28 402 -28 448 110/);
   for (const template of ["jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"]) {
     assert.match(globalStyles, new RegExp(`\\.template-${template}`));
     const asset = await readFile(new URL(`../public/banquet/${template}.webp`, import.meta.url));
@@ -334,9 +353,11 @@ test("ships the private menu and chef workflow", async () => {
   }
   const archiveBackground = await readFile(new URL("../public/banquet/archive-ledger-v2.webp", import.meta.url));
   assert.ok(archiveBackground.byteLength > 5_000 && archiveBackground.byteLength < 300_000, "复古档案卡新版底图应存在并保持轻量");
-  for (const face of ["Ma Shan Zheng", "Liu Jian Mao Cao", "Long Cang", "ZCOOL XiaoWei", "Zhi Mang Xing", "ZCOOL KuaiLe"]) {
-    assert.match(globalStyles, new RegExp(`@font-face\\s*\\{\\s*font-family:\\s*"${face}"`));
-  }
+  assert.doesNotMatch(globalStyles, /@font-face/);
+  assert.match(page, /menuFontCss\(menuFonts\)/);
+  assert.match(statusClient, /menuFontCss\(menuFonts\)/);
+  const sharedFonts = await readFile(new URL("../app/menu-fonts-shared.ts", import.meta.url), "utf8");
+  for (const fontName of ["马善政毛笔楷书", "刘建毛草", "龙藏体", "站酷小薇", "钟齐志莽行书", "站酷快乐体"]) assert.ok(sharedFonts.includes(`name: "${fontName}"`));
   for (const font of ["MaShanZheng-Regular.ttf", "LiuJianMaoCao-Regular.ttf", "LongCang-Regular.ttf", "ZCOOLXiaoWei-Regular.ttf", "ZhiMangXing-Regular.ttf", "ZCOOLKuaiLe-Regular.ttf", "OFL-MaShanZheng.txt", "OFL-LiuJianMaoCao.txt", "OFL-LongCang.txt", "OFL-ZCOOLXiaoWei.txt", "OFL-ZhiMangXing.txt", "OFL-ZCOOLKuaiLe.txt"]) {
     const asset = await readFile(new URL(`../public/fonts/${font}`, import.meta.url));
     assert.ok(asset.byteLength > 1_000, `${font} 字体或许可证应已随项目保存`);

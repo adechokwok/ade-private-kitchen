@@ -6,7 +6,7 @@
 
 - 菜谱、订单、库存、邀请保存在宿主机挂载目录中的 SQLite 数据库。
 - 菜品照片和家宴照片保存在宿主机挂载目录，不写入容器临时层。
-- 主厨工作台使用独立密码与安全会话保护。
+- 主厨密码可选：未设置时可直接进入后台；设置至少 10 位密码后，后台使用独立密码和安全会话保护。
 - Docker 容器提供健康检查，备份容器每天备份数据库并镜像照片目录。
 - GitHub 每次收到 `main` 分支更新后会先自动测试，再发布新的 `linux/amd64` Docker 镜像。
 - 智能菜谱录入使用通义千问 Qwen3-VL-Plus 读取截图、书页照片、食材和步骤；不配置时仍支持文字菜谱解析。
@@ -44,7 +44,7 @@
 
 ```bash
 cp cloud.env.example .env
-# 编辑 .env，至少填写 CHEF_PASSWORD 和 AI 接口 Key；若直接用公网 HTTP:3000，填写 PUBLIC_ORIGIN=http://公网IP:3000
+# 编辑 .env；CHEF_PASSWORD 可留空（直接进入后台），填写至少 10 位密码后启用登录保护。AI 接口 Key 按需填写；若直接用公网 HTTP:3000，填写 PUBLIC_ORIGIN=http://公网IP:3000
 docker compose -f compose.cloud.yaml up -d --build
 ```
 
@@ -66,7 +66,8 @@ docker compose -f compose.cloud.yaml up -d --build
 把 `nas.env.example` 复制为 `.env`，至少修改：
 
 ```dotenv
-CHEF_PASSWORD=一段至少10位且只有你知道的密码
+# 可选：留空可直接进入后台；填写至少 10 位密码后启用登录保护。
+CHEF_PASSWORD=
 NAS_DATA_PATH=/极空间中实际选择的数据目录
 NAS_BACKUP_PATH=/极空间中实际选择的备份目录
 ```
