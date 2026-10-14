@@ -4,6 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { ensureDinnerInvitesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb, getSqlite } from "../../../db";
 import { appSettings, customDishes, dinnerInvites, dinnerJournals, orders } from "../../../db/schema";
 import { chefApiGuard } from "../../chef-auth";
+import { isMenuFontId } from "../../menu-fonts-shared";
 
 type Item = { dishId?: string; quantity?: number };
 type ChefOrderMutation = {
@@ -16,7 +17,6 @@ type ChefOrderMutation = {
 const validStatuses = ["new", "confirmed", "shopping", "preparing", "done", "cancelled"] as const;
 const validMenuTemplates = new Set(["home", "romance", "fine", "spring", "midautumn", "birthday", "housewarming", "summer", "christmas", "brunch", "jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"]);
 const validMenuCourses = new Set(["starter", "main", "staple", "soup"]);
-const validMenuFonts = new Set(["system-serif", "zcool-xiaowei", "zcool-kuaile", "long-cang", "zhi-mang-xing", "ma-shan-zheng", "liu-jian-mao-cao"]);
 
 class MenuInputError extends Error {}
 
@@ -27,8 +27,9 @@ function normalizePublishedMenu(value: unknown) {
   const guestCount = typeof menu.guestCount === "number" && Number.isInteger(menu.guestCount) ? Math.min(20, Math.max(1, menu.guestCount)) : undefined;
   const template = text("template", 20);
   if (!validMenuTemplates.has(template)) throw new MenuInputError("请选择有效的宴席模板");
-  const fontId = text("fontId", 32) || "zcool-xiaowei";
-  if (!validMenuFonts.has(fontId)) throw new MenuInputError("请选择有效的菜单字体");
+  const fontId = text("fontId", 48) || "zcool-xiaowei";
+  if (!isMenuFontId(fontId)) throw new MenuInputError("请选择有效的菜单字体");
+  if (menu.showDescriptions !== undefined && typeof menu.showDescriptions !== "boolean") throw new MenuInputError("菜品介绍显示设置无效");
   const time = text("time", 5);
   if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new MenuInputError("聚会时间格式不正确");
   const rawCourses = Array.isArray(menu.courses) ? menu.courses : [];
@@ -58,6 +59,7 @@ function normalizePublishedMenu(value: unknown) {
     message: text("message", 70),
     template,
     fontId,
+    showDescriptions: menu.showDescriptions !== false,
     templateName: text("templateName", 24),
     subtitle: text("subtitle", 60),
     occasion: text("occasion", 32),

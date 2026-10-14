@@ -41,4 +41,3 @@ export async function POST(request: Request) {
   response.cookies.set(CHEF_SESSION_COOKIE, createChefSession(), sessionCookieOptions(request));
   return response;
 }
-

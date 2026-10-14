@@ -113,4 +113,3 @@ export function sessionCookieOptions(request: Request) {
   const secure = forwardedProtocol === "https" || new URL(request.url).protocol === "https:";
   return { httpOnly: true, sameSite: "lax" as const, secure, path: "/", maxAge: SESSION_TTL_SECONDS };
 }
-

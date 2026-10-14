@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { activeGuestOrderStorageKey } from "../../order-memory";
+import { menuFontCss, type MenuFont } from "../../menu-fonts-shared";
 
 const stages = [
   { id: "new", label: "点单送达", note: "阿德已经收到你的心愿" },
@@ -22,7 +23,7 @@ const statusNotices: Record<string, { mark: string; title: string; description: 
 };
 
 type StatusData = {
-  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; statusReadAt: string; dishesUpdatedAt: string; publishedMenuUpdatedAt: string; menuReadAt: string; archivedAt: string; publishedMenu?: { title: string; date: string; time?: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; fontId?: string; guestCount?: number; chefCredit?: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
+  order: { customerName: string; mealDate: string; guestCount: number; status: string; progressNote: string; statusUpdatedAt: string; statusReadAt: string; dishesUpdatedAt: string; publishedMenuUpdatedAt: string; menuReadAt: string; archivedAt: string; publishedMenu?: { title: string; date: string; time?: string; message: string; template: string; templateName: string; subtitle: string; occasion: string; fontId?: string; showDescriptions?: boolean; guestCount?: number; chefCredit?: string; courses: Array<{ id: string; label: string; english: string; dishes: Array<{ name: string; description: string }> }> } | null; dishSnapshot: Array<{ name: string }> };
   invite?: { token: string; title: string; message: string; theme: string } | null;
   journal?: { title: string; note: string; imageUrls: string[] } | null;
 };
@@ -31,6 +32,7 @@ type PendingReadReceipt = { action: "read-status" | "read-menu"; updateKey: stri
 export default function OrderStatusClient({ token }: { token: string }) {
   const etagRef = useRef("");
   const [data, setData] = useState<StatusData | null>(null);
+  const [menuFonts, setMenuFonts] = useState<MenuFont[]>([]);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -47,6 +49,14 @@ export default function OrderStatusClient({ token }: { token: string }) {
     if (typeof window === "undefined") return "";
     try { return window.localStorage.getItem(`ade-order-menu-update:${token}`) || ""; } catch { return ""; }
   });
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/menu-fonts", { cache: "no-store" }).then((response) => response.json()).then((payload: { fonts?: MenuFont[] }) => {
+      if (active && payload.fonts) setMenuFonts(payload.fonts);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -154,6 +164,7 @@ export default function OrderStatusClient({ token }: { token: string }) {
   if (!data) return <main className="status-page"><section className="status-card"><p>正在看看厨房里忙到哪一步了…</p></section></main>;
   const activeIndex = stages.findIndex((stage) => stage.id === data.order.status);
   return <main className={`status-page status-${data.invite?.theme || "warm"}`}>
+    <style>{menuFontCss(menuFonts)}</style>
     {showUpdateAlert && currentNotice && <div className={`status-update-modal status-update-${data.order.status}`} role="alertdialog" aria-modal="true" aria-labelledby="status-update-title">
       <section>
         <div className="status-update-mark" aria-hidden="true">{currentNotice.mark}</div>
@@ -190,10 +201,10 @@ export default function OrderStatusClient({ token }: { token: string }) {
       <div className="status-meta"><strong>{data.order.mealDate}</strong><small>{data.order.guestCount} 位 · {data.order.dishSnapshot.length} 道菜</small></div>
       {data.order.status === "cancelled" ? <div className="status-cancelled">这场饭局暂时取消了，等我们下次再好好约。</div> : <ol className="status-timeline">{stages.map((stage, index) => <li className={index <= activeIndex ? "active" : ""} key={stage.id}><i>{index < activeIndex ? "✓" : index + 1}</i><div><strong>{stage.label}</strong><small>{stage.note}</small></div></li>)}</ol>}
       {data.order.progressNote && <blockquote>“{data.order.progressNote}”<small>— 主厨留言</small></blockquote>}
-      {data.order.publishedMenu && <section id="published-menu" className={`banquet-preview guest-published-menu template-${data.order.publishedMenu.template} menu-font-${data.order.publishedMenu.fontId || "zcool-xiaowei"}`}>
-        <div className="menu-card-header">{data.order.publishedMenu.template === "archive-ledger" && <svg className="archive-card-arc" viewBox="0 0 460 100" aria-hidden="true"><defs><path id="archive-ledger-arc-guest" d="M 18 95 C 70 -2 390 -2 442 95" /></defs><text><textPath href="#archive-ledger-arc-guest" startOffset="50%" textAnchor="middle">阿德小厨房</textPath></text></svg>}{data.order.publishedMenu.template !== "archive-ledger" && <small>阿德小厨房 · PRIVATE KITCHEN</small>}{data.order.publishedMenu.template !== "archive-ledger" && <><h2>{data.order.publishedMenu.title}</h2><p><strong>{data.order.publishedMenu.templateName || "阿德私房菜单"}</strong><span>{data.order.publishedMenu.subtitle || "CHEF'S PRIVATE MENU"}</span></p></>}<div className="archive-card-meta"><span>{data.order.publishedMenu.date || data.order.mealDate}{data.order.publishedMenu.time ? ` · ${data.order.publishedMenu.time}` : ""}</span>{data.order.publishedMenu.template !== "archive-ledger" && <span>{data.order.publishedMenu.occasion || "今晚相聚"}</span>}<span>{data.order.publishedMenu.guestCount || data.order.guestCount} 位宾客</span></div>{data.order.publishedMenu.template === "archive-ledger" && <div className="archive-card-ribbon">{data.order.publishedMenu.title}</div>}</div>
-        {data.order.publishedMenu.template === "archive-ledger" && <><div className="archive-card-side-note left">唤醒久困英雄，指引迷途君子</div><div className="archive-card-side-note right">唤醒久困英雄，指引迷途君子</div></>}
-        <div className="menu-card-courses">{data.order.publishedMenu.courses.map((course) => course.dishes.length ? <section key={course.id}><h3><span>{course.label}</span><small>{course.english}</small></h3><div>{course.dishes.map((dish, index) => <article key={`${course.id}-${dish.name}-${index}`}><strong>{dish.name}</strong><span>{dish.description}</span></article>)}</div></section> : null)}</div>
+      {data.order.publishedMenu && <section id="published-menu" className={`banquet-preview guest-published-menu template-${data.order.publishedMenu.template} menu-font-${menuFonts.some((font) => font.id === data.order.publishedMenu?.fontId) ? data.order.publishedMenu.fontId : "system-serif"}`}>
+        <div className="menu-card-header">{data.order.publishedMenu.template === "archive-ledger" && <svg className="archive-card-arc" viewBox="0 0 460 100" aria-hidden="true"><defs><path id="archive-ledger-arc-guest" d="M 12 110 C 58 -28 402 -28 448 110" /></defs><text><textPath href="#archive-ledger-arc-guest" startOffset="50%" textAnchor="middle">阿德小厨房</textPath></text></svg>}{data.order.publishedMenu.template !== "archive-ledger" && <small>阿德小厨房 · PRIVATE KITCHEN</small>}{data.order.publishedMenu.template !== "archive-ledger" && <><h2>{data.order.publishedMenu.title}</h2><p><strong>{data.order.publishedMenu.templateName || "阿德私房菜单"}</strong><span>{data.order.publishedMenu.subtitle || "CHEF'S PRIVATE MENU"}</span></p></>}<div className="archive-card-meta"><span>{data.order.publishedMenu.date || data.order.mealDate}{data.order.publishedMenu.time ? ` · ${data.order.publishedMenu.time}` : ""}</span>{data.order.publishedMenu.template !== "archive-ledger" && <span>{data.order.publishedMenu.occasion || "今晚相聚"}</span>}<span>{data.order.publishedMenu.guestCount || data.order.guestCount} 位宾客</span></div>{data.order.publishedMenu.template === "archive-ledger" && <div className="archive-card-ribbon">{data.order.publishedMenu.title}</div>}</div>
+        {data.order.publishedMenu.template === "archive-ledger" && <><div className="archive-card-side-note left">唤醒久困英雄</div><div className="archive-card-side-note right">指引迷途君子</div></>}
+        <div className="menu-card-courses">{data.order.publishedMenu.courses.map((course) => course.dishes.length ? <section key={course.id}><h3><span>{course.label}</span><small>{course.english}</small></h3><div>{course.dishes.map((dish, index) => <article key={`${course.id}-${dish.name}-${index}`}><strong>{dish.name}</strong>{data.order.publishedMenu?.showDescriptions !== false && <span>{dish.description}</span>}</article>)}</div></section> : null)}</div>
         <div className="menu-card-footer"><span>—</span><p>{data.order.publishedMenu.message}</p><small>{data.order.publishedMenu.chefCredit || "CHEF'S TABLE · 阿德私房呈献"}</small></div>
         <div className="guest-menu-updated">菜单会随主厨调整自动更新 · {data.order.publishedMenuUpdatedAt ? new Date(data.order.publishedMenuUpdatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "刚刚送达"}</div>
       </section>}
