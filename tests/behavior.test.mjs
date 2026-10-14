@@ -132,6 +132,28 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
   const select = (inv, quantity = 1) => api("/api/invites/" + inv.token, { action: "set-selection", guestToken: inv.guestToken, dishId: dish.id, quantity });
   const submit = (inv, extra = {}, chef = false) => api("/api/invites/" + inv.token, { action: "submit", guestToken: inv.guestToken, guestCount: 6, ...extra }, chef);
   let original;
+  await t.test("shared guests must confirm distinct names before selecting and can see each person's dishes", async () => {
+    const created = await api("/api/invites", { quickCreate: true, mealDate: "2026-10-02" }, true);
+    const url = "/api/invites/" + created.data.invite.token;
+    assert.equal((await api(url, { action: "join", displayName: "  " })).status, 400);
+    assert.equal((await api(url, { action: "join", displayName: "朋友" })).status, 400);
+    assert.equal((await api(url)).data.shared.guests.length, 0);
+    const first = await api(url, { action: "join", displayName: "测试甲" });
+    assert.equal(first.status, 200);
+    assert.equal((await api(url, { action: "join", displayName: "测试甲" })).status, 409);
+    const second = await api(url, { action: "join", displayName: "测试乙" });
+    assert.equal(second.status, 200);
+    assert.equal((await api(url, { action: "set-selection", guestToken: first.data.guestToken, dishId: dish.id, quantity: 2 })).status, 200);
+    assert.equal((await api(url, { action: "set-selection", guestToken: second.data.guestToken, dishId: dish.id, quantity: 1 })).status, 200);
+    const shared = (await api(url + "?guestToken=" + first.data.guestToken)).data.shared;
+    assert.deepEqual(shared.selections.map(guest => [guest.displayName, guest.items.find(item => item.dishId === dish.id)?.quantity]), [["测试甲", 2], ["测试乙", 1]]);
+    assert.equal(shared.aggregate.find(item => item.dishId === dish.id).quantity, 3);
+    assert.equal((await api(url, { action: "submit", guestToken: first.data.guestToken, guestCount: 2 })).status, 403);
+    db.prepare("UPDATE dinner_invite_guests SET display_name = '朋友' WHERE guest_token = ?").run(first.data.guestToken);
+    assert.equal((await api(url, { action: "set-selection", guestToken: first.data.guestToken, dishId: dish.id, quantity: 3 })).status, 409);
+    assert.equal((await api(url, { action: "join", guestToken: first.data.guestToken, displayName: "测试丙" })).status, 200);
+    assert.equal((await api(url, { action: "set-selection", guestToken: first.data.guestToken, dishId: dish.id, quantity: 3 })).status, 200);
+  });
   await t.test("shared submissions preserve dietary notes and basic dinner information", async () => {
     original = await invite(); await select(original);
     assert.equal((await submit(original, { note: "花生过敏，绝对不要放" })).status, 403);
