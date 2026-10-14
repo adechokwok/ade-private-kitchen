@@ -417,6 +417,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const ordersEtagRef = useRef("");
   const invitePollingRef = useRef(false);
   const inviteEtagRef = useRef("");
+  const chefSubmitTapRef = useRef({ count: 0, lastAt: 0 });
   const mode = initialMode;
   const [chefView, setChefView] = useState<ChefView>("accepting");
   const [activeCategory, setActiveCategory] = useState("全部");
@@ -465,6 +466,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [dishCategorySelection, setDishCategorySelection] = useState("");
   const [customDishCategory, setCustomDishCategory] = useState("");
   const [invites, setInvites] = useState<DinnerInvite[]>([]);
+  const [chefSubmitUnlocked, setChefSubmitUnlocked] = useState(false);
+  const [sharedSubmitInviteId, setSharedSubmitInviteId] = useState("");
   const [journals, setJournals] = useState<DinnerJournal[]>([]);
   const [inviteDate, setInviteDate] = useState(() => kitchenDate());
   const cartRef = useRef<Cart>({});
@@ -1552,7 +1555,11 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   };
 
   const openCheckout = () => {
-    const next = { ...checkoutDraft, customerName: checkoutDraft.customerName || (activeInvite?.mode === "shared" ? sharedGuestName : ""), mealDate: activeInvite?.mealDate || checkoutDraft.mealDate || kitchenDate() };
+    if (activeInvite?.mode === "shared") {
+      setNotice("朋友端只负责一起选菜，菜单会由主厨在工作台统一提交");
+      return;
+    }
+    const next = { ...checkoutDraft, customerName: checkoutDraft.customerName, mealDate: activeInvite?.mealDate || checkoutDraft.mealDate || kitchenDate() };
     setCheckoutDraft(next);
     try { localStorage.setItem("ade-checkout:" + (initialInviteToken || "normal"), JSON.stringify(next)); } catch { /* ignore */ }
     setCheckoutOpen(true);
@@ -1660,6 +1667,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const submitOrder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submitting) return;
+    if (activeInvite?.mode === "shared") return setNotice("共享菜单由主厨在工作台统一提交");
     if (!kitchenOpen) return setNotice("阿德今天休息，菜单可以慢慢看，等绿灯亮起再来点菜吧");
     const formElement = event.currentTarget;
     setSubmitting(true);
@@ -2219,6 +2227,52 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     } catch (error) { setNotice(error instanceof Error ? error.message : "日期保存失败"); }
   };
 
+  const handleChefSubmitUnlockTap = () => {
+    const now = Date.now();
+    const taps = now - chefSubmitTapRef.current.lastAt <= 1400 ? chefSubmitTapRef.current.count + 1 : 1;
+    chefSubmitTapRef.current = { count: taps, lastAt: now };
+    if (taps < 5) return;
+    chefSubmitTapRef.current = { count: 0, lastAt: 0 };
+    setChefSubmitUnlocked((current) => !current);
+    setSharedSubmitInviteId("");
+    setNotice(chefSubmitUnlocked ? "主厨提交入口已收起" : "主厨提交入口已开启");
+  };
+
+  const submitSharedInviteMenu = async (event: FormEvent<HTMLFormElement>, invite: DinnerInvite) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    const guestCount = Number(values.get("guestCount"));
+    if (!Number.isInteger(guestCount) || guestCount < 1 || guestCount > 20) return setNotice("用餐人数需为 1–20 人");
+    const menuResponse = await fetch(`/api/invites/${invite.token}`);
+    const menuData = await menuResponse.json() as { shared?: SharedDinner; error?: string };
+    if (!menuResponse.ok || !menuData.shared) return setNotice(menuData.error || "读取共享菜单失败，请重试");
+    const dishes = menuData.shared.aggregate.filter((item) => item.quantity > 0);
+    if (!dishes.length) return setNotice("朋友还没有选菜，等菜单同步后再提交");
+    const dishNames = dishes.map((item) => `${dishCatalog.find((dish) => dish.id === item.dishId)?.name || "菜品"} × ${item.quantity}`).join("、");
+    if (!window.confirm(`确认提交这桌菜单吗？\n\n${dishNames}\n\n用餐人数：${guestCount} 人\n提交后，朋友页面会转入实时进度。`)) return;
+    setSubmitting(true);
+    try {
+      const response = await fetch(`/api/invites/${invite.token}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "submit", displayName: "主厨", guestCount, note: values.get("note") }),
+      });
+      const data = await response.json() as { error?: string; order?: Order };
+      if (!response.ok || !data.order) throw new Error(data.error || "共享菜单提交失败");
+      setInvites((current) => current.map((item) => item.id === invite.id ? { ...item, sharedOrderId: data.order!.id } : item));
+      setSharedSubmitInviteId("");
+      setChefSubmitUnlocked(false);
+      setNotice("大家选的菜单已由主厨统一提交，饭局已送进厨房 🍽️");
+      setChefView("accepting");
+      await loadOrders(true);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "共享菜单提交失败，请稍后重试");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const createInvite = async () => {
     if (inviteCreating) return;
     setInviteCreating(true);
@@ -2633,7 +2687,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             <div className="promise-card"><span>03</span><div>🥂</div><strong>最重要的是开心</strong><p>吃饱以后，再慢慢聊天。</p></div>
           </section>
 
-          {kitchenOpen && Object.keys(cart).length > 0 && (
+          {!isSharedInvite && kitchenOpen && Object.keys(cart).length > 0 && (
             <button className="floating-cart" onClick={() => setCartOpen(true)}>
               <span className="cart-icon">{cartCount}</span><span><small>{activeInvite?.mode === "shared" ? "这桌正在一起选" : "这顿有着落了"}</small><strong>{activeInvite?.mode === "shared" ? `${sharedAggregateItems.length} 道菜 · 共 ${sharedAggregateItems.reduce((sum, item) => sum + item.quantity, 0)} 份` : `${cartItems.length} 道菜 · 共 ${cartCount} 份`}</strong></span><b>去确认菜单 <i>→</i></b>
             </button>
@@ -2643,7 +2697,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         <section className="chef-page">
           <div className="chef-heading">
             <div><span className="eyebrow">KITCHEN WORKFLOW</span><h1>主厨工作台</h1><p>从接单、买菜、制作到开饭，按厨房真正的顺序一步一步完成。</p></div>
-            <div className="chef-heading-actions"><button type="button" className={`kitchen-status-toggle ${kitchenOpen ? "open" : "closed"}`} onClick={toggleKitchenStatus} disabled={kitchenStatusSaving}><i></i><span><small>{kitchenOpen ? "绿灯 · 朋友可见" : "红灯 · 朋友可见"}</small><strong>{kitchenStatusSaving ? "正在保存…" : kitchenOpen ? "厨房今日营业" : "厨房今天休息"}</strong></span><b>{kitchenOpen ? "关闭" : "开启"}</b></button>{(["accepting", "shopping", "cooking", "serving"] as ChefView[]).includes(chefView) && <button className="refresh-button" onClick={() => loadOrders()} disabled={loadingOrders}>{loadingOrders ? "刷新中…" : "刷新订单"}</button>}</div>
+            <div className="chef-heading-actions"><div className={`kitchen-status-toggle ${kitchenOpen ? "open" : "closed"}`}><i></i><button type="button" className="kitchen-status-secret" onClick={handleChefSubmitUnlockTap} aria-label="主厨操作入口"><small>{kitchenOpen ? "绿灯 · 朋友可见" : "红灯 · 朋友可见"}</small><strong>{kitchenStatusSaving ? "正在保存…" : kitchenOpen ? "厨房今日营业" : "厨房今天休息"}</strong></button><button type="button" className="kitchen-status-action" onClick={() => void toggleKitchenStatus()} disabled={kitchenStatusSaving}>{kitchenOpen ? "关闭" : "开启"}</button></div>{(["accepting", "shopping", "cooking", "serving"] as ChefView[]).includes(chefView) && <button className="refresh-button" onClick={() => loadOrders()} disabled={loadingOrders}>{loadingOrders ? "刷新中…" : "刷新订单"}</button>}</div>
           </div>
           <div className="chef-workflow" role="tablist" aria-label="主厨工作流程">
             <button className={chefView === "accepting" ? "active" : ""} onClick={() => setChefView("accepting")}><i>01</i><span><b>接单</b><small>{acceptingOrders.length} 份待确认 · 编排宴席</small></span></button>
@@ -2982,7 +3036,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                     <div className="invite-card-head"><span>{invite.mealDate}</span><em>{invite.mode === "shared" ? "多人共享" : "单人邀请"} · {invite.active ? "邀请中" : "已结束"}</em></div>
                     <h3>{invite.title}</h3>{invite.active && <label>饭局日期<input type="date" defaultValue={invite.mealDate} key={invite.mealDate} onBlur={event => { if (event.target.value !== invite.mealDate) void changeInviteDate(invite, event.target.value); }} /></label>}<p>{invite.message || "菜我来做，你只管来。"}</p>
                     <div className="invite-menu-preview">{invite.dishIds.map((id) => dishCatalog.find((dish) => dish.id === id)?.name).filter(Boolean).join(" · ")}</div>
-                    <div className="invite-actions"><button onClick={() => shareInvite(invite)}>分享邀请</button><button onClick={() => void generateInviteQr(invite)}>二维码</button><a href={`/invite/${invite.token}`} target="_blank">预览</a><button className="quiet" onClick={() => toggleInvite(invite)}>{invite.active ? "结束邀请" : "重新开放"}</button><button className="danger" onClick={() => void deleteInvite(invite)}>删除</button></div>
+                    <div className="invite-actions"><button onClick={() => shareInvite(invite)}>分享邀请</button><button onClick={() => void generateInviteQr(invite)}>二维码</button><a href={`/invite/${invite.token}`} target="_blank">预览</a><button className="quiet" onClick={() => toggleInvite(invite)}>{invite.active ? "结束邀请" : "重新开放"}</button><button className="danger" onClick={() => void deleteInvite(invite)}>删除</button>{chefSubmitUnlocked && invite.mode === "shared" && invite.active && !invite.sharedOrderId && <button type="button" className="chef-shared-submit-reveal" onClick={() => setSharedSubmitInviteId(current => current === invite.id ? "" : invite.id)}>{sharedSubmitInviteId === invite.id ? "收起提交" : "主厨提交菜单"}</button>}</div>
+                    {chefSubmitUnlocked && sharedSubmitInviteId === invite.id && invite.mode === "shared" && invite.active && !invite.sharedOrderId && <form className="chef-shared-submit-form" onSubmit={(event) => void submitSharedInviteMenu(event, invite)}><strong>提交大家已选的汇总菜单</strong><p>确认份数无误后再提交；提交后朋友会进入这场饭局的进度页。</p><label>用餐人数<input name="guestCount" type="number" min="1" max="20" defaultValue="1" required /></label><label>忌口或补充备注<textarea name="note" maxLength={200} placeholder="例如：有人不吃辣，少放香菜" /></label><button type="submit" disabled={submitting}>{submitting ? "正在提交…" : "确认提交菜单"}</button></form>}
                   </article>)}</div>}
               </div>
             </section>
@@ -3026,8 +3081,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             <div className="cart-lines">{cartItems.map((item) => <div key={item.id}><span className="mini-emoji">{item.imageUrl ? <img src={dishThumbnailUrl(item.imageUrl)} loading="lazy" decoding="async" alt="" /> : item.emoji}</span><span><strong>{item.name}</strong></span><div><button type="button" onClick={() => updateQuantity(item.id, -1)} aria-label={`减少${item.name}`}><span className="control-mark minus" aria-hidden="true" /></button><b>{item.quantity}</b><button type="button" onClick={() => updateQuantity(item.id, 1)} aria-label={`增加${item.name}`}><span className="control-mark plus" aria-hidden="true" /></button></div></div>)}</div>
             {activeInvite?.mode === "shared" && sharedDinner && <div className="shared-cart-summary"><strong>大家合计</strong>{sharedAggregateItems.map((item) => <span key={item.dishId}>{item.dish.name} × {item.quantity}</span>)}</div>}
             {Object.entries(cart).filter(([id]) => !allDishes.some(dish => dish.id === id)).map(([id, quantity]) => <div key={id}>已下架菜品（{quantity} 份）<button type="button" onClick={() => updateQuantity(id, -quantity)}>移除</button></div>)}
-            <p className="cart-hint">{activeInvite?.mode === "shared" ? "每位朋友都能看到这张汇总单；选好后由任意一位通知主厨。" : "眼光不错呀。提交后我会和你确认时间，再认真去买菜。"}</p>
-            <button className="primary-button" onClick={openCheckout}>{activeInvite?.mode === "shared" ? "通知主厨，汇总这一桌" : "把这顿饭约起来"} <span>→</span></button>
+            <p className="cart-hint">{activeInvite?.mode === "shared" ? "朋友端只负责一起选菜，提交由主厨在工作台统一处理。" : "眼光不错呀。提交后我会和你确认时间，再认真去买菜。"}</p>
+            {activeInvite?.mode !== "shared" && <button className="primary-button" onClick={openCheckout}>把这顿饭约起来 <span>→</span></button>}
           </aside>
         </div>
       )}
@@ -3036,11 +3091,11 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         <div className="overlay checkout-overlay">
           <form className="checkout-card" onSubmit={submitOrder}>
             <button type="button" className="close" onClick={() => setCheckoutOpen(false)} aria-label="关闭">×</button>
-            <span className="eyebrow">ALMOST DINNER TIME</span><h2>{activeInvite?.mode === "shared" ? "把大家的选择送进厨房" : "最后，把饭局约起来"}</h2><p>{activeInvite?.mode === "shared" ? "这一桌会按大家当前选好的菜汇总，任意一位朋友都可以通知主厨。" : "告诉我谁来、哪天来。你负责期待，我负责好吃。"}</p>
+            <span className="eyebrow">ALMOST DINNER TIME</span><h2>最后，把饭局约起来</h2><p>告诉我谁来、哪天来。你负责期待，我负责好吃。</p>
             <label><span>你的称呼</span><input name="customerName" required maxLength={30} placeholder="例如：小林" value={checkoutDraft.customerName} onChange={(event) => updateCheckoutField("customerName", event.target.value)} /></label>
             <div className="form-row"><label><span>想哪天吃</span><input name="mealDate" type="date" min={today} value={activeInvite?.mealDate || checkoutDraft.mealDate} onChange={(event) => updateCheckoutField("mealDate", event.target.value)} readOnly={Boolean(activeInvite)} required /></label><label><span>几个人</span><input name="guestCount" type="number" min="1" max="20" value={checkoutDraft.guestCount} onChange={(event) => updateCheckoutField("guestCount", event.target.value)} required /></label></div>
             <label><span>口味或忌口</span><textarea name="note" maxLength={200} placeholder="例如：少辣、不吃香菜，或者任何想说的话…" value={checkoutDraft.note} onChange={(event) => updateCheckoutField("note", event.target.value)} /></label>
-            <button className="primary-button" disabled={submitting}>{submitting ? "正在提交…" : `确认点菜 · ${activeInvite?.mode === "shared" ? sharedAggregateItems.length : cartItems.length} 道 / ${activeInvite?.mode === "shared" ? sharedAggregatePortionCount : cartCount} 份`}<span>→</span></button>
+            <button className="primary-button" disabled={submitting}>{submitting ? "正在提交…" : `确认点菜 · ${cartItems.length} 道 / ${cartCount} 份`}<span>→</span></button>
           </form>
         </div>
       )}
