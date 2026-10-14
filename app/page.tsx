@@ -406,7 +406,7 @@ async function createCroppedCoverFile(image: HTMLImageElement, crop: ImageCrop, 
   return new File([blob], `${safeName}-cover.jpg`, { type: "image/jpeg", lastModified: Date.now() });
 }
 
-export default function Home({ initialMode = "menu", chefUser = "", initialInviteToken = "" }: { initialMode?: "menu" | "chef"; chefUser?: string; initialInviteToken?: string }) {
+export default function Home({ initialMode = "menu", chefUser = "", initialInviteToken = "", showChefLogout = true }: { initialMode?: "menu" | "chef"; chefUser?: string; initialInviteToken?: string; showChefLogout?: boolean }) {
   const dishFormRef = useRef<HTMLFormElement>(null);
   const dishGridRef = useRef<HTMLDivElement>(null);
   const mobileMenuSectionRefs = useRef<Record<string, HTMLElement | null>>({});
