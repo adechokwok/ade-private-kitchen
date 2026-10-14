@@ -199,7 +199,7 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /sharedAggregatePortionCount/);
   assert.match(page, /handleChefSubmitUnlockTap/);
   assert.match(page, /chefSubmitUnlocked && invite\.mode === "shared"/);
-  assert.match(page, /菜单会实时同步，由主厨统一提交/);
+  assert.match(page, /朋友端只负责一起选菜，提交由主厨在工作台统一处理/);
   assert.match(page, /!isSharedInvite && kitchenOpen/);
   assert.doesNotMatch(page, /每位朋友都能看到这张汇总单；选好后由任意一位通知主厨/);
   assert.match(page, /这桌已选 \{total\} 份/);
