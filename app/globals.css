@@ -1581,3 +1581,25 @@ footer span { letter-spacing: .12em; } footer p { opacity: .48; font: 11px syste
 .dish-selection-badge > b:nth-of-type(6n + 5) { background: #47729a; }
 .dish-selection-badge > b:nth-of-type(6n) { background: #9b567d; }
 @media (max-width: 720px) { .invite-dish-tools { grid-template-columns: 1fr; } }
+
+/* Shared-menu submission belongs to the chef workspace, not guests. */
+.kitchen-status-toggle { cursor: default; }
+.kitchen-status-secret { min-width: 0; border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; font: inherit; }
+.kitchen-status-secret small,.kitchen-status-secret strong { display: block; }
+.kitchen-status-secret small { color: var(--muted); font: 8px system-ui,sans-serif; }
+.kitchen-status-secret strong { margin-top: 3px; font-size: 12px; }
+.kitchen-status-action { border: 0; border-radius: 8px; background: #eef4ea; color: #55704f; padding: 6px 8px; font: 9px system-ui,sans-serif; cursor: pointer; }
+.kitchen-status-toggle.closed .kitchen-status-action { background: #f7e9e6; color: #a5473e; }
+.kitchen-status-action:disabled { opacity: .6; cursor: wait; }
+.invite-actions .chef-shared-submit-reveal { background: #4a392c; color: #fff8ee; }
+.chef-shared-submit-form { display: grid; gap: 10px; max-width: 560px; margin-top: 14px; padding: 16px; border: 1px solid rgba(113,78,48,.2); border-radius: 14px; background: rgba(255,255,255,.72); }
+.chef-shared-submit-form > strong { font-size: 14px; }
+.chef-shared-submit-form > p { margin: -5px 0 0; color: #766658; font-size: 11px; line-height: 1.6; }
+.chef-shared-submit-form label { display: grid; gap: 5px; color: #766658; font: 10px system-ui,sans-serif; }
+.chef-shared-submit-form input,.chef-shared-submit-form textarea { width: 100%; border: 1px solid #d9c7b2; border-radius: 9px; background: #fffdf9; padding: 9px 10px; color: #3f3027; font: inherit; font-size: 13px; }
+.chef-shared-submit-form textarea { min-height: 58px; resize: vertical; }
+.chef-shared-submit-form > button { min-height: 40px; border: 0; border-radius: 9px; background: #9b4d37; color: #fff8ef; font: 700 12px system-ui,sans-serif; cursor: pointer; }
+.chef-shared-submit-form > button:disabled { opacity: .6; cursor: wait; }
+@media (max-width: 720px) {
+  .chef-shared-submit-form { padding: 13px; }
+}
