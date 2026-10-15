@@ -20,6 +20,9 @@ const { kitchenDate, validMealDate, courseForRecipe, procurementKey } = await im
 const unitSource = await readFile(new URL("../app/ingredient-units.ts", import.meta.url), "utf8");
 const unitJs = ts.transpileModule(unitSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
 const { normalizeIngredientAmount, displayIngredientAmount } = await import("data:text/javascript;base64," + Buffer.from(unitJs).toString("base64"));
+const productionMenuSource = await readFile(new URL("../app/production-menu.ts", import.meta.url), "utf8");
+const productionMenuJs = ts.transpileModule(productionMenuSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
+const { productionItemsForOrder } = await import("data:text/javascript;base64," + Buffer.from(productionMenuJs).toString("base64"));
 const descriptionSource = await readFile(new URL("../app/api/recipe-description.ts", import.meta.url), "utf8");
 const descriptionJs = ts.transpileModule(descriptionSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
 const { GENERATED_DESCRIPTION_MAX_LENGTH, limitGeneratedDescription } = await import("data:text/javascript;base64," + Buffer.from(descriptionJs).toString("base64"));
@@ -56,6 +59,24 @@ test("calendar, course labels and procurement demand identities", () => {
   assert.deepEqual(normalizeIngredientAmount(1.5, "kg"), { amount: 1500, unit: "g" });
   assert.deepEqual(normalizeIngredientAmount(2, "升"), { amount: 2000, unit: "ml" });
   assert.deepEqual(displayIngredientAmount(1500, "g"), { amount: 1.5, unit: "kg" });
+});
+
+test("procurement and production use the latest published menu, including manual dishes", () => {
+  const catalog = [{ id: "dish-a", name: "红烧肉", category: "热菜", baseServings: 4, ingredients: [{ name: "五花肉", amount: 500, unit: "g", type: "生鲜" }], steps: ["炖煮"], minutes: 60 }];
+  const order = { dishes: JSON.stringify([{ dishId: "dish-a", quantity: 2 }, { dishId: "dish-b", quantity: 1 }]), dishSnapshot: JSON.stringify([{ dishId: "dish-a", name: "红烧肉", baseServings: 4, ingredients: catalog[0].ingredients, steps: ["炖煮"], minutes: 60 }, { dishId: "dish-b", name: "客人点但主厨没选", baseServings: 4, ingredients: [], steps: [] }]) };
+  assert.deepEqual(productionItemsForOrder(order, catalog).map(item => item.snapshot.name), ["红烧肉", "客人点但主厨没选"]);
+  const recipeSnapshot = JSON.parse(order.dishSnapshot)[0];
+  order.publishedMenu = JSON.stringify({ courses: [{ id: "main", dishes: [
+    { name: "主厨改名的红烧肉", description: "新介绍", recipeSnapshot },
+    { name: "临时新增菜", description: "不写进菜谱库", recipeSnapshot: { dishId: "temporary-id", name: "临时新增菜", baseServings: 4, ingredients: [], steps: [], minutes: 0 } },
+  ] }] });
+  const firstPublish = productionItemsForOrder(order, catalog);
+  assert.deepEqual(firstPublish.map(item => item.snapshot.name), ["主厨改名的红烧肉", "临时新增菜"]);
+  assert.equal(firstPublish[0].snapshot.ingredients[0].name, "五花肉");
+  assert.equal(firstPublish[1].snapshot.ingredients.length, 0);
+  order.publishedMenu = JSON.stringify({ courses: [{ id: "starter", dishes: [{ name: "只保留的新版本" }] }] });
+  const updatedPublish = productionItemsForOrder(order, catalog);
+  assert.deepEqual(updatedPublish.map(item => item.snapshot.name), ["只保留的新版本"]);
 });
 
 async function zip(entries) {
@@ -282,9 +303,18 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     const inv = await invite(); await select(inv); const order = (await submit(inv, {}, true)).data.order;
     const accepted = await api("/api/orders", { action: "update-status", id: order.id, status: "confirmed", progressNote: "接单" }, true);
     assert.equal(accepted.status, 200);
-    const publishedMenu = { title: "测试家宴", date: "2026-10-02", time: "19:00", message: "开饭", template: "home", fontId: "long-cang", showDescriptions: false, templateName: "温馨家宴", subtitle: "DINNER", occasion: "朋友相聚", courses: [{ id: "main", label: "主厨热菜", english: "MAIN", dishes: [{ name: dish.name, description: "测试菜" }] }] };
+    const recipeSnapshot = { dishId: dish.id, name: dish.name, baseServings: dish.baseServings || 4, ingredients: dish.ingredients, steps: dish.steps || ["按菜谱制作"], minutes: dish.minutes || 20, recipeSummary: "私有制作信息", source: "测试菜谱", difficulty: "简单" };
+    const publishedMenu = { title: "测试家宴", date: "2026-10-02", time: "19:00", message: "开饭", template: "home", fontId: "long-cang", showDescriptions: false, templateName: "温馨家宴", subtitle: "DINNER", occasion: "朋友相聚", courses: [{ id: "main", label: "主厨热菜", english: "MAIN", dishes: [{ name: dish.name, description: "测试菜", recipeSnapshot }] }] };
     const published = await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu }, true); assert.equal(published.status, 200);
     assert.equal(JSON.parse(published.data.order.publishedMenu).fontId, "long-cang");
+    assert.deepEqual(JSON.parse(published.data.order.publishedMenu).courses[0].dishes[0].recipeSnapshot.ingredients, recipeSnapshot.ingredients);
+    const guestView = await fetch(base + "/api/order-status/" + order.guestToken);
+    assert.equal(guestView.status, 200);
+    const guestOrder = (await guestView.json()).order;
+    const guestMenu = guestOrder.publishedMenu;
+    assert.equal(guestMenu.courses[0].dishes[0].name, dish.name);
+    assert.equal("recipeSnapshot" in guestMenu.courses[0].dishes[0], false, "private recipe information must not be sent to guests");
+    assert.equal("ingredients" in guestOrder.dishSnapshot[0], false, "order recipe information must remain private too");
     assert.equal(JSON.parse(published.data.order.publishedMenu).time, "19:00");
     assert.equal(JSON.parse(published.data.order.publishedMenu).showDescriptions, false);
     const defaultDescriptions = await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, showDescriptions: undefined } }, true);
