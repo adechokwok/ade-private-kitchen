@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, readdir, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
+import http from "node:http";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import ts from "typescript";
@@ -19,6 +20,24 @@ const { kitchenDate, validMealDate, courseForRecipe, procurementKey } = await im
 const unitSource = await readFile(new URL("../app/ingredient-units.ts", import.meta.url), "utf8");
 const unitJs = ts.transpileModule(unitSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
 const { normalizeIngredientAmount, displayIngredientAmount } = await import("data:text/javascript;base64," + Buffer.from(unitJs).toString("base64"));
+const descriptionSource = await readFile(new URL("../app/api/recipe-description.ts", import.meta.url), "utf8");
+const descriptionJs = ts.transpileModule(descriptionSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
+const { GENERATED_DESCRIPTION_MAX_LENGTH, limitGeneratedDescription } = await import("data:text/javascript;base64," + Buffer.from(descriptionJs).toString("base64"));
+
+test("Qwen descriptions stay complete where possible and never exceed 35 characters", () => {
+  assert.equal(GENERATED_DESCRIPTION_MAX_LENGTH, 35);
+  const short = "酱汁浓郁，鸡翅软嫩入味。";
+  assert.equal(limitGeneratedDescription(short), short);
+  const sentence = "酱汁裹着软嫩鸡翅，热气一上桌就让人想先添一碗米饭。";
+  assert.equal(limitGeneratedDescription(`${sentence}这段多余的补充会超出菜单可读范围。`), sentence);
+  for (const value of ["酱汁裹着鸡翅，".repeat(8), "软嫩鲜香".repeat(18), `${"鲜".repeat(34)}，余味很长。`]) {
+    const result = limitGeneratedDescription(value);
+    assert.ok(Array.from(result).length <= 35);
+    assert.ok(result.endsWith("。"));
+    assert.ok(!result.includes("…"));
+    assert.ok(!result.endsWith("，。"));
+  }
+});
 
 test("calendar, course labels and procurement demand identities", () => {
   assert.equal(kitchenDate(new Date("2026-09-18T17:00:00Z")), "2026-09-19");
@@ -59,7 +78,14 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
   const port = listener.address().port; await new Promise(resolve => listener.close(resolve));
   const base = `http://127.0.0.1:${port}`;
   const password = crypto.randomUUID();
-  const env = { ...process.env, DATA_DIR: temp, DATABASE_PATH: path.join(temp, "ade-kitchen.sqlite"), UPLOADS_DIR: path.join(temp, "uploads"), BACKUP_DIR: path.join(temp, "backups"), CHEF_PASSWORD: password, TRUST_PROXY: "false" };
+  const mockAi = http.createServer((request, response) => {
+    request.resume();
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ name: "测试菜", description: "酱汁裹着软嫩鸡翅，热气一上桌就让人想先添一碗米饭。".repeat(5), ingredients: [], steps: ["焖煮入味"] }) } }] }));
+  });
+  mockAi.listen(0, "127.0.0.1"); await once(mockAi, "listening");
+  t.after(() => new Promise(resolve => mockAi.close(resolve)));
+  const env = { ...process.env, OPENAI_API_KEY: "isolated-test-key", OPENAI_BASE_URL: `http://127.0.0.1:${mockAi.address().port}/v1`, DATA_DIR: temp, DATABASE_PATH: path.join(temp, "ade-kitchen.sqlite"), UPLOADS_DIR: path.join(temp, "uploads"), BACKUP_DIR: path.join(temp, "backups"), CHEF_PASSWORD: password, TRUST_PROXY: "false" };
   const child = spawn(process.execPath, [path.join(root, "node_modules/next/dist/bin/next"), "start", "-H", "127.0.0.1", "-p", String(port)], { cwd: root, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   let logs = ""; child.stdout.on("data", c => logs += c); child.stderr.on("data", c => logs += c);
   let db;
@@ -86,6 +112,18 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
   }
   let customFontId = "";
   let customFontUrl = "";
+  await t.test("both AI endpoints enforce 35 characters with an oversized model response", async () => {
+    const copy = await api("/api/recipe-copy", { field: "description", name: "临时测试菜" }, true);
+    assert.equal(copy.status, 200);
+    assert.ok(Array.from(copy.data.description).length <= 35);
+    const form = new FormData(); form.set("text", "测试菜：鸡翅，焖煮入味");
+    const response = await fetch(base + "/api/recipe-import", { method: "POST", headers: { cookie }, body: form });
+    assert.equal(response.status, 200);
+    const imported = await response.json();
+    assert.ok(imported.draft.description.length > 0);
+    assert.ok(Array.from(imported.draft.description).length <= 35);
+    const health = await api("/api/health"); assert.equal(health.data.version, "1.0.0");
+  });
   await t.test("font library imports, serves, removes and restores fonts with chef-only writes", async () => {
     const publicList = await api("/api/menu-fonts");
     assert.equal(publicList.status, 200);
@@ -104,6 +142,15 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     assert.equal(served.status, 200);
     assert.equal(served.headers.get("content-type"), "font/ttf");
     assert.deepEqual(Buffer.from(await served.arrayBuffer()), fontBytes);
+    await mkdir(path.join(temp, "menu-fonts"), { recursive: true });
+    await rename(path.join(temp, "uploads", "menu-fonts", `${customFont.id}.ttf`), path.join(temp, "menu-fonts", `${customFont.id}.ttf`));
+    assert.equal((await api("/api/menu-fonts")).status, 200);
+    assert.deepEqual(await readFile(path.join(temp, "uploads", "menu-fonts", `${customFont.id}.ttf`)), fontBytes);
+    const exported = await fetch(base + "/api/admin/export", { headers: { cookie } });
+    const archive = await unzipper.Open.buffer(Buffer.from(await exported.arrayBuffer()));
+    const bundled = archive.files.find(file => file.path === `uploads/menu-fonts/${customFont.id}.ttf`);
+    assert.ok(bundled, "custom fonts must travel with data exports");
+    assert.deepEqual(await bundled.buffer(), fontBytes);
 
     const hidden = await api("/api/menu-fonts/long-cang", undefined, true, "DELETE");
     assert.equal(hidden.status, 200);
@@ -148,22 +195,26 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     const shared = (await api(url + "?guestToken=" + first.data.guestToken)).data.shared;
     assert.deepEqual(shared.selections.map(guest => [guest.displayName, guest.items.find(item => item.dishId === dish.id)?.quantity]), [["测试甲", 2], ["测试乙", 1]]);
     assert.equal(shared.aggregate.find(item => item.dishId === dish.id).quantity, 3);
-    assert.equal((await api(url, { action: "submit", guestToken: first.data.guestToken, guestCount: 2 })).status, 403);
+    assert.equal((await api(url, { action: "submit", guestCount: 2 })).status, 403);
+    const submitted = await api(url, { action: "submit", guestToken: first.data.guestToken, guestCount: 2 });
+    assert.equal(submitted.status, 200);
+    assert.equal(JSON.parse(submitted.data.order.dishes)[0].quantity, 3);
     db.prepare("UPDATE dinner_invite_guests SET display_name = '朋友' WHERE guest_token = ?").run(first.data.guestToken);
     assert.equal((await api(url, { action: "set-selection", guestToken: first.data.guestToken, dishId: dish.id, quantity: 3 })).status, 409);
+    assert.equal((await api(url, { action: "submit", guestToken: first.data.guestToken, guestCount: 2 })).status, 403);
     assert.equal((await api(url, { action: "join", guestToken: first.data.guestToken, displayName: "测试丙" })).status, 200);
     assert.equal((await api(url, { action: "set-selection", guestToken: first.data.guestToken, dishId: dish.id, quantity: 3 })).status, 200);
   });
   await t.test("shared submissions preserve dietary notes and basic dinner information", async () => {
     original = await invite(); await select(original);
-    assert.equal((await submit(original, { note: "花生过敏，绝对不要放" })).status, 403);
+    assert.equal((await submit({ ...original, guestToken: "invalid" }, { note: "花生过敏，绝对不要放" })).status, 403);
     assert.equal(db.prepare("SELECT count(*) AS n FROM orders WHERE invite_id = ?").get(original.id).n, 0);
     const first = await submit(original, { note: "花生过敏，绝对不要放" }, true); assert.equal(first.status, 200);
     original.order = first.data.order;
     const joined = await api("/api/invites/" + original.token, { action: "join", displayName: "测试乙" });
     const secondGuest = { ...original, guestToken: joined.data.guestToken };
     await select(secondGuest, 2);
-    assert.equal((await submit(secondGuest, { note: "不吃香菜" })).status, 403);
+    assert.equal((await submit({ ...secondGuest, guestToken: "invalid" }, { note: "不吃香菜" })).status, 403);
     const second = await submit(secondGuest, { note: "", mealDate: "2026-10-03", guestCount: 2 }, true);
     assert.equal(second.data.order.id, first.data.order.id);
     assert.match(second.data.order.note, /花生过敏/);
@@ -173,7 +224,7 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
   });
   await t.test("concurrent submission creates exactly one shared order", async () => {
     const inv = await invite(); await select(inv);
-    const results = await Promise.all(Array.from({ length: 5 }, () => submit(inv, {}, true)));
+    const results = await Promise.all(Array.from({ length: 5 }, (_, index) => submit(inv, {}, index % 2 === 0)));
     assert.ok(results.every(r => r.status === 200));
     assert.equal(new Set(results.map(r => r.data.order.id)).size, 1);
     assert.equal(db.prepare("SELECT count(*) AS n FROM orders WHERE invite_id = ?").get(inv.id).n, 1);
@@ -279,6 +330,13 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     }
     const result = await api("/api/menu-drafts", undefined, true);
     assert.deepEqual(result.data.drafts.free.draft, draft);
+    const temporaryId = "banquet-temporary-test";
+    const snapshot = { id: temporaryId, name: "临时加的菜", description: "手填长介绍不会因为千问的字数限制而被截断。".repeat(3), category: "主厨热菜" };
+    const withTemporary = { ...draft, items: [{ dishId: temporaryId, course: "main", snapshot }], showDescriptions: true };
+    const temporarySaved = await api("/api/menu-drafts", { scope: "free", draft: withTemporary, revision }, true, "PUT");
+    assert.equal(temporarySaved.status, 200); revision = temporarySaved.data.revision;
+    assert.deepEqual((await api("/api/menu-drafts", undefined, true)).data.drafts.free.draft.items[0].snapshot, snapshot);
+    assert.ok(!(await api("/api/dishes")).data.dishes.some(dish => dish.id === temporaryId));
     assert.equal((await api("/api/menu-drafts", { scope: "free", draft: { ...draft, title: "stale" }, revision: 0 }, true, "PUT")).status, 409);
     assert.equal((await api("/api/menu-drafts", { scope: "free", draft: { ...draft, fontId: "external-font" }, revision }, true, "PUT")).status, 400);
     assert.equal((await api("/api/menu-drafts", { scope: "free", draft: { ...draft, showDescriptions: "false" }, revision }, true, "PUT")).status, 400);

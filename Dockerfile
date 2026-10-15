@@ -20,10 +20,12 @@ RUN pnpm run build
 
 FROM node:22.13.0-bookworm-slim AS runner
 WORKDIR /app
+ARG APP_REVISION=unknown
 LABEL org.opencontainers.image.source="https://github.com/adechokwok/ade-private-kitchen" \
       org.opencontainers.image.title="阿德小厨房" \
       org.opencontainers.image.description="阿德小厨房 Docker 自托管版"
 ENV NODE_ENV=production \
+    APP_REVISION=${APP_REVISION} \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \
     PORT=3000 \

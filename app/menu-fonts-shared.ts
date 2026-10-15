@@ -36,7 +36,7 @@ export const TEMPLATE_DEFAULT_FONTS: Record<string, string> = {
   fine: "system-serif",
   spring: "zcool-xiaowei",
   midautumn: "ma-shan-zheng",
-  birthday: "zcool-kuaile",
+  birthday: "zcool-xiaowei",
   housewarming: "zcool-xiaowei",
   summer: "long-cang",
   christmas: "zcool-xiaowei",

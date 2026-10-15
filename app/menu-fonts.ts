@@ -1,20 +1,20 @@
 import "server-only";
 
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { ensureMenuLibrary, getDb } from "../db";
 import { appSettings } from "../db/schema";
-import { getDataDir } from "../storage/paths";
-import { BUILTIN_MENU_FONTS, SYSTEM_MENU_FONT, type MenuFont } from "./menu-fonts-shared";
+import { getDataDir, getUploadsDir } from "../storage/paths";
+import { BUILTIN_MENU_FONTS, SYSTEM_MENU_FONT, isMenuFontId, type MenuFont } from "./menu-fonts-shared";
 
 const settingKey = "menu_font_library_v1";
 const maxFontBytes = 12 * 1024 * 1024;
 const maxFontsPerUpload = 12;
 type FontSettings = { disabledBuiltins: string[]; customFonts: MenuFont[] };
 
-function fontsDirectory() { return path.join(getDataDir(), "menu-fonts"); }
+function fontsDirectory() { return path.join(getUploadsDir(), "menu-fonts"); }
 function customPath(font: MenuFont) { return path.join(fontsDirectory(), `${font.id}.${extensionForFormat(font.format)}`); }
 function extensionForFormat(format: MenuFont["format"]) {
   return format === "truetype" ? "ttf" : format === "opentype" ? "otf" : format || "woff2";
@@ -28,7 +28,7 @@ async function settings(): Promise<FontSettings> {
     const parsed = JSON.parse(row.value) as Partial<FontSettings>;
     return {
       disabledBuiltins: Array.isArray(parsed.disabledBuiltins) ? parsed.disabledBuiltins.filter((id): id is string => typeof id === "string") : [],
-      customFonts: Array.isArray(parsed.customFonts) ? parsed.customFonts.filter((font): font is MenuFont => Boolean(font && typeof font.id === "string" && font.kind === "custom" && typeof font.name === "string" && typeof font.format === "string")) : [],
+      customFonts: Array.isArray(parsed.customFonts) ? parsed.customFonts.filter((font): font is MenuFont => Boolean(font && isMenuFontId(font.id) && font.id.startsWith("custom-") && font.kind === "custom" && typeof font.name === "string" && ["truetype", "opentype", "woff", "woff2"].includes(font.format || ""))) : [],
     };
   } catch { return { disabledBuiltins: [], customFonts: [] }; }
 }
@@ -41,6 +41,15 @@ async function saveSettings(value: FontSettings) {
 
 export async function listMenuFonts(): Promise<MenuFont[]> {
   const stored = await settings();
+  // Keep old installations compatible while placing fonts inside existing backup/export storage.
+  for (const font of stored.customFonts) {
+    await mkdir(fontsDirectory(), { recursive: true });
+    try {
+      await copyFile(path.join(getDataDir(), "menu-fonts", `${font.id}.${extensionForFormat(font.format)}`), customPath(font), 1);
+    } catch (error) {
+      if (!["ENOENT", "EEXIST"].includes((error as NodeJS.ErrnoException).code || "")) throw error;
+    }
+  }
   const activeBuiltins = BUILTIN_MENU_FONTS.filter((font) => !stored.disabledBuiltins.includes(font.id));
   return [SYSTEM_MENU_FONT, ...activeBuiltins.map(({ id, name, style, kind, format }) => ({ id, name, style, kind, format, fileUrl: `/api/menu-fonts/${id}/file` })), ...stored.customFonts.map((font) => ({ ...font, fileUrl: `/api/menu-fonts/${font.id}/file` }))];
 }
@@ -120,6 +129,7 @@ export async function removeMenuFont(id: string) {
   const custom = current.customFonts.find((font) => font.id === id);
   if (!custom) throw new Error("找不到这款字体");
   await rm(customPath(custom), { force: true });
+  await rm(path.join(getDataDir(), "menu-fonts", `${custom.id}.${extensionForFormat(custom.format)}`), { force: true });
   await saveSettings({ ...current, customFonts: current.customFonts.filter((font) => font.id !== id) });
   return listMenuFonts();
 }

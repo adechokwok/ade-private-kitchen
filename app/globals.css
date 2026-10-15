@@ -346,7 +346,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .banquet-preview::before, .banquet-preview::after { content: ""; position: absolute; z-index: 0; pointer-events: none; }.banquet-preview::before { inset: 17px; border: 1px solid color-mix(in srgb, var(--menu-accent) 34%, transparent); }.banquet-preview::after { display: none; }
 .menu-card-ornament { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto 20px; border-radius: 50%; color: var(--menu-bg); background: var(--menu-accent); font-weight: 700; letter-spacing: .04em; }
 .menu-card-header,.menu-card-courses,.menu-card-footer { position: relative; z-index: 1; }.menu-card-header { text-align: center; }.menu-card-header > small { font: 700 8px system-ui, sans-serif; letter-spacing: .24em; color: var(--menu-accent); }.menu-card-header h2 { margin: 24px 0 12px; font-size: clamp(38px, 4.4vw, 52px); font-weight: 500; letter-spacing: .1em; line-height: 1.25; }.menu-card-header > p { margin: 0; color: var(--menu-soft); font-size: 12px; letter-spacing: .08em; line-height: 1.65; }.menu-card-header > p strong, .menu-card-header > p span { display: block; }.menu-card-header > p strong { margin-bottom: 5px; color: var(--menu-ink); font-size: 11px; letter-spacing: .14em; }.menu-card-header > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px 18px; margin-top: 20px; padding: 11px 0; border-top: 1px solid color-mix(in srgb, var(--menu-accent) 28%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--menu-accent) 28%, transparent); color: var(--menu-soft); font: 9px system-ui, sans-serif; letter-spacing: .12em; }
-.menu-card-courses { flex: 1; padding: 34px 0 24px; }.menu-card-courses section + section { margin-top: 28px; }.menu-card-courses h3 { display: flex; align-items: baseline; gap: 9px; margin: 0 0 14px; color: var(--menu-accent); }.menu-card-courses h3 span { font-size: 15px; letter-spacing: .16em; }.menu-card-courses h3 small { font: 7px system-ui, sans-serif; letter-spacing: .18em; opacity: .7; }.menu-card-courses section > div { display: grid; gap: 12px; }.menu-card-courses article { display: grid; grid-template-columns: minmax(110px, auto) minmax(0,1fr); gap: 13px; align-items: center; }.menu-card-courses article::after { content: ""; height: 1px; background: color-mix(in srgb, var(--menu-accent) 14%, transparent); grid-column: 1 / -1; order: -1; display: none; }.menu-card-courses article strong { font-size: 16px; font-weight: 500; letter-spacing: .06em; }.menu-card-courses article span { min-width: 0; color: var(--menu-soft); font-size: 10px; line-height: 1.65; text-align: right; overflow-wrap: anywhere; white-space: normal; }
+.menu-card-courses { flex: 1; padding: 34px 0 24px; }.menu-card-courses section + section { margin-top: 28px; }.menu-card-courses h3 { display: flex; align-items: baseline; gap: 9px; margin: 0 0 14px; color: var(--menu-accent); }.menu-card-courses h3 span { font-size: 15px; letter-spacing: .16em; }.menu-card-courses h3 small { font: 7px system-ui, sans-serif; letter-spacing: .18em; opacity: .7; }.menu-card-courses section > div { display: grid; gap: 12px; }
+.menu-card-courses article { display: grid; grid-template-columns: minmax(0,42%) minmax(0,1fr); column-gap: 13px; row-gap: 4px; align-items: center; }
+.menu-card-courses article:not(:has(> span)) { grid-template-columns: 1fr; }
+.menu-card-courses article::after { content: ""; height: 1px; background: color-mix(in srgb, var(--menu-accent) 14%, transparent); grid-column: 1 / -1; order: -1; display: none; }
+.menu-card-courses article strong { min-width: 0; font-size: 18px; font-weight: 500; letter-spacing: .04em; line-height: 1.4; overflow-wrap: anywhere; }
+.menu-card-courses article span { min-width: 0; color: var(--menu-soft); font-size: 10px; line-height: 1.65; text-align: left; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
 .menu-card-placeholder { min-height: 300px; display: grid; place-content: center; justify-items: center; text-align: center; color: var(--menu-soft); }.menu-card-placeholder span { font: 40px Georgia, serif; letter-spacing: .18em; opacity: .16; }.menu-card-placeholder p { max-width: 220px; font-size: 11px; line-height: 1.8; }
 .menu-card-footer { text-align: center; color: var(--menu-soft); }.menu-card-footer > span { color: var(--menu-accent); }.menu-card-footer p { margin: 6px 0 10px; font-size: 11px; letter-spacing: .08em; }.menu-card-footer small { font: 7px system-ui, sans-serif; letter-spacing: .22em; }
 .preview-actions { width: min(100%, 540px); display: grid; grid-template-columns: .65fr 1.35fr; gap: 8px; margin: 12px auto 0; }.preview-actions button { min-height: 48px; border: 1px solid var(--line); cursor: pointer; }.preview-actions button:disabled { opacity: .6; cursor: wait; }.preview-actions .quiet { background: transparent; }.export-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }.preview-actions .export { display: grid; place-items: center; padding: 0 7px; background: var(--red); color: #fff; border-color: var(--red); font: 800 9px system-ui,sans-serif; }.preview-tip { margin: 9px 0 0; text-align: center; color: var(--muted); font: 9px system-ui, sans-serif; }
@@ -357,7 +362,26 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .template-fine { --menu-bg: #151515; --menu-ink: #f4efe4; --menu-accent: #d2ae69; --menu-soft: rgba(244,239,228,.68); background-image: url("/banquet/fine.webp"); }.template-fine::before { inset: 11px; border-width: 0; }.template-fine .menu-card-ornament { border-radius: 0; transform: rotate(45deg); background: rgba(15,15,15,.7); border: 1px solid var(--menu-accent); color: var(--menu-accent); }.template-fine .menu-card-ornament span { transform: rotate(-45deg); font: 10px Georgia, serif; }.template-fine .menu-card-header h2 { text-transform: uppercase; font-family: var(--menu-font-family); font-size: 38px; font-weight: 400; letter-spacing: .12em; }
 .template-spring { --menu-bg: #9f1714; --menu-ink: #fff2cf; --menu-accent: #f1cb70; --menu-soft: rgba(255,242,207,.76); background-image: url("/banquet/new-year.webp"); }.template-spring::before { border-width: 2px; inset: 14px; }.template-spring .menu-card-ornament { color: #9a211a; background: #f1cb70; border-radius: 50% 50% 12px 12px; box-shadow: 0 0 0 7px rgba(243,202,115,.13); }.template-spring .menu-card-header h2 { font-weight: 700; letter-spacing: .16em; }
 .template-midautumn { --menu-bg: #142b43; --menu-ink: #f3ead1; --menu-accent: #e1ca80; --menu-soft: rgba(243,234,209,.74); background-image: url("/banquet/midautumn.webp"); }.template-midautumn::before { border-radius: 50% 50% 8px 8px / 22% 22% 8px 8px; }.template-midautumn .menu-card-ornament { border: 1px solid var(--menu-accent); background: rgba(13,37,58,.64); color: var(--menu-accent); box-shadow: 0 0 28px rgba(225,202,128,.18); }.template-midautumn .menu-card-header h2 { font-weight: 400; letter-spacing: .18em; }
-.template-birthday { --menu-bg: #f6e4df; --menu-ink: #593c52; --menu-accent: #8c536f; --menu-soft: rgba(89,60,82,.7); background-image: url("/banquet/birthday.webp"); }.template-birthday::before { border-radius: 16px; border-style: dashed; }.template-birthday .menu-card-ornament { border-radius: 18px; background: #805069; box-shadow: 8px 7px 0 rgba(196,107,88,.24); }.template-birthday .menu-card-header h2 { letter-spacing: .07em; }
+.template-birthday { --menu-bg: #fcf7ef; --menu-ink: #584a3b; --menu-accent: #a38151; --menu-soft: #796c5b; --birthday-side-gutter: 64px; --birthday-bottom-gutter: 42px; padding-inline: var(--birthday-side-gutter); background-image: none; border-color: rgba(164,132,85,.28); }
+.template-choice.birthday > span { background: #eee3ce; color: #94754a; }
+.template-birthday::before { top: 0; right: 0; bottom: auto; left: 0; width: 100%; aspect-ratio: 2 / 3; border: 0; background: url("/banquet/birthday-candlelight.webp") center top / 100% 100% no-repeat; -webkit-mask-image: linear-gradient(to bottom,#000 0%,#000 25%,transparent 40%); mask-image: linear-gradient(to bottom,#000 0%,#000 25%,transparent 40%); }
+.template-birthday::after { display: block; inset: 22px 16px; border: 1px solid rgba(174,145,99,.34); background: rgba(255,252,247,.82); box-shadow: 0 0 22px 10px rgba(255,252,247,.35); }
+.template-birthday .menu-card-header > small { color: #947850; letter-spacing: .27em; }
+.template-birthday .menu-card-header h2 { margin-top: 30px; color: #66503d; font-size: clamp(42px,4.8vw,56px); font-weight: 400; letter-spacing: .16em; }
+.template-birthday .menu-card-header > p strong { display: none; }
+.template-birthday .menu-card-header > p span { color: #9b8059; font: italic 12px/1.6 Georgia,serif; letter-spacing: .22em; }
+.template-birthday .menu-card-header > div { margin-top: 25px; border-color: rgba(174,145,99,.4); color: #8b765c; }
+.template-birthday .menu-card-courses h3 { color: #8d6d42; }
+.template-birthday .menu-card-courses { isolation: isolate; }
+.template-birthday .menu-card-courses::before { content: ""; position: absolute; z-index: 0; inset: 0; pointer-events: none; opacity: .16; background: url("/banquet/birthday-middle-botanical.png") center / 100% 100% no-repeat; }
+.template-birthday .menu-card-courses > section { position: relative; z-index: 1; }
+.template-birthday .menu-card-courses section + section { margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(174,145,99,.28); }
+.template-birthday .menu-card-courses article strong { color: #574838; }
+.template-birthday .menu-card-courses article span { color: #6d5f4e; font-size: 11px; line-height: 1.7; }
+.template-birthday .menu-card-footer { padding: 16px 0 125px; border-top: 1px solid rgba(174,145,99,.28); }
+.template-birthday .menu-card-footer::after { content: ""; position: absolute; z-index: 2; pointer-events: none; left: calc(-1 * var(--birthday-side-gutter)); bottom: calc(-1 * var(--birthday-bottom-gutter)); width: calc(100% + 2 * var(--birthday-side-gutter)); height: clamp(130px,32vw,175px); background: url("/banquet/birthday-ribbon-flowers.png") center bottom / 100% auto no-repeat; }
+.template-birthday .menu-card-footer > * { position: relative; z-index: 3; }
+@media (max-width: 720px) { .banquet-preview.template-birthday { --birthday-side-gutter: 50px; --birthday-bottom-gutter: 34px; padding-inline: var(--birthday-side-gutter); } }
 .template-housewarming { --menu-bg: #f2e4cb; --menu-ink: #4f4035; --menu-accent: #ad603f; --menu-soft: rgba(79,64,53,.7); background-image: url("/banquet/housewarming.webp"); }.template-housewarming::before { inset: 22px; border-radius: 180px 180px 9px 9px; }.template-housewarming .menu-card-ornament { border-radius: 17px 17px 5px 5px; background: #a96143; box-shadow: 0 5px 0 rgba(91,110,72,.18); }
 .template-summer { --menu-bg: #f7f5e9; --menu-ink: #345951; --menu-accent: #5a8d83; --menu-soft: rgba(52,89,81,.7); background-image: url("/banquet/summer.webp"); }.template-summer::before { border-style: dashed; border-radius: 38px; }.template-summer .menu-card-ornament { border-radius: 50% 50% 12px 50%; background: #77a99f; color: #fffbea; }.template-summer .menu-card-header h2 { font-weight: 400; letter-spacing: .13em; }
 .template-christmas { --menu-bg: #0d2f21; --menu-ink: #fff5dc; --menu-accent: #e2be63; --menu-soft: rgba(255,245,220,.76); background-image: url("/banquet/christmas.webp"); }.template-christmas::before { inset: 14px; border-color: rgba(226,190,99,.48); }.template-christmas .menu-card-ornament { border-radius: 10px; transform: rotate(45deg); background: #9c2832; color: #fff3d5; box-shadow: 0 0 0 6px rgba(226,190,99,.08); }.template-christmas .menu-card-ornament span { transform: rotate(-45deg); }.template-christmas .menu-card-header h2 { font-family: var(--menu-font-family); font-weight: 400; }
@@ -425,7 +449,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .ingredient-atlas-left > section + section { margin-top: 0; }
 .ingredient-atlas-columns > section[data-course="main"],.ingredient-atlas-left > section { min-width: 0; margin: 0; padding: 12px 11px; border: 1px solid rgba(207,179,126,.3); background: rgba(24,23,21,.92); color: #f6efe3; border-radius: 3px; box-shadow: 0 8px 20px rgba(0,0,0,.3); }
 .ingredient-atlas-columns > section[data-course="main"] { min-height: 100%; }
-.template-ingredient-atlas .menu-card-courses > section,.ingredient-atlas-columns > section[data-course="main"],.ingredient-atlas-left > section { min-width: 0; margin: 0; padding: 12px 11px; border: 1px solid rgba(207,179,126,.3); background: rgba(24,23,21,.92); color: #f6efe3; border-radius: 3px; box-shadow: 0 8px 20px rgba(0,0,0,.3); }
 .template-ingredient-atlas .menu-card-courses h3 { display: block; margin-bottom: 9px; color: #e0c78e; border-bottom: 1px solid rgba(207,179,126,.35); padding-bottom: 6px; }
 .template-ingredient-atlas .menu-card-courses h3 span { font-family: var(--menu-font-family); font-size: 15px; }
 .template-ingredient-atlas .menu-card-courses h3 small { display: block; margin-top: 2px; color: #ad9a76; font-size: 6px; }
@@ -486,19 +509,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .menu-font-library button:disabled { opacity: .55; cursor: wait; }
 
 /* Dark templates use dark, warm menu plates instead of pale cards that clash with the artwork. */
-.template-ingredient-atlas .ingredient-atlas-columns > section,.template-ingredient-atlas .ingredient-atlas-left > section { border-color: rgba(207,179,126,.38); background: rgba(20,19,18,.96); box-shadow: 0 8px 22px rgba(0,0,0,.42); }
+.template-ingredient-atlas .ingredient-atlas-columns > section { border-color: rgba(207,179,126,.38); background: rgba(20,19,18,.96); box-shadow: 0 8px 22px rgba(0,0,0,.42); }
 .template-ingredient-atlas .menu-card-courses article strong { color: #f4ead7; }
 .template-ingredient-atlas .menu-card-courses article span { color: rgba(244,234,215,.82); }
 
 /* The archive card reserves one clean brand area, then a separate menu area below the illustration. */
-.template-archive-ledger { container-type: inline-size; padding: 20px 42px 28px; background-size: cover; }
+.banquet-preview.template-archive-ledger { container-type: inline-size; padding: 12px 42px 28px; background-color: #cfe4d8; background-image: repeating-linear-gradient(to bottom,transparent 0,transparent 41px,rgba(55,125,143,.28) 41px,rgba(55,125,143,.28) 42px); background-size: 100% 42px; background-repeat: repeat; }
+.template-archive-ledger::after { display: block; inset: 0 0 auto; height: max(calc(150cqw + 126px),780px); background: url("/banquet/archive-ledger-v2.webp") center top / max(100%,520px) auto no-repeat; -webkit-mask-image: linear-gradient(#000 70%,transparent 100%); mask-image: linear-gradient(#000 70%,transparent 100%); }
 .template-archive-ledger .menu-card-header { position: relative; height: clamp(580px,130cqw,700px); flex: 0 0 clamp(580px,130cqw,700px); }
-.template-archive-ledger .archive-card-arc { top: 36px; left: 0; width: 100%; height: 130px; fill: #a72d29; font-family: var(--menu-font-family); font-size: 50px; font-weight: 800; letter-spacing: .55em; }
+.template-archive-ledger .archive-card-arc { top: -10px; left: 0; width: 100%; height: 140px; fill: #a72d29; font-family: var(--menu-font-family); font-size: clamp(52px,12cqw,60px); font-weight: 800; letter-spacing: 0; }
 .template-archive-ledger .menu-card-header h2,
 .template-archive-ledger .menu-card-header > p { display: none; }
-.template-archive-ledger .menu-card-header > .archive-card-meta { top: 30cqw; left: 50%; width: fit-content; max-width: 100%; transform: translateX(-50%); gap: 12px; padding: 7px 14px; border-color: rgba(55,125,143,.68); background: rgba(207,228,216,.72); font: 600 12px/1.35 var(--menu-font-family); letter-spacing: .04em; }
+.template-archive-ledger .menu-card-header > .archive-card-meta { top: 118px; left: 50%; width: max-content; max-width: calc(100% - 16px); transform: translateX(-50%); gap: 12px; padding: 7px 14px; border-color: rgba(55,125,143,.68); background: rgba(207,228,216,.92); font: 600 12px/1.35 var(--menu-font-family); letter-spacing: .04em; }
 .template-archive-ledger .archive-card-ribbon { top: auto; bottom: 9px; left: 8%; width: 84%; min-height: 34px; padding: 4px 10px; background: rgba(207,228,216,.96); font-size: 16px; }
-.template-archive-ledger .archive-card-side-note { top: 51cqw; color: #9d2e2a; font-size: clamp(44px,9.5cqw,54px); font-weight: 700; letter-spacing: .82em; line-height: 1.05; }
+.template-archive-ledger .archive-card-side-note { top: max(184px,calc(35.2cqw + 30px)); display: flex; height: max(267px,calc(51.3cqw + 43px)); flex-direction: column; justify-content: space-between; color: #9d2e2a; font-size: clamp(44px,9.5cqw,54px); font-weight: 700; letter-spacing: 0; line-height: 1; writing-mode: horizontal-tb; }
 .template-archive-ledger .archive-card-side-note.left { left: 21px; }
 .template-archive-ledger .archive-card-side-note.right { right: 21px; }
 .template-archive-ledger .menu-card-courses { padding: 12px 0 18px; }
@@ -509,11 +533,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .template-archive-ledger .menu-card-footer { padding-top: 8px; }
 
 /* Center the antique invitation title directly over the red plaque in its background. */
-.template-antique-post { container-type: inline-size; background-position: center top; background-size: 100% auto; }
-.template-antique-post::after { display: none; }
+.template-antique-post { container-type: inline-size; background-color: #f0e8d5; background-image: radial-gradient(ellipse at 24% 30%,#f8eed8,#f0e8d5 72%,#e8d9bc); background-size: 100% 100%; }
+.template-antique-post::before { z-index: 1; inset: 18px; border: 1px solid rgba(130,78,54,.42); border-radius: 1px; }
+.template-antique-post::after { display: block; inset: 0 0 auto; width: 100%; height: auto; aspect-ratio: 2 / 3; background: url("/banquet/antique-post.webp") center top / 100% 100% no-repeat; box-shadow: none; -webkit-mask-image: linear-gradient(#000 0%,#000 64%,transparent 100%); mask-image: linear-gradient(#000 0%,#000 64%,transparent 100%); }
 .template-antique-post .menu-card-header { min-height: 370px; }
 .template-antique-post .menu-card-header > small { position: absolute; top: calc(61cqw - 72px); left: 0; display: block; width: 100%; color: #8f3029; text-align: center; }
-.template-antique-post .menu-card-header h2 { top: calc(7.2cqw - 72px); left: 50%; width: min(15cqw,68px); min-width: 44px; height: clamp(145px,48cqw,210px); padding: 8px 3px; transform: translateX(-50%); background: transparent; box-shadow: none; font-size: clamp(20px,7cqw,30px); text-align: center; }
+.template-antique-post .menu-card-header h2 { top: calc(7.2cqw - 72px); left: 50%; width: min(15cqw,68px); min-width: 44px; height: clamp(120px,48cqw,210px); padding: 0; transform: translateX(-50%); background: transparent; box-shadow: none; font-size: clamp(20px,7cqw,30px); white-space: nowrap; line-height: 1; text-align: center; }
 .template-antique-post .menu-card-header > p { top: 222px; left: 0; width: 100%; text-align: center; }
 .template-antique-post .menu-card-header > p strong { display: block; width: 100%; text-align: center; }
 .template-antique-post .menu-card-header > .archive-card-meta { position: absolute; top: 278px; left: 50%; display: flex; width: min(100%,390px); justify-content: center; gap: 5px 14px; margin: 0; padding: 9px 8px; transform: translateX(-50%); border-color: rgba(143,48,41,.34); background: rgba(248,242,226,.72); color: #514037; font-size: 10px; line-height: 1.45; letter-spacing: .06em; text-align: center; }
@@ -537,12 +562,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 
 @media (max-width: 600px) {
   .template-xuan-paper .menu-card-courses > section { grid-template-columns: 27% minmax(0,1fr); }
-  .template-ingredient-atlas .menu-card-courses { gap: 8px; }
-  .template-ingredient-atlas .menu-card-courses > section,.ingredient-atlas-columns > section[data-course="main"],.ingredient-atlas-left > section { padding: 9px 8px; }
   .ingredient-atlas-columns { grid-template-columns: minmax(0,.86fr) minmax(0,1.14fr); gap: 8px; }
   .ingredient-atlas-left { gap: 8px; }
-  .template-antique-post .menu-card-header h2 { font-size: 29px; }
-  .template-bistro-handwritten .menu-card-courses article { grid-template-columns: minmax(90px,auto) 1fr; gap: 7px; }
+  .ingredient-atlas-columns > section[data-course="main"],.ingredient-atlas-left > section { padding: 9px 8px; }
+  .template-bistro-handwritten .menu-card-courses article { grid-template-columns: minmax(0,40%) minmax(0,1fr); column-gap: 10px; }
   .template-bistro-handwritten .menu-card-courses article strong { font-size: 19px; }
   .template-bistro-handwritten .menu-card-courses article span { font-size: 13px; }
 }
@@ -594,6 +617,8 @@ footer span { letter-spacing: .12em; } footer p { opacity: .48; font: 11px syste
 }
 
 @media (max-width: 720px) {
+  .banquet-preview.template-hotpot { padding: 24px 34px 24px; }
+  .status-card .guest-published-menu.template-hotpot { padding: 24px 34px 24px; }
   .topbar { height: 70px; padding: 0 16px; }.brand small { display: none; }.brand-mark { width: 37px; height: 37px; }.brand strong { font-size: 15px; }
   .mode-switch > a { padding: 8px 10px; font-size: 11px; }
   .hero { grid-template-columns: 1fr; min-height: auto; padding: 58px 24px 44px; }.hero::before { inset: 12px; }.hero-copy { text-align: center; }.hero h1 { font-size: 43px; }.hero h1::after { margin: 22px auto; }.hero-copy > p { font-size: 14px; }
@@ -605,7 +630,7 @@ footer span { letter-spacing: .12em; } footer p { opacity: .48; font: 11px syste
   .smart-import-heading { grid-template-columns: 46px 1fr; padding: 18px 14px; }.smart-import-icon { width: 44px; height: 44px; }.smart-import-heading em { display: none; }.smart-import-heading h2 { font-size: 22px; }.smart-import-body { padding: 14px; }.smart-import-grid { grid-template-columns: 1fr; }.import-or { min-height: 22px; }.import-or::before { width: 100%; height: 1px; }.import-or span { padding: 0 7px; }.smart-import-actions { align-items: stretch; flex-direction: column; gap: 10px; }.smart-import-actions button { width: 100%; min-width: 0; }.import-result-head { display: grid; }.import-result-head p { text-align: left; }.recipe-draft-preview { grid-template-columns: 1fr; }.screenshot-previews { grid-template-columns: 1fr; }.screenshot-frame { aspect-ratio: 16 / 10; }
   .bulk-import-heading { align-items: flex-start; padding: 18px 14px; }.bulk-import-heading em { display: none; }.bulk-import-heading h2 { font-size: 22px; }.bulk-import-body { padding: 14px; }.bulk-import-picker { grid-template-columns: 42px 1fr; padding: 12px; }.bulk-import-picker > span { width: 40px; height: 40px; }.bulk-import-picker > b { grid-column: 2; width: fit-content; }.bulk-import-stats { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; }.bulk-import-stats article { min-height: 82px; padding: 11px; }.bulk-import-stats strong { font-size: 25px; }.bulk-import-details p { grid-template-columns: 1fr; gap: 2px; }.bulk-import-confirm { grid-template-columns: 1fr; }.bulk-import-confirm button { width: 100%; }
   .shopping-head-actions { max-width: 160px; }.pantry-box { margin: 12px; padding: 12px; }.pantry-box form { grid-template-columns: 1fr 1fr; }.pantry-box form button { min-height: 36px; }.category-manager-body { padding: 15px; }.category-manager-body > form { display: grid; grid-template-columns: 76px minmax(0,1fr) auto; }.category-manager-body > form input.category-new-emoji { max-width: none; }.category-manager-list { display: grid; }.category-manager-list > div { justify-content: space-between; border-radius: 13px; }.dish-status-fieldset > div { display: grid; grid-template-columns: repeat(2, 1fr); }.managed-actions { grid-template-columns: repeat(2, 1fr); }.photo-detail-row { grid-template-columns: 1fr; }.gallery-strip { grid-template-columns: repeat(2, 1fr); }
-  .banquet-builder { gap: 18px; margin-top: 16px; }.banquet-tool-body { padding: 3px 14px 18px; }.template-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }.template-choice { min-height: 82px; padding: 8px; }.banquet-fields { grid-template-columns: 1fr; }.banquet-fields label.wide { grid-column: auto; }.banquet-arrangement article { grid-template-columns: 26px 1fr auto; }.banquet-arrangement article > select { grid-column: 2; }.arrange-actions { grid-column: 3; grid-row: 1 / 3; flex-direction: column; }.banquet-preview { min-height: 680px; padding: 58px 32px 34px; } .banquet-preview.template-hotpot { padding: 24px 34px 24px; } .status-card .guest-published-menu.template-hotpot { padding: 24px 34px 24px; }.menu-card-header h2 { font-size: 34px; }.menu-card-header > div { gap: 7px 10px; font-size: 8px; }.menu-card-courses { padding-top: 28px; }.menu-card-courses article { grid-template-columns: 1fr; gap: 3px; }.menu-card-courses article span { text-align: left; white-space: normal; }.preview-actions { grid-template-columns: 1fr; }
+  .banquet-builder { gap: 18px; margin-top: 16px; }.banquet-tool-body { padding: 3px 14px 18px; }.template-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }.template-choice { min-height: 82px; padding: 8px; }.banquet-fields { grid-template-columns: 1fr; }.banquet-fields label.wide { grid-column: auto; }.banquet-arrangement article { grid-template-columns: 26px 1fr auto; }.banquet-arrangement article > select { grid-column: 2; }.arrange-actions { grid-column: 3; grid-row: 1 / 3; flex-direction: column; }.banquet-preview { min-height: 680px; padding: 58px 32px 34px; }.menu-card-header h2 { font-size: 34px; }.menu-card-header > div { gap: 7px 10px; font-size: 8px; }.menu-card-courses { padding-top: 28px; }.menu-card-courses article { grid-template-columns: minmax(0,40%) minmax(0,1fr); column-gap: 10px; row-gap: 4px; }.menu-card-courses article span { text-align: left; white-space: normal; }.preview-actions { grid-template-columns: 1fr; }
   .cart-drawer { padding: 55px 20px 25px; }.checkout-card { padding: 38px 20px 24px; }.form-row { grid-template-columns: 1fr 110px; }
   footer { display: block; text-align: center; } footer p { margin-top: 10px; }
 }
@@ -882,20 +907,14 @@ footer span { letter-spacing: .12em; } footer p { opacity: .48; font: 11px syste
 }
 
 /* Guest copy of the chef-published banquet menu */
-.status-card .guest-published-menu { width: 100%; min-height: 690px; scroll-margin-top: 18px; margin: 26px 0 22px; padding: 48px 42px 34px; border-radius: 4px; box-shadow: 0 20px 48px rgba(55,39,24,.16); }
-.guest-published-menu .menu-card-header h2 { font-size: 38px; }
-.guest-published-menu .menu-card-courses article { grid-template-columns: minmax(105px,auto) 1fr; }
-.guest-menu-updated { position: relative; z-index: 2; margin-top: 13px; padding-top: 10px; border-top: 1px solid color-mix(in srgb,var(--menu-accent) 18%,transparent); color: var(--menu-soft); text-align: center; font: 7px/1.5 system-ui,sans-serif; letter-spacing: .08em; }
+.status-card .guest-published-menu { scroll-margin-top: 18px; margin: 26px auto 12px; border-radius: 4px; box-shadow: 0 20px 48px rgba(55,39,24,.16); }
+.guest-menu-updated { margin: 0 auto 22px; color: var(--muted); text-align: center; font: 9px/1.5 system-ui,sans-serif; letter-spacing: .08em; }
 .status-update-menu > section { border-top: 7px solid #a66343; }
 .status-update-menu .status-update-mark { background: #a66343; }
 @media (max-width: 720px) {
   .chef-status-dialog { padding: 28px 20px 20px; border-radius: 22px; }
   .chef-status-dialog h2 { font-size: 26px; }
   .chef-status-actions { grid-template-columns: 1fr; }
-  .status-card .guest-published-menu { min-height: 620px; padding: 42px 24px 28px; }
-  .guest-published-menu .menu-card-header h2 { font-size: 31px; }
-  .guest-published-menu .menu-card-courses article { grid-template-columns: 1fr; gap: 3px; }
-  .guest-published-menu .menu-card-courses article span { text-align: left; white-space: normal; }
 }
 
 /* Friend menu cinematic editorial refresh */
@@ -1631,3 +1650,6 @@ footer span { letter-spacing: .12em; } footer p { opacity: .48; font: 11px syste
 @media (max-width: 720px) {
   .chef-shared-submit-form { padding: 13px; }
 }
+
+.shared-submit-unlocked { display: flex; align-items: center; justify-content: space-between; gap: 18px; width: 100%; margin-top: 14px; border: 0; border-radius: 12px; background: var(--red); color: #fff; padding: 14px 18px; font: 700 13px system-ui,sans-serif; cursor: pointer; }
+.shared-submit-unlocked:disabled { opacity: .55; cursor: not-allowed; }

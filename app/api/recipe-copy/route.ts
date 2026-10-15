@@ -1,6 +1,7 @@
 import { withDataWrite } from "../../../storage/maintenance";
 import { chefApiGuard } from "../../chef-auth";
 import { conciseDescriptionRule, playfulSloganRule, privateKitchenCopyStyle } from "../recipe-copy-style";
+import { limitGeneratedDescription } from "../recipe-description";
 
 type CopyField = "description" | "slogan";
 type ChatCompletionPayload = {
@@ -79,8 +80,8 @@ async function handlePOST(request: Request) {
     if (!response.ok) throw new Error(result.error?.message || "通义千问文案生成服务暂时不可用");
     const value = parseObject(messageText(result))[field];
     if (typeof value !== "string" || !value.trim()) throw new Error("千问没有返回可用文案");
-    const limit = field === "description" ? 180 : 60;
-    return Response.json({ [field]: value.trim().slice(0, limit), model });
+    const generated = field === "description" ? limitGeneratedDescription(value) : value.trim().slice(0, 60);
+    return Response.json({ [field]: generated, model });
   } catch (error) {
     const message = error instanceof Error && error.name === "TimeoutError"
       ? "文案生成超过 1 分钟，请稍后重试"

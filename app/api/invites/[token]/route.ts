@@ -79,11 +79,11 @@ async function handlePOST(request: Request, context: { params: Promise<{ token: 
       const action = typeof payload.action === "string" ? payload.action : "join";
       if (!["join", "set-selection", "submit"].includes(action)) return Response.json({ error: "无效的操作" }, { status: 400 });
       const chefSubmitting = action === "submit" && isChefRequest(request);
-      if (action === "submit" && !chefSubmitting) return Response.json({ error: "共享菜单由主厨在工作台统一提交" }, { status: 403 });
       const kitchen = db.select().from(appSettings).where(eq(appSettings.key, "kitchen_open_v1")).get();
       if (action !== "join" && kitchen?.value === "closed") return Response.json({ error: "阿德今天休息，等绿灯亮起再来点菜吧" }, { status: 409 });
       let guestToken = typeof payload.guestToken === "string" ? payload.guestToken : "";
       let guest = db.select().from(dinnerInviteGuests).where(and(eq(dinnerInviteGuests.inviteId, invite.id), eq(dinnerInviteGuests.guestToken, guestToken))).get();
+      if (action === "submit" && !chefSubmitting && (!guest || !guest.displayName.trim() || guest.displayName.trim() === "朋友")) return Response.json({ error: "请先填写并确认自己的称呼，再提交这桌菜单" }, { status: 403 });
       if (!guest && action !== "join" && !chefSubmitting) return Response.json({ error: "请先加入这场饭局" }, { status: 409 });
       const displayName = typeof payload.displayName === "string" ? payload.displayName.trim().slice(0, 30) : action === "submit" && typeof payload.customerName === "string" ? payload.customerName.trim().slice(0, 30) : "";
       if (action === "join" && (!displayName || displayName === "朋友")) return Response.json({ error: "请先填写自己的称呼，再开始点菜" }, { status: 400 });

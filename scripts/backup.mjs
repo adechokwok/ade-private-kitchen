@@ -44,6 +44,8 @@ async function backupOnce() {
     try { await database.backup(path.join(temporary, "ade-kitchen.sqlite")); } finally { database.close(); }
     if (await exists(uploadsPath)) await cp(uploadsPath, path.join(temporary, "uploads"), { recursive: true });
     else await mkdir(path.join(temporary, "uploads"));
+    const legacyFonts = path.join(dataDir, "menu-fonts");
+    if (await exists(legacyFonts)) await cp(legacyFonts, path.join(temporary, "uploads", "menu-fonts"), { recursive: true, force: false });
     await writeFile(path.join(temporary, "manifest.json"), JSON.stringify({ version: 1, completedAt: new Date().toISOString(), database: "ade-kitchen.sqlite", uploads: "uploads", consistency: "live-copy" }));
     await rename(temporary, destination);
     const pointer = path.join(backupDir, `.last-success-${crypto.randomUUID()}.json`);
