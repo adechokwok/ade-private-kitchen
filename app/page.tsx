@@ -211,7 +211,7 @@ const banquetTemplates: Array<{ id: BanquetTemplate; name: string; occasion: str
   { id: "christmas", name: "冬日圣诞", occasion: "圣诞 · 冬夜", subtitle: "A COZY WINTER FEAST", mark: "✦", defaultTitle: "冬日圣诞小宴", defaultMessage: "灯火温暖，愿今晚的快乐如约而至" },
   { id: "brunch", name: "周末早午餐", occasion: "周末 · Brunch", subtitle: "SLOW MORNING, GOOD FOOD", mark: "☀", defaultTitle: "周末早午餐", defaultMessage: "睡到自然醒，再认真吃一顿" },
   { id: "jiangnan", name: "江南雅集", occasion: "品茶 · 雅聚", subtitle: "烟雨入席，清味成章", mark: "雅", defaultTitle: "江南清雅宴", defaultMessage: "慢品一席江南味，也慢叙这一晚" },
-  { id: "hotpot", name: "老友生日", occasion: "生日 · 老友相聚", subtitle: "HAPPY BIRTHDAY · OLD FRIENDS", mark: "友", defaultTitle: "老友生日", defaultMessage: "老友围炉，生日有你" },
+  { id: "hotpot", name: "围炉夜话", occasion: "火锅 · 好友局", subtitle: "围炉有热气，举筷皆欢喜", mark: "炉", defaultTitle: "今晚围炉", defaultMessage: "锅里滚着热气，桌边坐着想见的人" },
   { id: "birthday-party", name: "欢乐生日派对", occasion: "生日 · 好友欢聚", subtitle: "CAKE, CHEERS & HAPPY TEARS", mark: "🎂", defaultTitle: "今天你最大", defaultMessage: "愿望交给蜡烛，好吃的交给阿德" },
   { id: "archive-ledger", name: "复古档案卡", occasion: "好友私厨 · 趣味小聚", subtitle: "A LITTLE ARCHIVE OF GOOD TASTE", mark: "档", defaultTitle: "今日私厨菜单", defaultMessage: "把这一桌好味道，认真登记给老朋友" },
   { id: "xuan-paper", name: "宣纸手书", occasion: "雅宴 · 私房菜单", subtitle: "一纸清欢，慢尝人间", mark: "笺", defaultTitle: "一席清味", defaultMessage: "纸短情长，菜热情也热" },
@@ -506,6 +506,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const [banquetOrderId, setBanquetOrderId] = useState("");
   const [banquetItems, setBanquetItems] = useState<BanquetItem[]>([]);
   const [banquetDishId, setBanquetDishId] = useState("");
+  const [temporaryDishName, setTemporaryDishName] = useState("");
+  const [temporaryDishDescription, setTemporaryDishDescription] = useState("");
+  const [temporaryDishGenerating, setTemporaryDishGenerating] = useState(false);
   const [banquetTitle, setBanquetTitle] = useState("今晚家宴");
   const [banquetTemplateName, setBanquetTemplateName] = useState(banquetTemplates[0].name);
   const [banquetDate, setBanquetDate] = useState(() => kitchenDate());
@@ -764,6 +767,12 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const courseForDish = courseForRecipe;
 
   const banquetDishes = banquetItems.map(item => ({ ...item, dish: item.snapshot || dishCatalog.find(dish => dish.id === item.dishId) })).filter((item): item is BanquetItem & { dish: Dish } => Boolean(item.dish));
+  const renderBanquetCourse = (course: typeof banquetCourses[number], includeEmpty = false) => {
+    const courseDishes = banquetDishes.filter((item) => item.course === course.id);
+    if (!courseDishes.length && !includeEmpty) return null;
+    const text = courseText(course);
+    return <section key={course.id} data-course={course.id}><h3><span>{text.label}</span><small>{text.english}</small></h3><div>{courseDishes.map(({ dish }) => { const dishCopy = dishText(dish); return <article key={dish.id}><strong>{dishCopy.name}</strong>{banquetShowDescriptions && <span>{dishCopy.description}</span>}</article>; })}</div></section>;
+  };
 
   const syncSelection = (dishId: string, quantity: number, token: string, guestToken: string) => {
     setSharedSyncState("syncing");
@@ -875,6 +884,40 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     const dish = dishCatalog.find((item) => item.id === banquetDishId);
     setBanquetItems((current) => sortBanquetItemsByCourse([...current, { dishId: banquetDishId, course: courseForDish(dish), snapshot: dish }]));
     setBanquetDishId("");
+  };
+  const generateTemporaryDishDescription = async () => {
+    const name = temporaryDishName.trim();
+    if (!name) { setNotice("先写下菜名，再让千问介绍这道菜"); return; }
+    setTemporaryDishGenerating(true);
+    try {
+      const response = await fetch("/api/recipe-copy", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ field: "description", name, flavor: "", ingredients: [], steps: [], preferences: recipePreferences }),
+      });
+      const data = await response.json() as { description?: string; error?: string };
+      if (!response.ok || !data.description) throw new Error(data.error || "千问没有返回菜品介绍");
+      setTemporaryDishDescription(data.description);
+      setNotice(`已生成菜品介绍（${Array.from(data.description).length} 字），可以继续修改`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "菜品介绍生成失败，请稍后重试");
+    } finally {
+      setTemporaryDishGenerating(false);
+    }
+  };
+
+  const addTemporaryBanquetDish = () => {
+    const name = temporaryDishName.trim();
+    const description = temporaryDishDescription.trim();
+    if (!name) { setNotice("请先填写临时菜的菜名"); return; }
+    if (!description) { setNotice("请填写介绍，或先让千问生成一段介绍"); return; }
+    const id = `temporary-${window.crypto.randomUUID()}`;
+    const snapshot: Dish = { id, name, category: "主厨热菜", description, flavor: "", minutes: 0, emoji: "🍽️", tone: "custom", ingredients: [], steps: [] };
+    setBanquetItems((current) => sortBanquetItemsByCourse([...current, { dishId: id, course: "main", snapshot }]));
+    setBanquetDishEdits((current) => ({ ...current, [id]: { name, description } }));
+    setTemporaryDishName("");
+    setTemporaryDishDescription("");
+    setNotice(`已把“${name}”临时加入宴席菜单，不会写入菜谱库`);
   };
 
   const updateBanquetCourse = (dishId: string, course: BanquetCourse) => {
@@ -2475,7 +2518,13 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
           <div className="banquet-step">
             <div className="banquet-step-title"><b>4</b><div><strong>调整菜品和栏目</strong><small>按前菜 → 热菜 → 主食 → 汤饮甜品自动排列，栏目内仍可手动调整</small></div></div>
             <div className="banquet-add-row"><select value={banquetDishId} onChange={(event) => setBanquetDishId(event.target.value)} aria-label="从菜谱库选择菜品"><option value="">从我的菜谱库添加…</option>{dishCatalog.filter((dish) => !banquetItems.some((item) => item.dishId === dish.id)).map((dish) => <option value={dish.id} key={dish.id}>{dish.name} · {dish.category}</option>)}</select><button type="button" onClick={addBanquetDish}>＋ 加入</button></div>
-            {banquetDishes.length === 0 ? <div className="banquet-empty"><span>宴</span><p>选择一个订单，或从菜谱库加入第一道菜。</p></div> : <div className="banquet-arrangement">
+            <div className="temporary-banquet-dish">
+              <div><strong>临时加一道菜</strong><small>只加入这张宴席菜单，不会新建菜谱</small></div>
+              <label><span>菜名</span><input value={temporaryDishName} maxLength={40} onChange={(event) => setTemporaryDishName(event.target.value)} placeholder="输入菜名" /></label>
+              <label><span>菜品介绍</span><textarea value={temporaryDishDescription} maxLength={180} onChange={(event) => setTemporaryDishDescription(event.target.value)} placeholder="可自己填写，也可以先让千问生成（最多 35 字）" /></label>
+              <div className="temporary-banquet-dish-actions"><button type="button" className="quiet" onClick={() => void generateTemporaryDishDescription()} disabled={temporaryDishGenerating || !temporaryDishName.trim()}>{temporaryDishGenerating ? "千问生成中…" : "✦ 千问写介绍"}</button><button type="button" onClick={addTemporaryBanquetDish} disabled={!temporaryDishName.trim() || !temporaryDishDescription.trim()}>＋ 加入菜单</button></div>
+            </div>
+            {banquetDishes.length === 0 ? <div className="banquet-empty"><span>宴</span><p>选择一个订单，或从菜谱库、临时加菜入口加入第一道菜。</p></div> : <div className="banquet-arrangement">
               <p className="banquet-auto-order-note"><span>✓</span>换栏目后会自动归位；上下箭头只调整同一栏目的出菜先后。</p>
               {banquetCourses.map((banquetCourse) => {
                 const courseDishes = banquetDishes.filter((item) => item.course === banquetCourse.id);
@@ -2506,13 +2555,8 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             {banquetTemplate === "archive-ledger" && <div className="archive-card-ribbon">{banquetTitle || activeBanquetTemplate.defaultTitle}</div>}
           </div>
           {banquetTemplate === "archive-ledger" && <><div className="archive-card-side-note left">唤醒久困英雄</div><div className="archive-card-side-note right">指引迷途君子</div></>}
-          <div className="menu-card-courses">
-            {banquetCourses.map((course) => {
-              const courseDishes = banquetDishes.filter((item) => item.course === course.id);
-              if (!courseDishes.length) return null;
-              const text = courseText(course);
-              return <section key={course.id}><h3><span>{text.label}</span><small>{text.english}</small></h3><div>{courseDishes.map(({ dish }) => { const dishCopy = dishText(dish); return <article key={dish.id}><strong>{dishCopy.name}</strong>{banquetShowDescriptions && <span>{dishCopy.description}</span>}</article>; })}</div></section>;
-            })}
+          <div className={`menu-card-courses${banquetTemplate === "ingredient-atlas" ? " ingredient-atlas-menu-courses" : ""}`}>
+            {banquetTemplate === "ingredient-atlas" && banquetDishes.length > 0 ? <div className="ingredient-atlas-columns"><div className="ingredient-atlas-left">{banquetCourses.filter((course) => course.id !== "main").map((course) => renderBanquetCourse(course, true))}</div>{renderBanquetCourse(banquetCourses.find((course) => course.id === "main")!, true)}</div> : banquetCourses.map((course) => renderBanquetCourse(course))}
             {banquetDishes.length === 0 && <div className="menu-card-placeholder"><span>MENU</span><p>加入菜品后，这里会生成与“{activeBanquetTemplate.name}”相匹配的完整菜单。</p></div>}
           </div>
           <div className="menu-card-footer"><span>—</span><p>{banquetMessage || activeBanquetTemplate.defaultMessage}</p><small>{banquetChefCredit}</small></div>
