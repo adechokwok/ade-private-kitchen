@@ -1,8 +1,5 @@
 @import "tailwindcss";
 
-@font-face { font-family: "Ma Shan Zheng"; src: url("/fonts/MaShanZheng-Regular.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
-@font-face { font-family: "Liu Jian Mao Cao"; src: url("/fonts/LiuJianMaoCao-Regular.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
-
 :root {
   --ink: #29231f;
   --muted: #766d66;
@@ -130,15 +127,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .chef-heading p { color: var(--muted); margin: 12px 0 0; }
 .refresh-button { border: 1px solid var(--ink); padding: 10px 17px; background: transparent; cursor: pointer; }
 .chef-heading-actions { display: flex; align-items: stretch; gap: 9px; }
-.kitchen-status-toggle { min-width: 220px; display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 9px 11px; cursor: pointer; text-align: left; box-shadow: 0 5px 18px rgba(62,46,35,.06); }
+.kitchen-status-toggle { min-width: 220px; display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 9px 11px; text-align: left; box-shadow: 0 5px 18px rgba(62,46,35,.06); }
 .kitchen-status-toggle > i { width: 10px; height: 10px; border-radius: 50%; background: #72a66e; box-shadow: 0 0 0 5px rgba(114,166,110,.13); }
 .kitchen-status-toggle.closed > i { background: #d45b50; box-shadow: 0 0 0 5px rgba(212,91,80,.12); }
-.kitchen-status-toggle span small,.kitchen-status-toggle span strong { display: block; }
-.kitchen-status-toggle span small { color: var(--muted); font: 8px system-ui,sans-serif; }
-.kitchen-status-toggle span strong { margin-top: 3px; font-size: 12px; }
-.kitchen-status-toggle > b { border-radius: 8px; background: #eef4ea; color: #55704f; padding: 6px 8px; font: 9px system-ui,sans-serif; }
-.kitchen-status-toggle.closed > b { background: #f7e9e6; color: #a5473e; }
-.kitchen-status-toggle:disabled { opacity: .6; cursor: wait; }
+.kitchen-status-secret { min-width: 0; border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; font: inherit; }
+.kitchen-status-secret small,.kitchen-status-secret strong { display: block; }
+.kitchen-status-secret small { color: var(--muted); font: 8px system-ui,sans-serif; }
+.kitchen-status-secret strong { margin-top: 3px; font-size: 12px; }
+.kitchen-status-action { border: 0; border-radius: 8px; background: #eef4ea; color: #55704f; padding: 6px 8px; font: 9px system-ui,sans-serif; cursor: pointer; }
+.kitchen-status-toggle.closed .kitchen-status-action { background: #f7e9e6; color: #a5473e; }
+.kitchen-status-action:disabled { opacity: .6; cursor: wait; }
 .chef-workflow { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; margin-top: 30px; }.chef-workflow button { min-width: 0; min-height: 78px; display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 11px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,253,248,.72); padding: 12px 14px; color: var(--muted); text-align: left; cursor: pointer; transition: transform .18s,background .18s,border-color .18s; }.chef-workflow button:hover { transform: translateY(-2px); }.chef-workflow button > i { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; background: #eee7de; color: #746960; font: 700 10px Georgia,serif; font-style: normal; }.chef-workflow button span,.chef-workflow button b,.chef-workflow button small { display: block; min-width: 0; }.chef-workflow button b { color: var(--ink); font-size: 13px; }.chef-workflow button small { margin-top: 4px; overflow: hidden; font: 9px system-ui,sans-serif; text-overflow: ellipsis; white-space: nowrap; }.chef-workflow button.active { border-color: #9f4437; background: #3b302a; color: rgba(255,255,255,.65); box-shadow: 0 12px 30px rgba(55,42,34,.13); }.chef-workflow button.active b { color: #fff8ee; }.chef-workflow button.active > i { background: var(--red); color: #fff; }
 .chef-secondary-nav { display: flex; align-items: center; gap: 8px; margin: 13px 0 0; }.chef-secondary-nav > span { margin-right: 3px; color: var(--muted); font: 8px system-ui,sans-serif; letter-spacing: .12em; }.chef-secondary-nav button { border: 0; border-radius: 999px; background: #eee8df; padding: 8px 12px; color: #746b64; cursor: pointer; font: 10px system-ui,sans-serif; }.chef-secondary-nav button.active { background: var(--red); color: #fff; }.chef-secondary-nav b { display: inline-grid; place-items: center; min-width: 17px; height: 17px; margin-left: 4px; border-radius: 99px; background: rgba(255,255,255,.55); color: inherit; font-size: 8px; }
 .accepting-workspace,.serving-workspace { display: grid; gap: 18px; margin-top: 24px; }.workflow-hero { overflow: hidden; display: grid; grid-template-columns: 1.15fr .85fr; align-items: stretch; border: 0; border-radius: 24px; background: linear-gradient(125deg,#e8ddcd,#f6f0e7); }.workflow-hero > div:first-child { padding: 28px; }.workflow-hero > div:first-child > span,.serving-hero > div > span { color: var(--red); font: 800 9px system-ui,sans-serif; letter-spacing: .18em; }.workflow-hero h2,.serving-hero h2 { margin: 9px 0 7px; font-size: 30px; }.workflow-hero p,.serving-hero p { max-width: 680px; margin: 0; color: var(--muted); font: 11px/1.8 system-ui,sans-serif; }.workflow-hero-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: rgba(69,50,38,.09); }.workflow-hero-stats > span { min-width: 0; display: grid; align-content: center; padding: 18px 21px; background: rgba(255,255,255,.42); }.workflow-hero-stats small,.workflow-hero-stats strong { display: block; }.workflow-hero-stats small { color: var(--muted); font: 9px system-ui,sans-serif; }.workflow-hero-stats strong { margin-top: 5px; overflow: hidden; font-size: 19px; text-overflow: ellipsis; white-space: nowrap; }
@@ -311,8 +309,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .banquet-free-menu-button { margin-top: 9px; min-height: 34px; }
 .banquet-hint { margin: 8px 0 0; color: var(--muted); font: 10px/1.5 system-ui, sans-serif; }
 .template-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }.template-choice { min-height: 92px; display: grid; grid-template-columns: 34px 1fr; grid-template-rows: 1fr 1fr; align-items: center; column-gap: 8px; border: 1px solid var(--line); background: #fff; padding: 10px; text-align: left; cursor: pointer; transition: transform .18s, box-shadow .18s, border-color .18s; }.template-choice:hover { transform: translateY(-2px); }.template-choice.active { border-color: var(--red); box-shadow: inset 0 0 0 1px var(--red), 0 6px 15px rgba(73,48,30,.08); }.template-choice > span { grid-row: 1 / 3; width: 34px; height: 48px; display: grid; place-items: center; border-radius: 99px; background: #eee3d4; color: #7d3d33; font-size: 14px; }.template-choice strong { align-self: end; font-size: 12px; }.template-choice small { align-self: start; color: var(--muted); font: 9px system-ui, sans-serif; }.template-choice.home > span { background: #efe1c9; color: #735542; }.template-choice.romance > span { background: #702f41; color: #f9dfe5; }.template-choice.fine > span { background: #171717; color: #d8b66a; }.template-choice.spring > span { background: #b72d24; color: #f5d68b; }.template-choice.midautumn > span { background: #253751; color: #e8dcae; }.template-choice.birthday > span { background: #79546f; color: #f7e4e7; }.template-choice.housewarming > span { background: #c67852; color: #fff7e8; }.template-choice.summer > span { background: #cce4e7; color: #467167; }.template-choice.christmas > span { background: #173c2c; color: #e8c976; }.template-choice.brunch > span { background: #f4cf66; color: #35647b; }.template-choice.jiangnan > span { background: #dce4d7; color: #38594e; }.template-choice.hotpot > span { background: #9f3327; color: #ffe7b2; }.template-choice.birthday-party > span { background: #ffd45c; color: #b83f45; }
-.banquet-fields { display: grid; grid-template-columns: 1.3fr .7fr; gap: 10px; }.banquet-fields label { display: grid; gap: 6px; color: var(--muted); font: 10px system-ui, sans-serif; }.banquet-fields label.wide { grid-column: 1 / -1; }
+.banquet-fields { display: grid; grid-template-columns: 1.3fr .7fr; gap: 10px; }.banquet-fields label,.banquet-fields > .wide { display: grid; gap: 6px; color: var(--muted); font: 10px system-ui, sans-serif; }.banquet-fields label.wide,.banquet-fields > .wide { grid-column: 1 / -1; }.banquet-fields select { width: 100%; min-height: 42px; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 10px 12px; }.banquet-font-hint { color: var(--muted); font: 9px/1.5 system-ui,sans-serif; }
 .banquet-add-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }.banquet-add-row button { border: 0; background: var(--ink); color: #fff; padding: 0 15px; cursor: pointer; }
+.temporary-banquet-dish { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-top: 12px; border: 1px solid #ead9c7; border-radius: 15px; background: linear-gradient(145deg,#fffaf3,#f7f0e7); padding: 15px; }
+.temporary-banquet-dish > div:first-child { grid-column: 1 / -1; display: grid; gap: 4px; }
+.temporary-banquet-dish > div:first-child strong { color: #513a2d; font-size: 13px; }
+.temporary-banquet-dish > div:first-child small { color: #8a7768; font-size: 10px; line-height: 1.5; }
+.temporary-banquet-dish label { min-width: 0; display: grid; align-content: start; gap: 6px; color: #6d5848; font: 700 10px/1.4 system-ui,sans-serif; }
+.temporary-banquet-dish input,.temporary-banquet-dish textarea { width: 100%; min-width: 0; border: 1px solid #ddcbb7; border-radius: 9px; background: rgba(255,255,255,.88); color: var(--ink); padding: 10px 11px; font-family: inherit; font-size: 12px; line-height: 1.5; }
+.temporary-banquet-dish textarea { min-height: 76px; resize: vertical; }
+.temporary-banquet-dish input::placeholder,.temporary-banquet-dish textarea::placeholder { color: #a99a8c; }
+.temporary-banquet-dish-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.temporary-banquet-dish-actions button { min-height: 38px; border: 1px solid #854237; border-radius: 9px; background: #854237; color: #fffaf3; padding: 0 13px; font: 800 10px system-ui,sans-serif; cursor: pointer; }
+.temporary-banquet-dish-actions button.quiet { border-color: #ddcbb7; background: rgba(255,255,255,.75); color: #714b3a; }
+.temporary-banquet-dish-actions button:disabled { opacity: .52; cursor: not-allowed; }
 .banquet-empty { min-height: 125px; display: grid; place-content: center; justify-items: center; color: var(--muted); text-align: center; }.banquet-empty span { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--red); font-size: 18px; }.banquet-empty p { margin: 8px 0 0; font: 10px system-ui, sans-serif; }
 .banquet-arrangement { margin-top: 12px; display: grid; gap: 12px; }.banquet-auto-order-note { display: flex; align-items: center; gap: 7px; margin: 0; border-radius: 9px; background: #f0e8dc; color: #75695f; padding: 9px 11px; font: 9px/1.55 system-ui,sans-serif; }.banquet-auto-order-note span { width: 18px; height: 18px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #dcebdc; color: #34734c; font-size: 9px; }.banquet-course-group { overflow: hidden; border: 1px solid rgba(45,41,36,.1); border-radius: 11px; background: #fff; }.banquet-course-group > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border-bottom: 1px solid rgba(45,41,36,.08); background: #efe6d9; }.banquet-course-group > header div { display: flex; align-items: baseline; gap: 7px; }.banquet-course-group > header strong { color: var(--red); font-size: 11px; }.banquet-course-group > header small { margin: 0; font-size: 7px; letter-spacing: .1em; }.banquet-course-group > header > span { color: #8a7d72; font: 8px system-ui,sans-serif; }.banquet-course-group > div { display: grid; gap: 1px; background: rgba(45,41,36,.08); }.banquet-arrangement article { display: grid; grid-template-columns: 30px minmax(130px, 1fr) 105px auto; gap: 9px; align-items: center; padding: 9px; background: #f9f6f1; }.arrange-number { color: var(--red); font: 11px Georgia, serif; }.banquet-arrangement strong, .banquet-arrangement small { display: block; }.banquet-arrangement strong { font-size: 12px; }.banquet-arrangement small { margin-top: 3px; color: var(--muted); font: 9px system-ui, sans-serif; }.banquet-arrangement select { width: 100%; border: 1px solid var(--line); background: #fff; padding: 7px; font: 10px system-ui, sans-serif; }.arrange-actions { display: flex; gap: 3px; }.arrange-actions button { width: 27px; height: 29px; border: 1px solid var(--line); background: #fff; cursor: pointer; }.arrange-actions button:disabled { opacity: .25; }.arrange-actions button.remove { color: var(--red); }
 .banquet-course-label-input, .banquet-course-english-input, .banquet-dish-edit-fields input { min-width: 0; border: 1px solid transparent; background: transparent; color: inherit; }.banquet-course-label-input { width: 110px; font-weight: 700; }.banquet-course-english-input { width: 130px; color: var(--muted); font: 8px system-ui, sans-serif; letter-spacing: .1em; }.banquet-course-label-input:focus, .banquet-course-english-input:focus, .banquet-dish-edit-fields input:focus { border-color: var(--line); background: #fff; outline: none; }.banquet-dish-edit-fields { display: grid; gap: 3px; min-width: 0; }.banquet-dish-edit-fields input:first-child { font-size: 12px; font-weight: 600; }.banquet-dish-edit-fields input:last-child { color: var(--muted); font: 9px system-ui, sans-serif; }
@@ -320,24 +330,32 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .banquet-publish-state { display: flex; align-items: center; gap: 7px; margin: 9px 0 0; color: var(--muted); font: 9px/1.5 system-ui,sans-serif; }.banquet-publish-state span { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: #ece5dc; }.banquet-publish-state.published { color: #327e53; }.banquet-publish-state.published span { background: #dff1e5; }
 .banquet-publish-state .menu-read-state { display: inline; width: auto; height: auto; margin-left: 5px; color: #8a7d71; background: transparent; font: 8px system-ui,sans-serif; }.banquet-publish-state .menu-read-state.read { color: #327e53; }
 .publish-menu-button { width: min(100%,540px); min-height: 62px; display: grid; grid-template-columns: 38px 1fr; grid-template-rows: auto auto; column-gap: 11px; align-items: center; margin: 14px auto 10px; border: 0; border-radius: 15px; background: var(--red); color: #fff; padding: 11px 15px; text-align: left; cursor: pointer; box-shadow: 0 12px 30px rgba(143,53,44,.2); }.publish-menu-button > span { width: 36px; height: 36px; grid-row: 1 / 3; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.15); font-size: 18px; }.publish-menu-button strong { align-self: end; font-size: 12px; }.publish-menu-button small { align-self: start; opacity: .72; font: 8px/1.5 system-ui,sans-serif; }.publish-menu-button:disabled { background: #aaa198; box-shadow: none; cursor: not-allowed; }
-.banquet-preview { --menu-bg: #f4ecdc; --menu-ink: #352c24; --menu-accent: #9c4034; --menu-soft: rgba(53,44,36,.68); width: min(100%, 540px); min-height: 760px; margin: 0 auto; position: relative; overflow: hidden; display: flex; flex-direction: column; padding: 72px 54px 42px; color: var(--menu-ink); background-color: var(--menu-bg); background-position: center; background-size: cover; background-repeat: no-repeat; border: 1px solid rgba(45,41,36,.12); box-shadow: 0 28px 70px rgba(55,39,24,.18); isolation: isolate; }
+.banquet-preview { --menu-bg: #f4ecdc; --menu-ink: #352c24; --menu-accent: #9c4034; --menu-soft: rgba(53,44,36,.68); --menu-font-family: "ZCOOL XiaoWei", "Noto Serif SC", "Songti SC", serif; width: min(100%, 540px); min-height: 760px; margin: 0 auto; position: relative; overflow: hidden; display: flex; flex-direction: column; padding: 72px 54px 42px; color: var(--menu-ink); font-family: var(--menu-font-family); background-color: var(--menu-bg); background-position: center; background-size: cover; background-repeat: no-repeat; border: 1px solid rgba(45,41,36,.12); box-shadow: 0 28px 70px rgba(55,39,24,.18); isolation: isolate; }
+.menu-font-system-serif { --menu-font-family: "Noto Serif SC", "Songti SC", "STSong", serif; }
+.menu-font-zcool-xiaowei { --menu-font-family: "ZCOOL XiaoWei", "Noto Serif SC", "Songti SC", serif; }
+.menu-font-zcool-kuaile { --menu-font-family: "ZCOOL KuaiLe", "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+.menu-font-long-cang { --menu-font-family: "Long Cang", "Kaiti SC", cursive; }
+.menu-font-zhi-mang-xing { --menu-font-family: "Zhi Mang Xing", "Kaiti SC", cursive; }
+.menu-font-ma-shan-zheng { --menu-font-family: "Ma Shan Zheng", "Kaiti SC", cursive; }
+.menu-font-liu-jian-mao-cao { --menu-font-family: "Liu Jian Mao Cao", "Kaiti SC", cursive; }
 .banquet-preview::before, .banquet-preview::after { content: ""; position: absolute; z-index: 0; pointer-events: none; }.banquet-preview::before { inset: 17px; border: 1px solid color-mix(in srgb, var(--menu-accent) 34%, transparent); }.banquet-preview::after { display: none; }
 .menu-card-ornament { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto 20px; border-radius: 50%; color: var(--menu-bg); background: var(--menu-accent); font-weight: 700; letter-spacing: .04em; }
 .menu-card-header,.menu-card-courses,.menu-card-footer { position: relative; z-index: 1; }.menu-card-header { text-align: center; }.menu-card-header > small { font: 700 8px system-ui, sans-serif; letter-spacing: .24em; color: var(--menu-accent); }.menu-card-header h2 { margin: 24px 0 12px; font-size: clamp(38px, 4.4vw, 52px); font-weight: 500; letter-spacing: .1em; line-height: 1.25; }.menu-card-header > p { margin: 0; color: var(--menu-soft); font-size: 12px; letter-spacing: .08em; line-height: 1.65; }.menu-card-header > p strong, .menu-card-header > p span { display: block; }.menu-card-header > p strong { margin-bottom: 5px; color: var(--menu-ink); font-size: 11px; letter-spacing: .14em; }.menu-card-header > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px 18px; margin-top: 20px; padding: 11px 0; border-top: 1px solid color-mix(in srgb, var(--menu-accent) 28%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--menu-accent) 28%, transparent); color: var(--menu-soft); font: 9px system-ui, sans-serif; letter-spacing: .12em; }
-.menu-card-courses { flex: 1; padding: 34px 0 24px; }.menu-card-courses section + section { margin-top: 28px; }.menu-card-courses h3 { display: flex; align-items: baseline; gap: 9px; margin: 0 0 14px; color: var(--menu-accent); }.menu-card-courses h3 span { font-size: 15px; letter-spacing: .16em; }.menu-card-courses h3 small { font: 7px system-ui, sans-serif; letter-spacing: .18em; opacity: .7; }.menu-card-courses section > div { display: grid; gap: 12px; }.menu-card-courses article { display: grid; grid-template-columns: minmax(110px, auto) 1fr; gap: 13px; align-items: baseline; }.menu-card-courses article::after { content: ""; height: 1px; background: color-mix(in srgb, var(--menu-accent) 14%, transparent); grid-column: 1 / -1; order: -1; display: none; }.menu-card-courses article strong { font-size: 16px; font-weight: 500; letter-spacing: .06em; }.menu-card-courses article span { color: var(--menu-soft); font-size: 10px; line-height: 1.65; text-align: right; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.menu-card-courses { flex: 1; padding: 34px 0 24px; }.menu-card-courses section + section { margin-top: 28px; }.menu-card-courses h3 { display: flex; align-items: baseline; gap: 9px; margin: 0 0 14px; color: var(--menu-accent); }.menu-card-courses h3 span { font-size: 15px; letter-spacing: .16em; }.menu-card-courses h3 small { font: 7px system-ui, sans-serif; letter-spacing: .18em; opacity: .7; }.menu-card-courses section > div { display: grid; gap: 12px; }.menu-card-courses article { display: grid; grid-template-columns: minmax(110px, auto) minmax(0,1fr); gap: 13px; align-items: center; }.menu-card-courses article::after { content: ""; height: 1px; background: color-mix(in srgb, var(--menu-accent) 14%, transparent); grid-column: 1 / -1; order: -1; display: none; }.menu-card-courses article strong { font-size: 16px; font-weight: 500; letter-spacing: .06em; }.menu-card-courses article span { min-width: 0; color: var(--menu-soft); font-size: 10px; line-height: 1.65; text-align: right; overflow-wrap: anywhere; white-space: normal; }
 .menu-card-placeholder { min-height: 300px; display: grid; place-content: center; justify-items: center; text-align: center; color: var(--menu-soft); }.menu-card-placeholder span { font: 40px Georgia, serif; letter-spacing: .18em; opacity: .16; }.menu-card-placeholder p { max-width: 220px; font-size: 11px; line-height: 1.8; }
 .menu-card-footer { text-align: center; color: var(--menu-soft); }.menu-card-footer > span { color: var(--menu-accent); }.menu-card-footer p { margin: 6px 0 10px; font-size: 11px; letter-spacing: .08em; }.menu-card-footer small { font: 7px system-ui, sans-serif; letter-spacing: .22em; }
 .preview-actions { width: min(100%, 540px); display: grid; grid-template-columns: .65fr 1.35fr; gap: 8px; margin: 12px auto 0; }.preview-actions button { min-height: 48px; border: 1px solid var(--line); cursor: pointer; }.preview-actions button:disabled { opacity: .6; cursor: wait; }.preview-actions .quiet { background: transparent; }.export-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }.preview-actions .export { display: grid; place-items: center; padding: 0 7px; background: var(--red); color: #fff; border-color: var(--red); font: 800 9px system-ui,sans-serif; }.preview-tip { margin: 9px 0 0; text-align: center; color: var(--muted); font: 9px system-ui, sans-serif; }
+.menu-description-control { width: min(100%, 540px); display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 auto 10px; }.menu-description-control button { min-height: 38px; border: 1px solid #d9c7b4; border-radius: 10px; background: #fffaf3; color: #72443c; padding: 0 12px; font: 800 10px system-ui,sans-serif; cursor: pointer; }.menu-description-control button[aria-pressed="false"] { background: #70443c; color: #fffaf3; border-color: #70443c; }.menu-description-control small { color: var(--muted); font: 9px/1.5 system-ui,sans-serif; text-align: right; }
 
 .template-home { --menu-bg: #f4e7cf; --menu-ink: #49392d; --menu-accent: #9a503a; --menu-soft: rgba(73,57,45,.7); background-image: url("/banquet/home.webp"); }.template-home::before { border-radius: 22px 22px 6px 6px; }.template-home .menu-card-ornament { border-radius: 14px 14px 14px 4px; background: #76533d; }
 .template-romance { --menu-bg: #f8ece4; --menu-ink: #542b35; --menu-accent: #9e3f52; --menu-soft: rgba(84,43,53,.7); background-image: url("/banquet/romance.webp"); }.template-romance::before { border-radius: 180px 180px 18px 18px; inset: 20px; }.template-romance .menu-card-ornament { border: 1px solid var(--menu-accent); background: rgba(255,250,246,.72); color: var(--menu-accent); }.template-romance .menu-card-header h2 { font-style: italic; font-weight: 400; }
-.template-fine { --menu-bg: #151515; --menu-ink: #f4efe4; --menu-accent: #d2ae69; --menu-soft: rgba(244,239,228,.68); background-image: url("/banquet/fine.webp"); }.template-fine::before { inset: 11px; border-width: 0; }.template-fine .menu-card-ornament { border-radius: 0; transform: rotate(45deg); background: rgba(15,15,15,.7); border: 1px solid var(--menu-accent); color: var(--menu-accent); }.template-fine .menu-card-ornament span { transform: rotate(-45deg); font: 10px Georgia, serif; }.template-fine .menu-card-header h2 { text-transform: uppercase; font-family: Georgia, serif; font-size: 38px; font-weight: 400; letter-spacing: .12em; }
+.template-fine { --menu-bg: #151515; --menu-ink: #f4efe4; --menu-accent: #d2ae69; --menu-soft: rgba(244,239,228,.68); background-image: url("/banquet/fine.webp"); }.template-fine::before { inset: 11px; border-width: 0; }.template-fine .menu-card-ornament { border-radius: 0; transform: rotate(45deg); background: rgba(15,15,15,.7); border: 1px solid var(--menu-accent); color: var(--menu-accent); }.template-fine .menu-card-ornament span { transform: rotate(-45deg); font: 10px Georgia, serif; }.template-fine .menu-card-header h2 { text-transform: uppercase; font-family: var(--menu-font-family); font-size: 38px; font-weight: 400; letter-spacing: .12em; }
 .template-spring { --menu-bg: #9f1714; --menu-ink: #fff2cf; --menu-accent: #f1cb70; --menu-soft: rgba(255,242,207,.76); background-image: url("/banquet/new-year.webp"); }.template-spring::before { border-width: 2px; inset: 14px; }.template-spring .menu-card-ornament { color: #9a211a; background: #f1cb70; border-radius: 50% 50% 12px 12px; box-shadow: 0 0 0 7px rgba(243,202,115,.13); }.template-spring .menu-card-header h2 { font-weight: 700; letter-spacing: .16em; }
 .template-midautumn { --menu-bg: #142b43; --menu-ink: #f3ead1; --menu-accent: #e1ca80; --menu-soft: rgba(243,234,209,.74); background-image: url("/banquet/midautumn.webp"); }.template-midautumn::before { border-radius: 50% 50% 8px 8px / 22% 22% 8px 8px; }.template-midautumn .menu-card-ornament { border: 1px solid var(--menu-accent); background: rgba(13,37,58,.64); color: var(--menu-accent); box-shadow: 0 0 28px rgba(225,202,128,.18); }.template-midautumn .menu-card-header h2 { font-weight: 400; letter-spacing: .18em; }
 .template-birthday { --menu-bg: #f6e4df; --menu-ink: #593c52; --menu-accent: #8c536f; --menu-soft: rgba(89,60,82,.7); background-image: url("/banquet/birthday.webp"); }.template-birthday::before { border-radius: 16px; border-style: dashed; }.template-birthday .menu-card-ornament { border-radius: 18px; background: #805069; box-shadow: 8px 7px 0 rgba(196,107,88,.24); }.template-birthday .menu-card-header h2 { letter-spacing: .07em; }
 .template-housewarming { --menu-bg: #f2e4cb; --menu-ink: #4f4035; --menu-accent: #ad603f; --menu-soft: rgba(79,64,53,.7); background-image: url("/banquet/housewarming.webp"); }.template-housewarming::before { inset: 22px; border-radius: 180px 180px 9px 9px; }.template-housewarming .menu-card-ornament { border-radius: 17px 17px 5px 5px; background: #a96143; box-shadow: 0 5px 0 rgba(91,110,72,.18); }
 .template-summer { --menu-bg: #f7f5e9; --menu-ink: #345951; --menu-accent: #5a8d83; --menu-soft: rgba(52,89,81,.7); background-image: url("/banquet/summer.webp"); }.template-summer::before { border-style: dashed; border-radius: 38px; }.template-summer .menu-card-ornament { border-radius: 50% 50% 12px 50%; background: #77a99f; color: #fffbea; }.template-summer .menu-card-header h2 { font-weight: 400; letter-spacing: .13em; }
-.template-christmas { --menu-bg: #0d2f21; --menu-ink: #fff5dc; --menu-accent: #e2be63; --menu-soft: rgba(255,245,220,.76); background-image: url("/banquet/christmas.webp"); }.template-christmas::before { inset: 14px; border-color: rgba(226,190,99,.48); }.template-christmas .menu-card-ornament { border-radius: 10px; transform: rotate(45deg); background: #9c2832; color: #fff3d5; box-shadow: 0 0 0 6px rgba(226,190,99,.08); }.template-christmas .menu-card-ornament span { transform: rotate(-45deg); }.template-christmas .menu-card-header h2 { font-family: Georgia,"Noto Serif SC",serif; font-weight: 400; }
+.template-christmas { --menu-bg: #0d2f21; --menu-ink: #fff5dc; --menu-accent: #e2be63; --menu-soft: rgba(255,245,220,.76); background-image: url("/banquet/christmas.webp"); }.template-christmas::before { inset: 14px; border-color: rgba(226,190,99,.48); }.template-christmas .menu-card-ornament { border-radius: 10px; transform: rotate(45deg); background: #9c2832; color: #fff3d5; box-shadow: 0 0 0 6px rgba(226,190,99,.08); }.template-christmas .menu-card-ornament span { transform: rotate(-45deg); }.template-christmas .menu-card-header h2 { font-family: var(--menu-font-family); font-weight: 400; }
 .template-brunch { --menu-bg: #fff8e8; --menu-ink: #3e5962; --menu-accent: #e18a58; --menu-soft: rgba(62,89,98,.72); background-image: url("/banquet/brunch.webp"); }.template-brunch::before { inset: 21px; border-width: 2px; border-style: dotted; border-radius: 26px; }.template-brunch .menu-card-ornament { width: 58px; height: 34px; border-radius: 36px 36px 7px 7px; background: #f1c95d; color: #315e73; }.template-brunch .menu-card-header h2 { font-weight: 700; letter-spacing: .04em; }
 
 .template-jiangnan { --menu-bg: #f2f0e7; --menu-ink: #2f453e; --menu-accent: #527466; --menu-soft: rgba(47,69,62,.84); background-image: url("/banquet/jiangnan.webp"); }.template-jiangnan::before { inset: 18px; border-color: rgba(82,116,102,.38); border-radius: 120px 120px 8px 8px; }.template-jiangnan .menu-card-ornament { border: 1px solid #527466; border-radius: 4px; background: rgba(244,241,231,.88); color: #38594e; box-shadow: 6px 6px 0 rgba(82,116,102,.1); }.template-jiangnan .menu-card-header h2 { font-weight: 400; letter-spacing: .17em; }
@@ -347,26 +365,19 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 :is(.template-jiangnan,.template-hotpot,.template-birthday-party) :is(.menu-card-header,.menu-card-courses,.menu-card-footer) { text-shadow: 0 1px 0 color-mix(in srgb,var(--menu-bg) 85%,transparent),0 0 10px color-mix(in srgb,var(--menu-bg) 62%,transparent); }
 
 .template-choice.archive-ledger > span { background: #dce7d8; color: #a33d35; }.template-choice.xuan-paper > span { background: #f3eddf; color: #8c714d; }.template-choice.ingredient-atlas > span { background: #171716; color: #cfb37e; }.template-choice.antique-post > span { background: #a51f20; color: #f7eedb; }.template-choice.bistro-handwritten > span { background: #332119; color: #efc98a; }
-.template-archive-ledger { --menu-bg: #cfe4d8; --menu-ink: #8f2d29; --menu-accent: #ad332c; --menu-soft: rgba(143,45,41,.88); background-image: url("/banquet/archive-ledger.webp"); background-size: 100% 100%; font-family: "Ma Shan Zheng", "Noto Serif SC", serif; padding: 20px 42px 28px; }
+.template-archive-ledger { --menu-bg: #cfe4d8; --menu-ink: #8f2d29; --menu-accent: #ad332c; --menu-soft: rgba(143,45,41,.88); background-image: url("/banquet/archive-ledger-v2.webp"); background-size: 100% 100%; padding: 20px 42px 28px; }
 .template-archive-ledger::before { inset: 11px; border-color: rgba(55,125,143,.72); border-radius: 0; }
 .template-archive-ledger::after { display: none; }
-.template-archive-ledger .menu-card-header { height: 454px; flex: 0 0 454px; text-align: center; }
+.template-archive-ledger .menu-card-header { height: 540px; flex: 0 0 540px; text-align: center; }
 .template-archive-ledger .archive-card-arc { position: absolute; top: -5px; left: 2%; width: 96%; height: 88px; overflow: visible; fill: #b42f2c; font-family: Georgia, "Noto Serif SC", serif; font-size: 17px; font-weight: 800; letter-spacing: .06em; }
 .template-archive-ledger .menu-card-header > small { display: none; }
-.template-archive-ledger .menu-card-header h2 { position: absolute; top: 88px; left: 0; width: 100%; margin: 0; color: #a92d2a; font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 25px; font-weight: 400; letter-spacing: .06em; line-height: 1.15; }
+.template-archive-ledger .menu-card-header h2 { position: absolute; top: 88px; left: 0; width: 100%; margin: 0; color: #a92d2a; font-family: var(--menu-font-family); font-size: 32px; font-weight: 400; letter-spacing: .06em; line-height: 1.15; }
 .template-archive-ledger .menu-card-header > p { position: absolute; top: 120px; left: 0; width: 100%; margin: 0; color: #a92d2a; letter-spacing: .04em; }
-.template-archive-ledger .menu-card-header > p strong { margin: 0 0 2px; color: #a92d2a; font-family: Georgia, "Noto Serif SC", serif; font-size: 13px; font-weight: 700; letter-spacing: .04em; }
-.template-archive-ledger .menu-card-header > p span { font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 22px; font-weight: 600; }
-.template-archive-ledger .menu-card-header > .archive-card-meta { position: absolute; top: 411px; left: 0; display: flex; width: 100%; justify-content: center; gap: 8px; margin: 0; padding: 4px 0; border-top: 1px solid rgba(55,125,143,.7); border-bottom: 1px solid rgba(55,125,143,.7); color: #a72f2b; font: 700 8px/1.3 Georgia, "Noto Serif SC", serif; letter-spacing: .02em; }
-.template-archive-ledger .archive-card-fields { position: absolute; top: 181px; left: 0; display: grid; width: 100%; grid-template-columns: .85fr 1.2fr .85fr 1.25fr .42fr; gap: 0; border: 1px solid rgba(55,125,143,.72); background: rgba(207,228,216,.14); text-align: left; }
-.template-archive-ledger .archive-card-fields > span { min-width: 0; min-height: 28px; padding: 2px 3px; border-right: 1px solid rgba(55,125,143,.72); overflow: hidden; }
-.template-archive-ledger .archive-card-fields > span:last-child { border-right: 0; }
-.template-archive-ledger .archive-card-fields small,.template-archive-ledger .archive-card-fields strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.template-archive-ledger .archive-card-fields small { color: #4d7f89; font: 700 5px/1.2 Arial, sans-serif; letter-spacing: .08em; }
-.template-archive-ledger .archive-card-fields strong { color: #a92d2a; font: 600 8px/1.3 "Ma Shan Zheng", "Noto Serif SC", serif; }
-.template-archive-ledger .archive-card-ribbon { position: absolute; top: 377px; left: 8%; width: 84%; height: 28px; display: grid; place-items: center; border: 1.5px solid #ad332c; background: rgba(207,228,216,.92); color: #a22d29; font: 600 14px/1 "Ma Shan Zheng", "Noto Serif SC", serif; letter-spacing: .12em; }
-.template-archive-ledger .archive-card-tagline { position: absolute; top: 439px; left: 8%; width: 84%; overflow: hidden; color: #a22d29; font: 600 8px/1.35 "Ma Shan Zheng", "Noto Serif SC", serif; letter-spacing: .05em; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-.template-archive-ledger .archive-card-side-note { position: absolute; z-index: 1; top: 245px; color: #ad332c; font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 14px; letter-spacing: .16em; line-height: 1.35; writing-mode: vertical-rl; }
+.template-archive-ledger .menu-card-header > p strong { display: none; }
+.template-archive-ledger .menu-card-header > p span { font-family: var(--menu-font-family); font-size: 18px; font-weight: 500; }
+.template-archive-ledger .menu-card-header > .archive-card-meta { position: absolute; top: 468px; left: 2%; display: flex; width: 96%; justify-content: center; gap: 8px; margin: 0; padding: 5px 0; border-top: 1px solid rgba(55,125,143,.7); border-bottom: 1px solid rgba(55,125,143,.7); color: #a72f2b; font: 700 9px/1.4 Georgia, "Noto Serif SC", serif; letter-spacing: .02em; }
+.template-archive-ledger .archive-card-ribbon { position: absolute; top: 507px; left: 8%; width: 84%; min-height: 29px; display: grid; place-items: center; border: 1.5px solid #ad332c; background: rgba(207,228,216,.94); color: #a22d29; font: 600 14px/1.25 var(--menu-font-family); letter-spacing: .12em; }
+.template-archive-ledger .archive-card-side-note { position: absolute; z-index: 1; top: 248px; color: #ad332c; font-family: var(--menu-font-family); font-size: 9px; letter-spacing: .12em; line-height: 1.12; writing-mode: vertical-rl; }
 .template-archive-ledger .archive-card-side-note.left { left: 21px; }
 .template-archive-ledger .archive-card-side-note.right { right: 21px; }
 .template-archive-ledger .menu-card-courses { padding: 7px 0 16px; }
@@ -375,64 +386,143 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .template-archive-ledger .menu-card-courses section > div { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px 12px; }
 .template-archive-ledger .menu-card-courses article { display: block; min-width: 0; text-align: center; }
 .template-archive-ledger .menu-card-courses article strong,.template-archive-ledger .menu-card-courses article span { display: block; color: #96312d; text-align: center; white-space: normal; }
-.template-archive-ledger .menu-card-courses article strong { font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 14px; font-weight: 600; line-height: 1.2; }
+.template-archive-ledger .menu-card-courses article strong { font-family: var(--menu-font-family); font-size: 14px; font-weight: 600; line-height: 1.2; }
 .template-archive-ledger .menu-card-courses article span { font-size: 7px; line-height: 1.25; }
 .template-archive-ledger .menu-card-footer { padding-top: 5px; border-top: 1px solid rgba(55,125,143,.65); color: #4d7f89; }
 .template-archive-ledger .menu-card-footer > span { display: none; }
-.template-archive-ledger .menu-card-footer p { margin: 3px 0 4px; color: #a22d29; font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 11px; }
+.template-archive-ledger .menu-card-footer p { margin: 3px 0 4px; color: #a22d29; font-family: var(--menu-font-family); font-size: 11px; }
 .template-archive-ledger .menu-card-footer small { color: #4d7f89; font-size: 6px; letter-spacing: .12em; }
 
 .template-xuan-paper { --menu-bg: #f4f0e5; --menu-ink: #282722; --menu-accent: #8c714d; --menu-soft: rgba(40,39,34,.82); background-image: url("/banquet/xuan-paper.webp"); }
 .template-xuan-paper::before { inset: 22px; border-color: rgba(140,113,77,.32); border-radius: 2px; }
 .template-xuan-paper::after { display: block; inset: 36px 28px; background: linear-gradient(180deg,rgba(250,247,238,.8),rgba(250,247,238,.94) 22%,rgba(250,247,238,.93) 82%,rgba(250,247,238,.78)); box-shadow: 0 0 26px 18px rgba(250,247,238,.55); }
-.template-xuan-paper .menu-card-header h2 { font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: clamp(50px,6vw,68px); font-weight: 400; letter-spacing: .16em; }
-.template-xuan-paper .menu-card-header > p strong { font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 17px; font-weight: 400; }
+.template-xuan-paper .menu-card-header h2 { font-family: var(--menu-font-family); font-size: clamp(50px,6vw,68px); font-weight: 400; letter-spacing: .16em; }
+.template-xuan-paper .menu-card-header > p strong { font-family: var(--menu-font-family); font-size: 17px; font-weight: 400; }
 .template-xuan-paper .menu-card-courses > section { display: grid; grid-template-columns: 32% minmax(0,1fr); gap: 8px; }
 .template-xuan-paper .menu-card-courses h3 { display: block; padding-top: 1px; }
-.template-xuan-paper .menu-card-courses h3 span { display: block; font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 20px; }
+.template-xuan-paper .menu-card-courses h3 span { display: block; font-family: var(--menu-font-family); font-size: 20px; }
 .template-xuan-paper .menu-card-courses h3 small { display: block; margin-top: 4px; color: #9b805d; }
 .template-xuan-paper .menu-card-courses section > div { gap: 13px; }
 .template-xuan-paper .menu-card-courses article { display: block; }
 .template-xuan-paper .menu-card-courses article strong,.template-xuan-paper .menu-card-courses article span { display: block; text-align: left; white-space: normal; }
-.template-xuan-paper .menu-card-courses article strong { font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 17px; }
+.template-xuan-paper .menu-card-courses article strong { font-family: var(--menu-font-family); font-size: 17px; }
 
 .template-ingredient-atlas { --menu-bg: #10100f; --menu-ink: #f6efe3; --menu-accent: #cfb37e; --menu-soft: rgba(246,239,227,.84); background-image: url("/banquet/ingredient-atlas.webp"); }
 .template-ingredient-atlas::before { inset: 14px; border: 1px solid rgba(207,179,126,.32); }
 .template-ingredient-atlas::after { display: block; inset: 34px 26px; background: linear-gradient(90deg,rgba(14,14,14,.82),rgba(14,14,14,.5) 58%,rgba(14,14,14,.22)); box-shadow: 0 0 30px 22px rgba(14,14,14,.35); }
-.template-ingredient-atlas .menu-card-header h2 { font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: clamp(38px,4vw,48px); font-weight: 400; }
+.template-ingredient-atlas .menu-card-header h2 { font-family: var(--menu-font-family); font-size: clamp(38px,4vw,48px); font-weight: 400; }
 .template-ingredient-atlas .menu-card-courses { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-content: start; gap: 12px; }
-.template-ingredient-atlas .menu-card-courses > section { min-width: 0; margin: 0; padding: 12px 11px; background: rgba(239,226,204,.95); color: #302b25; border-radius: 2px; box-shadow: 0 7px 18px rgba(0,0,0,.18); }
-.template-ingredient-atlas .menu-card-courses h3 { display: block; margin-bottom: 9px; color: #8f493e; border-bottom: 1px solid rgba(143,73,62,.24); padding-bottom: 6px; }
-.template-ingredient-atlas .menu-card-courses h3 span { font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 15px; }
-.template-ingredient-atlas .menu-card-courses h3 small { display: block; margin-top: 2px; color: #756b5d; font-size: 6px; }
+.template-ingredient-atlas .menu-card-courses > section { min-width: 0; margin: 0; padding: 12px 11px; border: 1px solid rgba(207,179,126,.3); background: rgba(24,23,21,.92); color: #f6efe3; border-radius: 3px; box-shadow: 0 8px 20px rgba(0,0,0,.3); }
+.template-ingredient-atlas .menu-card-courses h3 { display: block; margin-bottom: 9px; color: #e0c78e; border-bottom: 1px solid rgba(207,179,126,.35); padding-bottom: 6px; }
+.template-ingredient-atlas .menu-card-courses h3 span { font-family: var(--menu-font-family); font-size: 15px; }
+.template-ingredient-atlas .menu-card-courses h3 small { display: block; margin-top: 2px; color: #ad9a76; font-size: 6px; }
 .template-ingredient-atlas .menu-card-courses section > div { gap: 9px; }
 .template-ingredient-atlas .menu-card-courses article { display: block; }
 .template-ingredient-atlas .menu-card-courses article strong,.template-ingredient-atlas .menu-card-courses article span { display: block; color: #302b25; text-align: left; white-space: normal; }
-.template-ingredient-atlas .menu-card-courses article strong { font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 15px; }
-.template-ingredient-atlas .menu-card-courses article span { margin-top: 2px; font-size: 9px; }
+.template-ingredient-atlas .menu-card-courses article strong { font-family: var(--menu-font-family); font-size: 15px; color: #f6efe3; }
+.template-ingredient-atlas .menu-card-courses article span { margin-top: 2px; color: rgba(246,239,227,.78); font-size: 9px; }
 
 .template-antique-post { --menu-bg: #f0e8d5; --menu-ink: #332d27; --menu-accent: #9f2725; --menu-soft: rgba(51,45,39,.84); background-image: url("/banquet/antique-post.webp"); }
 .template-antique-post::before { inset: 18px; border-color: rgba(130,78,54,.42); border-radius: 1px; }
 .template-antique-post::after { display: block; inset: 36px 32px; background: linear-gradient(180deg,rgba(248,242,226,.78),rgba(248,242,226,.92) 21%,rgba(248,242,226,.93) 80%,rgba(248,242,226,.78)); box-shadow: 0 0 28px 20px rgba(248,242,226,.52); }
-.template-antique-post .menu-card-header h2 { display: inline-block; margin: 14px auto 17px; padding: 10px 14px; background: #a51f20; color: #f7eedb; font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 34px; font-weight: 400; letter-spacing: .12em; writing-mode: vertical-rl; box-shadow: 4px 5px 0 rgba(75,42,32,.18); }
-.template-antique-post .menu-card-header > p strong { font-family: "Ma Shan Zheng", "Noto Serif SC", serif; font-size: 16px; font-weight: 400; }
-.template-antique-post .menu-card-courses h3 span,.template-antique-post .menu-card-courses article strong { font-family: "Ma Shan Zheng", "Noto Serif SC", serif; }
+.template-antique-post .menu-card-header { min-height: 330px; text-align: center; }
+.template-antique-post .menu-card-header > small { display: block; width: 100%; text-align: center; }
+.template-antique-post .menu-card-header h2 { position: absolute; z-index: 2; top: 18px; left: 50%; display: flex; width: 72px; height: 205px; align-items: center; justify-content: center; margin: 0; padding: 12px 10px; transform: translateX(-50%); background: rgba(165,31,32,.96); color: #f7eedb; font-family: var(--menu-font-family); font-size: 30px; font-weight: 400; letter-spacing: .12em; line-height: 1.3; writing-mode: vertical-rl; box-shadow: 4px 5px 0 rgba(75,42,32,.18); }
+.template-antique-post .menu-card-header > p { position: absolute; top: 238px; left: 0; width: 100%; margin: 0; text-align: center; }
+.template-antique-post .menu-card-header > p strong { display: block; color: #9f2725; }
+.template-antique-post .menu-card-header > p strong { font-family: var(--menu-font-family); font-size: 16px; font-weight: 400; }
+.template-antique-post .menu-card-courses h3 span,.template-antique-post .menu-card-courses article strong { font-family: var(--menu-font-family); }
 .template-antique-post .menu-card-courses h3 span { font-size: 17px; }
 .template-antique-post .menu-card-courses article strong { font-size: 17px; }
 .template-antique-post .menu-card-footer > span { color: #a51f20; }
 
-.template-bistro-handwritten { --menu-bg: #20150f; --menu-ink: #fff8e9; --menu-accent: #efc98a; --menu-soft: rgba(255,248,233,.9); background-image: url("/banquet/bistro-handwritten.webp"); font-family: "Liu Jian Mao Cao", "Ma Shan Zheng", cursive; }
+.template-bistro-handwritten { --menu-bg: #20150f; --menu-ink: #fff8e9; --menu-accent: #efc98a; --menu-soft: rgba(255,248,233,.9); background-image: url("/banquet/bistro-handwritten.webp"); }
 .template-bistro-handwritten::before { inset: 14px; border-color: rgba(255,232,190,.28); }
 .template-bistro-handwritten::after { display: block; inset: 24px 18px 20px 14px; background: linear-gradient(90deg,rgba(25,15,11,.82),rgba(25,15,11,.76) 52%,rgba(25,15,11,.25)); box-shadow: 0 0 32px 22px rgba(25,15,11,.5); }
-.template-bistro-handwritten .menu-card-header h2 { font-family: "Liu Jian Mao Cao", "Ma Shan Zheng", cursive; font-size: clamp(42px,5vw,58px); font-weight: 400; letter-spacing: .06em; text-align: left; }
+.template-bistro-handwritten .menu-card-header h2 { font-family: var(--menu-font-family); font-size: clamp(42px,5vw,58px); font-weight: 400; letter-spacing: .06em; text-align: left; }
 .template-bistro-handwritten .menu-card-header,.template-bistro-handwritten .menu-card-footer { text-align: left; }
 .template-bistro-handwritten .menu-card-header > small,.template-bistro-handwritten .menu-card-header > div,.template-bistro-handwritten .menu-card-header > p strong,.template-bistro-handwritten .menu-card-courses h3 small,.template-bistro-handwritten .menu-card-footer small { color: var(--menu-accent); }
 .template-bistro-handwritten .menu-card-header > div { justify-content: flex-start; border-color: rgba(239,201,138,.5); }
-.template-bistro-handwritten .menu-card-courses h3 span,.template-bistro-handwritten .menu-card-courses article strong,.template-bistro-handwritten .menu-card-footer p { font-family: "Liu Jian Mao Cao", "Ma Shan Zheng", cursive; font-weight: 400; }
+.template-bistro-handwritten .menu-card-courses h3 span,.template-bistro-handwritten .menu-card-courses article strong,.template-bistro-handwritten .menu-card-footer p { font-family: var(--menu-font-family); font-weight: 400; }
 .template-bistro-handwritten .menu-card-courses h3 span { font-size: 20px; }
 .template-bistro-handwritten .menu-card-courses article strong { font-size: 21px; }
-.template-bistro-handwritten .menu-card-courses article span { color: rgba(255,248,233,.88); font-family: "Liu Jian Mao Cao", "Ma Shan Zheng", cursive; font-size: 16px; }
+.template-bistro-handwritten .menu-card-courses article span { color: rgba(255,248,233,.88); font-family: var(--menu-font-family); font-size: 16px; }
 .template-bistro-handwritten .menu-card-footer p { font-size: 17px; }
+
+/* Menu font picker: show the selected face at a useful reading size. */
+.banquet-font-specimen { display: block; width: 100%; margin-top: 3px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #f8f4ed; color: #49392d; font-family: var(--menu-font-family); font-size: 19px; line-height: 1.35; }
+.menu-font-library { margin-top: 14px; padding: 14px; border: 1px solid #e5d9cb; border-radius: 12px; background: #fbf8f2; }
+.menu-font-library-heading,.menu-font-library-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.menu-font-library-heading > div { display: grid; gap: 3px; }
+.menu-font-library-heading strong { color: #3d3027; font-size: 14px; }
+.menu-font-library-heading small,.menu-font-library-foot > span { color: #81756c; font-size: 11px; line-height: 1.45; }
+.menu-font-upload,.menu-font-library-foot button { flex: 0 0 auto; border: 1px solid #c98570; border-radius: 8px; padding: 8px 11px; background: #fff; color: #8c3f31; font-size: 12px; font-weight: 700; cursor: pointer; }
+.menu-font-library-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; max-height: 246px; margin-top: 12px; overflow-y: auto; }
+.menu-font-library-item { display: flex; min-width: 0; align-items: center; gap: 5px; border: 1px solid #ece3d8; border-radius: 9px; padding: 5px 6px 5px 9px; background: #fff; }
+.menu-font-library-item.selected { border-color: #bd705c; box-shadow: 0 0 0 2px rgba(189,112,92,.12); }
+.menu-font-library-choice { display: grid; flex: 1; min-width: 0; gap: 3px; border: 0; padding: 4px 2px; background: transparent; color: #3c3028; text-align: left; cursor: pointer; }
+.menu-font-library-choice strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.menu-font-library-choice small { overflow: hidden; color: #81756c; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.menu-font-kind { flex: 0 0 auto; border-radius: 20px; padding: 3px 6px; background: #f1eee9; color: #74665c; font-size: 9px; }
+.menu-font-kind-custom { background: #eaf2e8; color: #496744; }
+.menu-font-remove { flex: 0 0 auto; border: 0; padding: 5px 3px; background: transparent; color: #a94a3f; font-size: 10px; cursor: pointer; }
+.menu-font-library-foot { margin-top: 10px; }
+.menu-font-library-foot button { border-color: #ded2c4; padding: 6px 8px; color: #645348; }
+.menu-font-library-message,.menu-font-library-error { margin: 8px 0 0; color: #466d46; font-size: 12px; }
+.menu-font-library-error { color: #a63f35; }
+.menu-font-library button:disabled { opacity: .55; cursor: wait; }
+
+/* Dark templates use dark, warm menu plates instead of pale cards that clash with the artwork. */
+.template-ingredient-atlas .menu-card-courses > section { border-color: rgba(207,179,126,.38); background: rgba(20,19,18,.96); box-shadow: 0 8px 22px rgba(0,0,0,.42); }
+.template-ingredient-atlas .menu-card-courses article strong { color: #f4ead7; }
+.template-ingredient-atlas .menu-card-courses article span { color: rgba(244,234,215,.82); }
+
+/* The archive card reserves one clean brand area, then a separate menu area below the illustration. */
+.template-archive-ledger { container-type: inline-size; padding: 20px 42px 28px; background-size: cover; }
+.template-archive-ledger .menu-card-header { position: relative; height: clamp(580px,130cqw,700px); flex: 0 0 clamp(580px,130cqw,700px); }
+.template-archive-ledger .archive-card-arc { top: 36px; left: 0; width: 100%; height: 130px; fill: #a72d29; font-family: var(--menu-font-family); font-size: 50px; font-weight: 800; letter-spacing: .55em; }
+.template-archive-ledger .menu-card-header h2,
+.template-archive-ledger .menu-card-header > p { display: none; }
+.template-archive-ledger .menu-card-header > .archive-card-meta { top: 30cqw; left: 50%; width: fit-content; max-width: 100%; transform: translateX(-50%); gap: 12px; padding: 7px 14px; border-color: rgba(55,125,143,.68); background: rgba(207,228,216,.72); font: 600 12px/1.35 var(--menu-font-family); letter-spacing: .04em; }
+.template-archive-ledger .archive-card-ribbon { top: auto; bottom: 9px; left: 8%; width: 84%; min-height: 34px; padding: 4px 10px; background: rgba(207,228,216,.96); font-size: 16px; }
+.template-archive-ledger .archive-card-side-note { top: 51cqw; color: #9d2e2a; font-size: clamp(44px,9.5cqw,54px); font-weight: 700; letter-spacing: .82em; line-height: 1.05; }
+.template-archive-ledger .archive-card-side-note.left { left: 21px; }
+.template-archive-ledger .archive-card-side-note.right { right: 21px; }
+.template-archive-ledger .menu-card-courses { padding: 12px 0 18px; }
+.template-archive-ledger .menu-card-courses section + section { margin-top: 9px; }
+.template-archive-ledger .menu-card-courses section > div { gap: 8px 14px; }
+.template-archive-ledger .menu-card-courses article strong { font-size: 15px; line-height: 1.3; }
+.template-archive-ledger .menu-card-courses article span { font-size: 9px; line-height: 1.4; }
+.template-archive-ledger .menu-card-footer { padding-top: 8px; }
+
+/* Keep the original poster artwork proportional, then continue its parchment below it for long menus. */
+.template-antique-post { --antique-art-bottom: calc(150cqw + 162px); container-type: inline-size; background-color: #f0e8d5; background-position: center top; background-size: 100% auto; background-repeat: no-repeat; }
+.template-antique-post::after { display: block; top: min(var(--antique-art-bottom),100%); right: 0; bottom: 0; left: 0; background: linear-gradient(180deg,rgba(240,232,213,0),rgba(240,232,213,.88) 32px,#f0e8d5 72px),radial-gradient(ellipse at 16% 22%,rgba(255,250,236,.52),transparent 48%),radial-gradient(ellipse at 86% 74%,rgba(170,126,72,.08),transparent 50%),linear-gradient(135deg,#f2ead9,#f7f0df 58%,#eee3cf); box-shadow: none; }
+.template-antique-post::before { z-index: 1; }
+.template-antique-post .menu-card-header { min-height: 370px; }
+.template-antique-post .menu-card-header > small { position: absolute; top: calc(61cqw - 72px); left: 0; display: block; width: 100%; color: #8f3029; text-align: center; }
+.template-antique-post .menu-card-header h2 { top: calc(7.2cqw - 72px); left: 50%; width: min(15cqw,68px); min-width: 44px; height: clamp(145px,48cqw,210px); padding: 8px 3px; transform: translateX(-50%); background: transparent; box-shadow: none; font-size: clamp(20px,7cqw,30px); text-align: center; }
+.template-antique-post .menu-card-header > p { top: 222px; left: 0; width: 100%; text-align: center; }
+.template-antique-post .menu-card-header > p strong { display: block; width: 100%; text-align: center; }
+.template-antique-post .menu-card-header > .archive-card-meta { position: absolute; top: 278px; left: 50%; display: flex; width: min(100%,390px); justify-content: center; gap: 5px 14px; margin: 0; padding: 9px 8px; transform: translateX(-50%); border-color: rgba(143,48,41,.34); background: rgba(248,242,226,.72); color: #514037; font-size: 10px; line-height: 1.45; letter-spacing: .06em; text-align: center; }
+.template-antique-post .menu-card-header > p strong { margin-bottom: 2px; color: #8f3029; font-size: 16px; line-height: 1.45; }
+.template-antique-post .menu-card-header > p span { display: block; color: #514037; font-size: 12px; line-height: 1.5; }
+.template-antique-post .menu-card-courses { padding: 24px 14px 18px; border-inline: 1px solid rgba(143,48,41,.12); background: rgba(248,242,226,.94); box-shadow: 0 0 20px 15px rgba(248,242,226,.52); }
+.template-antique-post .menu-card-courses > section { padding: 4px 0; background: transparent; }
+.template-antique-post .menu-card-courses section + section { margin-top: 18px; }
+.template-antique-post .menu-card-footer { padding: 12px 14px 8px; border: 1px solid rgba(143,48,41,.12); border-top: 0; background: rgba(248,242,226,.97); }
+
+@media (max-width: 600px) {
+  .template-archive-ledger { padding-inline: 30px; }
+  .template-archive-ledger .archive-card-side-note.left { left: 18px; }
+  .template-archive-ledger .archive-card-side-note.right { right: 18px; }
+  .template-archive-ledger .menu-card-courses article strong { font-size: 13px; }
+  .template-archive-ledger .menu-card-courses article span { font-size: 8px; }
+  .template-antique-post { --antique-art-bottom: calc(150cqw + 96px); }
+  .template-antique-post .menu-card-header > small { top: calc(61cqw - 58px); }
+  .template-antique-post .menu-card-header h2 { top: calc(7.2cqw - 58px); }
+  .template-antique-post .menu-card-header > .archive-card-meta { top: 278px; }
+}
 
 @media (max-width: 600px) {
   .template-xuan-paper .menu-card-courses > section { grid-template-columns: 27% minmax(0,1fr); }
@@ -491,6 +581,10 @@ footer span { letter-spacing: .12em; } footer p { opacity: .48; font: 11px syste
 }
 
 @media (max-width: 720px) {
+  .temporary-banquet-dish { grid-template-columns: minmax(0,1fr); padding: 12px; }
+  .temporary-banquet-dish > div:first-child,.temporary-banquet-dish-actions { grid-column: 1; }
+  .temporary-banquet-dish-actions { justify-content: stretch; }
+  .temporary-banquet-dish-actions button { flex: 1 1 140px; }
   .topbar { height: 70px; padding: 0 16px; }.brand small { display: none; }.brand-mark { width: 37px; height: 37px; }.brand strong { font-size: 15px; }
   .mode-switch > a { padding: 8px 10px; font-size: 11px; }
   .hero { grid-template-columns: 1fr; min-height: auto; padding: 58px 24px 44px; }.hero::before { inset: 12px; }.hero-copy { text-align: center; }.hero h1 { font-size: 43px; }.hero h1::after { margin: 22px auto; }.hero-copy > p { font-size: 14px; }
@@ -663,6 +757,15 @@ footer span { letter-spacing: .12em; } footer p { opacity: .48; font: 11px syste
 
 /* Stable friend ordering controls for mobile browsers */
 .invite-actions .danger { background: #fff1ee; color: #a34136; border: 1px solid #e5bdb5; }
+.invite-actions .chef-shared-submit-reveal { background: #4a392c; color: #fff8ee; }
+.chef-shared-submit-form { display: grid; gap: 10px; max-width: 560px; margin-top: 14px; padding: 16px; border: 1px solid rgba(113,78,48,.2); border-radius: 14px; background: rgba(255,255,255,.72); }
+.chef-shared-submit-form > strong { font-size: 14px; }
+.chef-shared-submit-form > p { margin: -5px 0 0; color: #766658; font-size: 11px; line-height: 1.6; }
+.chef-shared-submit-form label { display: grid; gap: 5px; color: #766658; font: 10px system-ui,sans-serif; }
+.chef-shared-submit-form input,.chef-shared-submit-form textarea { width: 100%; border: 1px solid #d9c7b2; border-radius: 9px; background: #fffdf9; padding: 9px 10px; color: #3f3027; font: inherit; font-size: 13px; }
+.chef-shared-submit-form textarea { min-height: 58px; resize: vertical; }
+.chef-shared-submit-form > button { min-height: 40px; border: 0; border-radius: 9px; background: #9b4d37; color: #fff8ef; font: 700 12px system-ui,sans-serif; cursor: pointer; }
+.chef-shared-submit-form > button:disabled { opacity: .6; cursor: wait; }
 .invite-actions { flex-wrap: wrap; }
 @media (max-width: 720px) { .invite-actions > button, .invite-actions > a { flex: 1 1 calc(50% - 7px); text-align: center; } }
 .quantity-control.has-quantity { display: block; }
@@ -1452,6 +1555,7 @@ footer span { letter-spacing: .12em; } footer p { opacity: .48; font: 11px syste
 .shared-dinner-selections{grid-column:1/-1;display:flex!important;gap:7px;flex-wrap:wrap!important}.shared-dinner-selections span{display:block;letter-spacing:0;font-size:12px;color:#614331;background:rgba(255,255,255,.58);border-radius:999px;padding:5px 9px}.shared-dinner-selections b{color:#9a5c28;font-weight:700}
 .dish-selection-badge{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:8px;color:#8a5d2d;font-size:10px;line-height:1.45}.dish-selection-badge>span{color:#a16c2f;font-weight:800}.dish-selection-badge>b{padding:3px 7px;border-radius:999px;background:#fff5df;color:#80572c;font-weight:700}
 .shared-dinner-progress{grid-column:1/-1;display:block;color:#8f4d20;font-size:13px;font-weight:700;text-decoration:none}.shared-dinner-progress:hover{text-decoration:underline}
+.shared-submit-unlocked{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:46px;border:0;border-radius:12px;background:linear-gradient(135deg,#a63e31,#7f2926);color:#fff8ef;padding:10px 16px;font:inherit;font-size:14px;font-weight:750;cursor:pointer;box-shadow:0 8px 20px rgba(111,43,35,.16)}.shared-submit-unlocked:disabled{opacity:.65;cursor:not-allowed}.shared-submit-unlocked span{color:#f6c985;font-size:20px}
 .shared-cart-summary{display:grid;gap:6px;margin:14px 0;padding:12px 14px;border-radius:14px;background:#faf1e4;border:1px solid #ead4b8}.shared-cart-summary strong{font-size:12px;color:#8d5b2d}.shared-cart-summary span{font-size:13px;color:#513224}
 @media (max-width:720px){.shared-dinner-bar{grid-template-columns:1fr;padding:14px}.shared-dinner-bar label{max-width:none}.shared-name-field{width:100%}.shared-name-field button{padding-inline:10px}.shared-dinner-bar p{grid-column:auto}}
 .status-add-dishes{display:flex!important;align-items:center;justify-content:space-between;gap:12px;margin:14px 0 10px;padding:13px 16px;border:1px solid #d8b47c!important;border-radius:12px;background:#fff8ec!important;color:#8a5d2d!important;text-decoration:none}.status-add-dishes strong{font-size:13px}.status-add-dishes span{font-size:10px;color:#a37b55}

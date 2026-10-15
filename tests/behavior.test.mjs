@@ -75,12 +75,45 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.ok(ready, logs);
+  const chefPage = await fetch(base + "/chef", { redirect: "manual" });
+  assert.equal(chefPage.status, 307); assert.match(chefPage.headers.get("location"), /^\/chef\/login\?/);
+  assert.equal((await fetch(base + "/api/menu-drafts")).status, 401);
   const login = await fetch(base + "/api/auth/login", { method: "POST", redirect: "manual", body: new URLSearchParams({ password }) });
   const cookie = login.headers.get("set-cookie")?.split(";")[0]; assert.ok(cookie);
   async function api(url, body, chef = false, method = body ? "POST" : "GET") {
     const response = await fetch(base + url, { method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...(chef ? { cookie } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: response.status, data: await response.json() };
   }
+  let customFontId = "";
+  let customFontUrl = "";
+  await t.test("font library imports, serves, removes and restores fonts with chef-only writes", async () => {
+    const publicList = await api("/api/menu-fonts");
+    assert.equal(publicList.status, 200);
+    assert.ok(publicList.data.fonts.some(font => font.id === "long-cang"));
+    assert.equal((await fetch(base + "/api/menu-fonts", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "restore-builtins" }) })).status, 401);
+
+    const fontBytes = await readFile(new URL("../public/fonts/LongCang-Regular.ttf", import.meta.url));
+    const form = new FormData();
+    form.append("files", new Blob([fontBytes], { type: "font/ttf" }), "测试手写.ttf");
+    const imported = await fetch(base + "/api/menu-fonts", { method: "POST", headers: { cookie }, body: form });
+    assert.equal(imported.status, 201);
+    const importedFonts = (await imported.json()).fonts;
+    const customFont = importedFonts.find(font => font.kind === "custom" && font.name === "测试手写");
+    assert.ok(customFont); customFontId = customFont.id; customFontUrl = customFont.fileUrl;
+    const served = await fetch(base + customFont.fileUrl);
+    assert.equal(served.status, 200);
+    assert.equal(served.headers.get("content-type"), "font/ttf");
+    assert.deepEqual(Buffer.from(await served.arrayBuffer()), fontBytes);
+
+    const hidden = await api("/api/menu-fonts/long-cang", undefined, true, "DELETE");
+    assert.equal(hidden.status, 200);
+    assert.ok(!hidden.data.fonts.some(font => font.id === "long-cang"));
+    assert.equal((await fetch(base + "/api/menu-fonts/long-cang/file")).status, 404);
+    const restored = await api("/api/menu-fonts", { action: "restore-builtins" }, true, "PATCH");
+    assert.equal(restored.status, 200);
+    assert.ok(restored.data.fonts.some(font => font.id === "long-cang"));
+
+  });
   const menu = (await api("/api/dishes")).data.dishes;
   assert.ok(menu.length > 1);
   const dish = menu.find(d => d.id === "cola-wings") || menu[0];
@@ -97,23 +130,30 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     return { ...result.data.invite, guestToken: joined.data.guestToken };
   }
   const select = (inv, quantity = 1) => api("/api/invites/" + inv.token, { action: "set-selection", guestToken: inv.guestToken, dishId: dish.id, quantity });
-  const submit = (inv, extra = {}) => api("/api/invites/" + inv.token, { action: "submit", guestToken: inv.guestToken, guestCount: 6, ...extra });
+  const submit = (inv, extra = {}, chef = false) => api("/api/invites/" + inv.token, { action: "submit", guestToken: inv.guestToken, guestCount: 6, ...extra }, chef);
   let original;
   await t.test("shared submissions preserve dietary notes and basic dinner information", async () => {
     original = await invite(); await select(original);
+    assert.equal((await api("/api/invites/" + original.token, { action: "submit", guestToken: "not-a-guest", guestCount: 6 })).status, 409);
+    const unnamedJoin = await api("/api/invites/" + original.token, { action: "join", displayName: "朋友" });
+    const unnamedGuest = { ...original, guestToken: unnamedJoin.data.guestToken };
+    assert.equal((await submit(unnamedGuest)).status, 403);
     const first = await submit(original, { note: "花生过敏，绝对不要放" }); assert.equal(first.status, 200);
     original.order = first.data.order;
     const joined = await api("/api/invites/" + original.token, { action: "join", displayName: "测试乙" });
-    const second = await submit({ ...original, guestToken: joined.data.guestToken }, { note: "", mealDate: "2026-10-03", guestCount: 2 });
+    const secondGuest = { ...original, guestToken: joined.data.guestToken };
+    await select(secondGuest, 2);
+    const second = await submit(secondGuest, { note: "不吃香菜", mealDate: "2026-10-03", guestCount: 2 });
     assert.equal(second.data.order.id, first.data.order.id);
     assert.match(second.data.order.note, /花生过敏/);
+    assert.match(second.data.order.note, /不吃香菜/);
     assert.equal(second.data.order.mealDate, "2026-10-02"); assert.equal(second.data.order.guestCount, 6);
-    const added = await submit({ ...original, guestToken: joined.data.guestToken }, { note: "不吃香菜" });
-    assert.match(added.data.order.note, /花生过敏/); assert.match(added.data.order.note, /不吃香菜/);
+    const added = await submit(secondGuest, { note: "少放辣" }, true);
+    assert.match(added.data.order.note, /花生过敏/); assert.match(added.data.order.note, /不吃香菜/); assert.match(added.data.order.note, /少放辣/);
   });
   await t.test("concurrent submission creates exactly one shared order", async () => {
     const inv = await invite(); await select(inv);
-    const results = await Promise.all(Array.from({ length: 5 }, () => submit(inv)));
+    const results = await Promise.all(Array.from({ length: 5 }, () => submit(inv, {}, true)));
     assert.ok(results.every(r => r.status === 200));
     assert.equal(new Set(results.map(r => r.data.order.id)).size, 1);
     assert.equal(db.prepare("SELECT count(*) AS n FROM orders WHERE invite_id = ?").get(inv.id).n, 1);
@@ -132,12 +172,12 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
   await t.test("sold-out and archived selections cannot become empty or incomplete orders", async () => {
     const inv = await invite(); await select(inv);
     db.prepare("UPDATE custom_dishes SET sold_out = 1 WHERE id = ?").run(dish.id);
-    assert.equal((await submit(inv)).status, 409);
+    assert.equal((await submit(inv, {}, true)).status, 409);
     assert.equal((await select(inv, 0)).status, 200);
     db.prepare("UPDATE custom_dishes SET sold_out = 0 WHERE id = ?").run(dish.id);
     await select(inv);
     db.prepare("UPDATE custom_dishes SET active = 0 WHERE id = ?").run(dish.id);
-    assert.equal((await submit(inv)).status, 409);
+    assert.equal((await submit(inv, {}, true)).status, 409);
     assert.equal((await select(inv, 0)).status, 200);
     db.prepare("UPDATE custom_dishes SET active = 1 WHERE id = ?").run(dish.id);
     assert.equal(db.prepare("SELECT count(*) AS n FROM orders WHERE invite_id = ?").get(inv.id).n, 0);
@@ -145,7 +185,7 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
   await t.test("rest mode blocks shared selections and submissions", async () => {
     const inv = await invite();
     await api("/api/kitchen-status", { open: false }, true, "PUT");
-    assert.equal((await select(inv)).status, 409); assert.equal((await submit(inv)).status, 409);
+    assert.equal((await select(inv)).status, 409); assert.equal((await submit(inv, {}, true)).status, 409);
     await api("/api/kitchen-status", { open: true }, true, "PUT");
   });
   const normal = { customerName: "普通测试", mealDate: "2026-10-04", guestCount: 2, dishes: [{ dishId: dish.id, quantity: 1 }] };
@@ -160,7 +200,7 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     assert.equal(new Set(results.map(r => r.data.order.id)).size, 1);
   });
   await t.test("chef date edits and menu ordering reach shared pages", async () => {
-    const inv = await invite(); await select(inv); const order = (await submit(inv)).data.order;
+    const inv = await invite(); await select(inv); const order = (await submit(inv, {}, true)).data.order;
     assert.equal((await api("/api/invites", { id: inv.id, mealDate: "2026-10-05" }, true, "PATCH")).status, 200);
     assert.equal(db.prepare("SELECT meal_date FROM orders WHERE id = ?").get(order.id).meal_date, "2026-10-05");
     db.prepare("UPDATE custom_dishes SET sort_order = -99 WHERE id = ?").run(dish.id);
@@ -168,16 +208,28 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     assert.equal(result.data.dishes[0].id, dish.id); assert.ok(result.data.categories.length);
   });
   await t.test("accepted shared dinners flag later dish changes and stale formal menus", async () => {
-    const inv = await invite(); await select(inv); const order = (await submit(inv)).data.order;
+    const inv = await invite(); await select(inv); const order = (await submit(inv, {}, true)).data.order;
     const accepted = await api("/api/orders", { action: "update-status", id: order.id, status: "confirmed", progressNote: "接单" }, true);
     assert.equal(accepted.status, 200);
-    const publishedMenu = { title: "测试家宴", date: "2026-10-02", message: "开饭", template: "home", templateName: "温馨家宴", subtitle: "DINNER", occasion: "朋友相聚", courses: [{ id: "main", label: "主厨热菜", english: "MAIN", dishes: [{ name: dish.name, description: "测试菜" }] }] };
+    const publishedMenu = { title: "测试家宴", date: "2026-10-02", time: "19:00", message: "开饭", template: "home", fontId: "long-cang", showDescriptions: false, templateName: "温馨家宴", subtitle: "DINNER", occasion: "朋友相聚", courses: [{ id: "main", label: "主厨热菜", english: "MAIN", dishes: [{ name: dish.name, description: "测试菜" }] }] };
     const published = await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu }, true); assert.equal(published.status, 200);
+    assert.equal(JSON.parse(published.data.order.publishedMenu).fontId, "long-cang");
+    assert.equal(JSON.parse(published.data.order.publishedMenu).time, "19:00");
+    assert.equal(JSON.parse(published.data.order.publishedMenu).showDescriptions, false);
+    const defaultDescriptions = await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, showDescriptions: undefined } }, true);
+    assert.equal(JSON.parse(defaultDescriptions.data.order.publishedMenu).showDescriptions, true);
     for (const template of ["jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"]) {
       const themed = await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, template } }, true);
       assert.equal(themed.status, 200); assert.equal(JSON.parse(themed.data.order.publishedMenu).template, template);
     }
-    await select(inv, 2); const changed = await submit(inv); assert.equal(changed.status, 200);
+    for (const fontId of ["system-serif", "zcool-xiaowei", "zcool-kuaile", "long-cang", "zhi-mang-xing", "ma-shan-zheng", "liu-jian-mao-cao", customFontId]) {
+      const selected = await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, fontId } }, true);
+      assert.equal(selected.status, 200); assert.equal(JSON.parse(selected.data.order.publishedMenu).fontId, fontId);
+    }
+    assert.equal((await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, fontId: "external-font" } }, true)).status, 400);
+    assert.equal((await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, showDescriptions: "hidden" } }, true)).status, 400);
+    assert.equal((await api("/api/orders", { action: "publish-menu", id: order.id, publishedMenu: { ...publishedMenu, time: "29:90" } }, true)).status, 400);
+    await select(inv, 2); const changed = await submit(inv, {}, true); assert.equal(changed.status, 200);
     assert.ok(changed.data.order.dishesUpdatedAt > changed.data.order.statusUpdatedAt);
     assert.ok(changed.data.order.dishesUpdatedAt > changed.data.order.publishedMenuUpdatedAt);
   });
@@ -195,8 +247,11 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     const second = await fetch(base + "/api/orders", { headers: { cookie, "if-none-match": etag } }); assert.equal(second.status, 304);
   });
   await t.test("complete menu drafts round-trip and reject stale revisions", async () => {
-    let draft = { items: [], title: "删除所有菜仍保留", template: "romance", templateName: "二人世界", date: "2026-10-02", subtitle: "验收", occasion: "朋友相聚", chefCredit: "阿德", guestCount: 2, courseEdits: { main: { label: "手工标题", english: "CUSTOM" } }, dishEdits: {}, message: "手工祝福" };
+    let draft = { items: [], title: "删除所有菜仍保留", template: "romance", templateName: "二人世界", date: "2026-10-02", time: "19:30", fontId: "zcool-xiaowei", showDescriptions: false, subtitle: "验收", occasion: "朋友相聚", chefCredit: "阿德", guestCount: 2, courseEdits: { main: { label: "手工标题", english: "CUSTOM" } }, dishEdits: {}, message: "手工祝福" };
     let revision = 0;
+    draft = { ...draft, fontId: customFontId };
+    const customSaved = await api("/api/menu-drafts", { scope: "free", draft, revision }, true, "PUT");
+    assert.equal(customSaved.status, 200); revision = customSaved.data.revision;
     for (const template of ["jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"]) {
       draft = { ...draft, template };
       const saved = await api("/api/menu-drafts", { scope: "free", draft, revision }, true, "PUT");
@@ -205,8 +260,15 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     const result = await api("/api/menu-drafts", undefined, true);
     assert.deepEqual(result.data.drafts.free.draft, draft);
     assert.equal((await api("/api/menu-drafts", { scope: "free", draft: { ...draft, title: "stale" }, revision: 0 }, true, "PUT")).status, 409);
+    assert.equal((await api("/api/menu-drafts", { scope: "free", draft: { ...draft, fontId: "external-font" }, revision }, true, "PUT")).status, 400);
+    assert.equal((await api("/api/menu-drafts", { scope: "free", draft: { ...draft, showDescriptions: "false" }, revision }, true, "PUT")).status, 400);
+    assert.equal((await api("/api/menu-drafts", { scope: "free", draft: { ...draft, time: "25:80" }, revision }, true, "PUT")).status, 400);
     assert.equal((await api("/api/menu-drafts", { scope: "free", draft: { items: [] }, revision: 1 }, true, "PUT")).status, 400);
     assert.equal((await api("/api/menu-drafts")).status, 401);
+    const removed = await api(`/api/menu-fonts/${customFontId}`, undefined, true, "DELETE");
+    assert.equal(removed.status, 200);
+    assert.ok(!removed.data.fonts.some(font => font.id === customFontId));
+    assert.equal((await fetch(base + customFontUrl)).status, 404);
   });
   await t.test("active orders remain visible behind more than 100 archived orders", async () => {
     const active = (await api("/api/orders", normal)).data.order;
@@ -262,5 +324,63 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     let last;
     for (let i = 0; i < 9; i++) last = await fetch(base + "/api/auth/login", { method: "POST", redirect: "manual", headers: { "x-forwarded-for": `192.0.2.${i}` }, body: new URLSearchParams({ password: "wrong" }) });
     assert.match(last.headers.get("location"), /error=locked/);
+  });
+});
+
+test("chef access is open only when no password is configured", { timeout: 120000 }, async t => {
+  const servers = [];
+  t.after(async () => {
+    for (const server of servers) {
+      if (server.child.exitCode === null) {
+        const exited = once(server.child, "exit");
+        server.child.kill();
+        await exited.catch(() => {});
+      }
+      await rm(server.temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
+  async function start(password) {
+    const temp = await mkdtemp(path.join(tmpdir(), "ade-auth-mode-"));
+    const listener = net.createServer();
+    listener.listen(0, "127.0.0.1"); await once(listener, "listening");
+    const port = listener.address().port; await new Promise(resolve => listener.close(resolve));
+    const base = `http://127.0.0.1:${port}`;
+    const env = { ...process.env, DATA_DIR: temp, DATABASE_PATH: path.join(temp, "ade-kitchen.sqlite"), UPLOADS_DIR: path.join(temp, "uploads"), BACKUP_DIR: path.join(temp, "backups"), TRUST_PROXY: "false" };
+    delete env.CHEF_PASSWORD;
+    delete env.CHEF_PASSWORD_FILE;
+    if (password !== undefined) env.CHEF_PASSWORD = password;
+    const child = spawn(process.execPath, [path.join(root, "node_modules/next/dist/bin/next"), "start", "-H", "127.0.0.1", "-p", String(port)], { cwd: root, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    let logs = ""; child.stdout.on("data", c => logs += c); child.stderr.on("data", c => logs += c);
+    servers.push({ child, temp });
+    for (let i = 0; i < 100; i++) {
+      try { if ((await fetch(base + "/api/health")).ok) return base; } catch { /* boot */ }
+      if (child.exitCode !== null) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.fail(`auth-mode test server failed to start: ${logs}`);
+  }
+
+  await t.test("empty password opens the chef page and admin APIs", async () => {
+    const base = await start();
+    const page = await fetch(base + "/chef", { redirect: "manual" });
+    assert.equal(page.status, 200);
+    assert.doesNotMatch(await page.text(), /class="chef-logout"/);
+    const loginPage = await fetch(base + "/chef/login", { redirect: "manual" });
+    assert.equal(loginPage.status, 307); assert.equal(loginPage.headers.get("location"), "/chef");
+    assert.equal((await fetch(base + "/api/menu-drafts")).status, 200);
+    const category = await fetch(base + "/api/categories", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "免密码验收分类" }) });
+    assert.equal(category.status, 201);
+    const login = await fetch(base + "/api/auth/login", { method: "POST", redirect: "manual", body: new URLSearchParams() });
+    assert.equal(login.status, 303); assert.equal(login.headers.get("location"), "/chef"); assert.equal(login.headers.get("set-cookie"), null);
+  });
+
+  await t.test("a configured but invalid short password fails closed", async () => {
+    const base = await start("123456789");
+    const page = await fetch(base + "/chef", { redirect: "manual" });
+    assert.equal(page.status, 307); assert.match(page.headers.get("location"), /^\/chef\/login\?/);
+    assert.equal((await fetch(base + "/api/menu-drafts")).status, 401);
+    const loginPage = await fetch(base + "/chef/login");
+    assert.equal(loginPage.status, 200); assert.match(await loginPage.text(), /主厨密码配置无效/);
   });
 });

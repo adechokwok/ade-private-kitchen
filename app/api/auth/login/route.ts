@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { CHEF_SESSION_COOKIE, createChefSession, isChefConfigured, sessionCookieOptions, verifyChefPassword } from "../../../chef-auth";
+import { CHEF_SESSION_COOKIE, createChefSession, isChefConfigured, isChefPasswordRequired, sessionCookieOptions, verifyChefPassword } from "../../../chef-auth";
 
 const attempts = new Map<string, { count: number; resetAt: number }>();
 const WINDOW_MS = 15 * 60 * 1000;
@@ -19,7 +19,8 @@ export async function POST(request: Request) {
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"));
   const errorLocation = `/chef/login?error=1&returnTo=${encodeURIComponent(returnTo)}`;
-  if (!isChefConfigured()) return new NextResponse(null, { status: 303, headers: { location: errorLocation } });
+  if (!isChefPasswordRequired()) return new NextResponse(null, { status: 303, headers: { location: returnTo } });
+  if (!isChefConfigured()) return new NextResponse(null, { status: 303, headers: { location: `/chef/login?error=config&returnTo=${encodeURIComponent(returnTo)}` } });
 
   const key = clientKey(request);
   const now = Date.now();

@@ -4,6 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { ensureDinnerInvitesSchema, ensureMenuLibrary, ensureOrdersSchema, getDb, getSqlite } from "../../../db";
 import { appSettings, customDishes, dinnerInvites, dinnerJournals, orders } from "../../../db/schema";
 import { chefApiGuard } from "../../chef-auth";
+import { isMenuFontId } from "../../menu-fonts-shared";
 
 type Item = { dishId?: string; quantity?: number };
 type ChefOrderMutation = {
@@ -17,18 +18,25 @@ const validStatuses = ["new", "confirmed", "shopping", "preparing", "done", "can
 const validMenuTemplates = new Set(["home", "romance", "fine", "spring", "midautumn", "birthday", "housewarming", "summer", "christmas", "brunch", "jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"]);
 const validMenuCourses = new Set(["starter", "main", "staple", "soup"]);
 
+class MenuInputError extends Error {}
+
 function normalizePublishedMenu(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("正式菜单内容不完整");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new MenuInputError("正式菜单内容不完整");
   const menu = value as Record<string, unknown>;
   const text = (key: string, maximum: number) => typeof menu[key] === "string" ? menu[key].trim().slice(0, maximum) : "";
   const guestCount = typeof menu.guestCount === "number" && Number.isInteger(menu.guestCount) ? Math.min(20, Math.max(1, menu.guestCount)) : undefined;
   const template = text("template", 20);
-  if (!validMenuTemplates.has(template)) throw new Error("请选择有效的宴席模板");
+  if (!validMenuTemplates.has(template)) throw new MenuInputError("请选择有效的宴席模板");
+  const fontId = text("fontId", 48) || "zcool-xiaowei";
+  if (!isMenuFontId(fontId)) throw new MenuInputError("请选择有效的菜单字体");
+  if (menu.showDescriptions !== undefined && typeof menu.showDescriptions !== "boolean") throw new MenuInputError("菜品介绍显示设置无效");
+  const time = text("time", 5);
+  if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new MenuInputError("聚会时间格式不正确");
   const rawCourses = Array.isArray(menu.courses) ? menu.courses : [];
   const courses = rawCourses.slice(0, 4).map((rawCourse) => {
     const course = rawCourse && typeof rawCourse === "object" && !Array.isArray(rawCourse) ? rawCourse as Record<string, unknown> : {};
     const id = typeof course.id === "string" ? course.id : "";
-    if (!validMenuCourses.has(id)) throw new Error("正式菜单栏目不正确");
+    if (!validMenuCourses.has(id)) throw new MenuInputError("正式菜单栏目不正确");
     const dishes = (Array.isArray(course.dishes) ? course.dishes : []).slice(0, 30).map((rawDish) => {
       const dish = rawDish && typeof rawDish === "object" && !Array.isArray(rawDish) ? rawDish as Record<string, unknown> : {};
       return {
@@ -43,12 +51,15 @@ function normalizePublishedMenu(value: unknown) {
       dishes,
     };
   });
-  if (!courses.some((course) => course.dishes.length)) throw new Error("请先把菜品排入正式菜单");
+  if (!courses.some((course) => course.dishes.length)) throw new MenuInputError("请先把菜品排入正式菜单");
   return {
     title: text("title", 32) || "今晚家宴",
     date: text("date", 10),
+    time,
     message: text("message", 70),
     template,
+    fontId,
+    showDescriptions: menu.showDescriptions !== false,
     templateName: text("templateName", 24),
     subtitle: text("subtitle", 60),
     occasion: text("occasion", 32),
@@ -60,6 +71,10 @@ function normalizePublishedMenu(value: unknown) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "服务暂时开小差了";
+}
+
+function mutationErrorResponse(error: unknown) {
+  return Response.json({ error: errorMessage(error) }, { status: error instanceof MenuInputError ? 400 : 500 });
 }
 
 async function mutateOrderForChef(payload: ChefOrderMutation) {
@@ -129,7 +144,7 @@ export async function GET(request: Request) {
     if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: { etag } });
     return Response.json({ orders: rows }, { headers: { etag, "cache-control": "private, no-cache" } });
   } catch (error) {
-    return Response.json({ error: errorMessage(error) }, { status: 500 });
+    return mutationErrorResponse(error);
   }
 }
 
@@ -206,7 +221,7 @@ async function handlePOST(request: Request) {
     }
     return Response.json({ order, guestToken }, { status: 201 });
   } catch (error) {
-    return Response.json({ error: errorMessage(error) }, { status: 500 });
+    return mutationErrorResponse(error);
   }
 }
 
@@ -217,7 +232,7 @@ async function handlePATCH(request: Request) {
     const payload = await request.json() as ChefOrderMutation;
     return await mutateOrderForChef({ ...payload, action: payload.action || "update-status" });
   } catch (error) {
-    return Response.json({ error: errorMessage(error) }, { status: 500 });
+    return mutationErrorResponse(error);
   }
 }
 
