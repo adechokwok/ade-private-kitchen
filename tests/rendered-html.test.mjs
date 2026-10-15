@@ -343,6 +343,9 @@ test("ships the private menu and chef workflow", async () => {
   assert.doesNotMatch(page, /唤醒久困英雄，指引迷途君子/);
   assert.doesNotMatch(statusClient, /唤醒久困英雄，指引迷途君子/);
   assert.match(globalStyles, /\.template-ingredient-atlas \.ingredient-atlas-columns > section[^\n]*background: rgba\(20,19,18,\.96\)/);
+  assert.match(globalStyles, /\.temporary-banquet-dish \{ display: grid;/);
+  assert.match(globalStyles, /\.menu-card-courses article span \{[^\n]*overflow-wrap: anywhere; white-space: normal;/);
+  assert.doesNotMatch(globalStyles, /\.menu-card-courses article span \{[^\n]*text-overflow: ellipsis/);
   assert.match(globalStyles, /\.ingredient-atlas-columns \{ display: grid; grid-template-columns: minmax\(0,\.92fr\) minmax\(0,1\.08fr\)/);
   assert.match(globalStyles, /\.ingredient-atlas-left \{ display: grid; grid-template-rows: repeat\(3,minmax\(0,1fr\)\)/);
   assert.match(globalStyles, /\.ingredient-atlas-left > section \+ section \{ margin-top: 0; \}/);
