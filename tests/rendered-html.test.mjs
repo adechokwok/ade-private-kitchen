@@ -39,6 +39,7 @@ test("ships the private menu and chef workflow", async () => {
     readFile(new URL("../app/api/dishes/duplicate/route.ts", import.meta.url), "utf8"),
     { code: "ENOENT" },
   );
+  const menuContent = await readFile(new URL("../app/components/menu-card-content.tsx", import.meta.url), "utf8");
   const orderStatusPage = await readFile(new URL("../app/order/[token]/page.tsx", import.meta.url), "utf8");
 
   for (const phrase of [
@@ -46,7 +47,7 @@ test("ships the private menu and chef workflow", async () => {
     "订单和采购提醒", "制作执行台", "合并备菜清单", "倒排烹饪顺序", "单菜计时器", "库存不足提醒",
     "等待通知与确认归档", "菜单管理", "自定义新类型", "批量加入大类", "点菜端 slogan", "千问再生成", "家中库存",
     "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "一键生成共享饭局", "餐桌日记，想写的时候再写", "温馨家宴", "二人世界", "Fine Dining",
-    "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐", "江南雅集", "围炉夜话", "欢乐生日派对", "多人共享一张单"
+    "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐", "江南雅集", "围炉夜话", "欢乐生日派对", "多人共享一张单",
   ]) assert.match(page, new RegExp(phrase));
   assert.match(page, /function ImageDropField/);
   assert.match(page, /onDrop=\{dropFiles\}/);
@@ -199,7 +200,8 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /sharedAggregatePortionCount/);
   assert.match(page, /handleChefSubmitUnlockTap/);
   assert.match(page, /chefSubmitUnlocked && invite\.mode === "shared"/);
-  assert.match(page, /朋友端只负责一起选菜，提交由主厨在工作台统一处理/);
+  assert.match(page, /guestSubmitUnlocked && !sharedDinner\.orderToken/);
+  assert.match(page, /onClick=\{handleInviteLogoTap\}/);
   assert.match(page, /!isSharedInvite && kitchenOpen/);
   assert.doesNotMatch(page, /每位朋友都能看到这张汇总单；选好后由任意一位通知主厨/);
   assert.match(page, /这桌已选 \{total\} 份/);
@@ -290,7 +292,10 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(copyRoute, /slogan/);
   assert.match(copyRoute, /privateKitchenCopyStyle/);
   assert.match(importRoute, /privateKitchenCopyStyle/);
-  assert.match(copyStyle, /22–42 个中文字符/);
+  assert.match(copyStyle, /22–35 个中文字符/);
+  assert.match(copyStyle, /标点也计入 35 字上限/);
+  assert.match(copyRoute, /limitGeneratedDescription\(value\)/);
+  assert.match(importRoute, /limitGeneratedDescription\(draft\.description\)/);
   assert.match(copyStyle, /10–24 个中文字符/);
   assert.match(copyStyle, /汤汁请务必留给米饭/);
   assert.match(copyStyle, /软乎乎的一口鲜/);
@@ -335,22 +340,18 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(page, /showDescriptions: banquetShowDescriptions/);
   assert.match(statusClient, /showDescriptions !== false/);
   assert.match(page, /阿德小厨房 · 今晚家宴/);
-  assert.match(page, /阿德小厨房<\/textPath>/);
-  assert.match(page, /className="archive-card-side-note left">唤醒久困英雄/);
-  assert.match(page, /className="archive-card-side-note right">指引迷途君子/);
-  assert.match(statusClient, /className="archive-card-side-note left">唤醒久困英雄/);
-  assert.match(statusClient, /className="archive-card-side-note right">指引迷途君子/);
+  assert.match(menuContent, /\["阿", "德", "小", "厨", "房"\]\.map/);
   assert.doesNotMatch(page, /唤醒久困英雄，指引迷途君子/);
   assert.doesNotMatch(statusClient, /唤醒久困英雄，指引迷途君子/);
-  assert.match(globalStyles, /\.template-ingredient-atlas \.ingredient-atlas-columns > section[^\n]*background: rgba\(20,19,18,\.96\)/);
-  assert.match(globalStyles, /\.temporary-banquet-dish \{ display: grid;/);
-  assert.match(globalStyles, /\.menu-card-courses article span \{[^\n]*overflow-wrap: anywhere; white-space: normal;/);
-  assert.doesNotMatch(globalStyles, /\.menu-card-courses article span \{[^\n]*text-overflow: ellipsis/);
   assert.match(globalStyles, /\.ingredient-atlas-columns \{ display: grid; grid-template-columns: minmax\(0,\.92fr\) minmax\(0,1\.08fr\)/);
   assert.match(globalStyles, /\.ingredient-atlas-left \{ display: grid; grid-template-rows: repeat\(3,minmax\(0,1fr\)\)/);
   assert.match(globalStyles, /\.ingredient-atlas-left > section \+ section \{ margin-top: 0; \}/);
-  assert.match(page, /className="ingredient-atlas-columns"/);
-  assert.match(page, /course\.id !== "main"/);
+  assert.match(globalStyles, /\.menu-card-courses article span \{[^\n]*overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere;/);
+  assert.match(menuContent, /className="ingredient-atlas-columns"/);
+  assert.match(page, /<MenuCardCourses/);
+  assert.match(page, /<ArchiveSideNotes/);
+  assert.match(statusClient, /<ArchiveSideNotes/);
+  assert.match(statusClient, /<MenuCardCourses/);
   assert.match(page, /name: "围炉夜话", occasion: "火锅 · 好友局"/);
   assert.match(globalStyles, /\.template-hotpot \{[^\n]*background-image: url\("\/banquet\/hotpot\.webp"\)/);
   assert.match(page, /const addTemporaryBanquetDish =/);
@@ -360,14 +361,11 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(globalStyles, /\.template-antique-post \.menu-card-header h2 \{ top: calc\(7\.2cqw - 72px\)/);
   assert.match(globalStyles, /\.template-antique-post \.menu-card-header h2 \{[^\n]*background: transparent; box-shadow: none;/);
   assert.match(globalStyles, /\.template-antique-post \.menu-card-header > \.archive-card-meta \{ position: absolute; top: 278px;/);
-  assert.match(globalStyles, /\.template-antique-post::after \{ display: none; \}/);
   assert.match(globalStyles, /\.template-antique-post \.menu-card-courses \{[^\n]*background: rgba\(248,242,226,\.94\)/);
-  assert.match(globalStyles, /\.template-archive-ledger \.archive-card-arc \{[^\n]*top: 36px;[^\n]*height: 130px;[^\n]*font-size: 50px;[^\n]*font-weight: 800; letter-spacing: \.55em/);
-  assert.match(globalStyles, /\.template-archive-ledger \.menu-card-header > \.archive-card-meta \{ top: 30cqw; left: 50%; width: fit-content; max-width: 100%; transform: translateX\(-50%\);/);
-  assert.match(globalStyles, /\.template-archive-ledger \.archive-card-side-note \{[^\n]*top: 51cqw;[^\n]*font-size: clamp\(44px,9\.5cqw,54px\)[^\n]*letter-spacing: \.82em/);
+  assert.match(globalStyles, /\.template-archive-ledger \.archive-card-arc \{[^\n]*top: -10px;[^\n]*height: 140px;[^\n]*font-size: clamp\(52px,12cqw,60px\);[^\n]*letter-spacing: 0;/);
   assert.match(globalStyles, /\.template-archive-ledger \.menu-card-header \{ position: relative; height: clamp\(580px,130cqw,700px\); flex: 0 0 clamp\(580px,130cqw,700px\); \}/);
-  assert.match(page, /M 12 110 C 58 -28 402 -28 448 110/);
-  assert.match(statusClient, /M 12 110 C 58 -28 402 -28 448 110/);
+  assert.match(menuContent, /M 18 122 Q 230 12 442 122/);
+  assert.match(globalStyles, /aspect-ratio: 2 \/ 3; background: url\("\/banquet\/antique-post\.webp"\)/);
   for (const template of ["jiangnan", "hotpot", "birthday-party", "archive-ledger", "xuan-paper", "ingredient-atlas", "antique-post", "bistro-handwritten"]) {
     assert.match(globalStyles, new RegExp(`\\.template-${template}`));
     const asset = await readFile(new URL(`../public/banquet/${template}.webp`, import.meta.url));
@@ -494,7 +492,10 @@ test("includes a reproducible amd64 Docker deployment, updates, and backups", as
   assert.match(compose, /NAS_DATA_PATH/);
   assert.match(compose, /NAS_BACKUP_PATH/);
   assert.match(compose, /service_healthy/);
-  assert.match(nasCompose, /ghcr\.io\/adechokwok\/ade-private-kitchen:latest/);
+  assert.match(nasCompose, /ghcr\.io\/adechokwok\/ade-private-kitchen:\$\{IMAGE_TAG:-latest\}/);
+  assert.match(cloudCompose, /ghcr\.io\/adechokwok\/ade-private-kitchen:\$\{IMAGE_TAG:-latest\}/);
+  assert.doesNotMatch(cloudCompose, /build:/);
+  for (const deployment of [compose, nasCompose, cloudCompose]) { assert.match(deployment, /CHEF_PASSWORD:-/); assert.doesNotMatch(deployment, /CHEF_PASSWORD:\?/); }
   assert.match(nasCompose, /NAS_DATA_PATH/);
   assert.match(cloudCompose, /CLOUD_DATA_PATH/);
   assert.match(cloudCompose, /CLOUD_BACKUP_PATH/);

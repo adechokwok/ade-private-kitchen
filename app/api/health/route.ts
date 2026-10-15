@@ -1,5 +1,6 @@
 import { ensureAllSchema, getSqlite } from "../../../db";
 import { ensureDataDirectories } from "../../../storage/paths";
+import { version } from "../../../package.json";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,8 @@ export async function GET() {
     return Response.json({
       ok: true,
       service: "ade-private-kitchen",
+      version,
+      revision: process.env.APP_REVISION || "local",
       storage: "local-disk",
       time: new Date().toISOString(),
     }, { headers: { "cache-control": "no-store" } });

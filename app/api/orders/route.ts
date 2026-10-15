@@ -169,7 +169,7 @@ async function handlePOST(request: Request) {
     if (payload.requestId && !requestId) return Response.json({ error: "提交标识无效" }, { status: 400 });
     if (requestId) {
       const previous = getDb().select().from(orders).where(eq(orders.requestId, requestId)).get();
-      if (previous) return Response.json({ order: previous, guestToken: previous.guestToken });
+      if (previous) return Response.json({ order: previous, guestToken: previous.guestToken, orderToken: previous.guestToken });
     }
     await ensureMenuLibrary();
     const [kitchenSetting] = await getDb().select().from(appSettings).where(eq(appSettings.key, "kitchen_open_v1")).limit(1);
@@ -217,9 +217,9 @@ async function handlePOST(request: Request) {
     const [order] = await getDb().insert(orders).values({ requestId, id, customerName, mealDate, guestCount, note, dishes: JSON.stringify(normalized), dishSnapshot: JSON.stringify(dishSnapshot), inviteId, guestToken }).onConflictDoNothing().returning();
     if (!order && requestId) {
       const previous = getDb().select().from(orders).where(eq(orders.requestId, requestId)).get();
-      if (previous) return Response.json({ order: previous, guestToken: previous.guestToken });
+      if (previous) return Response.json({ order: previous, guestToken: previous.guestToken, orderToken: previous.guestToken });
     }
-    return Response.json({ order, guestToken }, { status: 201 });
+    return Response.json({ order, guestToken, orderToken: guestToken }, { status: 201 });
   } catch (error) {
     return mutationErrorResponse(error);
   }

@@ -1,6 +1,7 @@
 import { withDataWrite } from "../../../storage/maintenance";
 import { chefApiGuard } from "../../chef-auth";
 import { conciseDescriptionRule, playfulSloganRule, privateKitchenCopyStyle } from "../recipe-copy-style";
+import { limitGeneratedDescription } from "../recipe-description";
 
 type IngredientType = "生鲜" | "蔬菜" | "调料" | "其他";
 
@@ -118,7 +119,7 @@ function normalizeDraft(value: unknown): RecipeDraft {
   return {
     name: typeof draft.name === "string" ? draft.name.trim().slice(0, 40) : "待命名菜谱",
     category: typeof draft.category === "string" ? draft.category.trim().slice(0, 30) : "家常菜",
-    description: typeof draft.description === "string" ? draft.description.trim().slice(0, 180) : "",
+    description: typeof draft.description === "string" ? limitGeneratedDescription(draft.description) : "",
     slogan: typeof draft.slogan === "string" ? draft.slogan.trim().replace(/[“”"。]$/g, "").slice(0, 60) : "",
     flavor: typeof draft.flavor === "string" ? draft.flavor.trim().slice(0, 30) : "家常风味",
     minutes: Math.min(360, Math.max(5, Math.round(Number(draft.minutes) || 30))),

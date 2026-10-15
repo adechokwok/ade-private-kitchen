@@ -13,7 +13,7 @@ services:
       - "${APP_PORT:-3099}:3000"
     environment:
       DATA_DIR: /data
-      CHEF_PASSWORD: "${CHEF_PASSWORD:?请在 .env 中设置至少 10 位的主厨密码}"
+      CHEF_PASSWORD: "${CHEF_PASSWORD:-}"
       SESSION_SECRET: "${SESSION_SECRET:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}"

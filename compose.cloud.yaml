@@ -5,10 +5,7 @@ name: ade-private-kitchen-cloud
 services:
   kitchen:
     platform: linux/amd64
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ade-private-kitchen:latest
+    image: ghcr.io/adechokwok/ade-private-kitchen:${IMAGE_TAG:-latest}
     container_name: ade-kitchen
     restart: unless-stopped
     ports:
@@ -17,7 +14,7 @@ services:
       DATA_DIR: /data
       BACKUP_DIR: /backups
       PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:-}"
-      CHEF_PASSWORD: "${CHEF_PASSWORD:?请在 .env 中设置至少 10 位的主厨密码}"
+      CHEF_PASSWORD: "${CHEF_PASSWORD:-}"
       SESSION_SECRET: "${SESSION_SECRET:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
@@ -37,7 +34,7 @@ services:
 
   backup:
     platform: linux/amd64
-    image: ade-private-kitchen:latest
+    image: ghcr.io/adechokwok/ade-private-kitchen:${IMAGE_TAG:-latest}
     container_name: ade-kitchen-backup
     restart: unless-stopped
     depends_on:

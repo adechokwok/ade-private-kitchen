@@ -6,6 +6,7 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { chefApiGuard } from "../../../chef-auth";
+import { listMenuFonts } from "../../../menu-fonts";
 import { ensureAllSchema, getDb } from "../../../../db";
 import * as schema from "../../../../db/schema";
 import { getUploadsDir } from "../../../../storage/paths";
@@ -38,6 +39,7 @@ export async function GET(request: Request) {
 
   try {
     await ensureAllSchema();
+    await listMenuFonts();
     const db = getDb();
     const tables = {
       custom_dishes: await db.select().from(schema.customDishes),
