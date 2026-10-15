@@ -10,7 +10,7 @@ import { getDataDir, getUploadsDir } from "../storage/paths";
 import { BUILTIN_MENU_FONTS, SYSTEM_MENU_FONT, isMenuFontId, type MenuFont } from "./menu-fonts-shared";
 
 const settingKey = "menu_font_library_v1";
-const maxFontBytes = 12 * 1024 * 1024;
+const maxFontBytes = 20 * 1024 * 1024;
 const maxFontsPerUpload = 12;
 type FontSettings = { disabledBuiltins: string[]; customFonts: MenuFont[] };
 
