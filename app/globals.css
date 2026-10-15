@@ -468,7 +468,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .menu-font-library button:disabled { opacity: .55; cursor: wait; }
 
 /* Dark templates use dark, warm menu plates instead of pale cards that clash with the artwork. */
-.template-ingredient-atlas .menu-card-courses > section { border-color: rgba(207,179,126,.38); background: rgba(20,19,18,.96); box-shadow: 0 8px 22px rgba(0,0,0,.42); }
+.template-ingredient-atlas .ingredient-atlas-columns > section,.template-ingredient-atlas .ingredient-atlas-left > section { border-color: rgba(207,179,126,.38); background: rgba(20,19,18,.96); box-shadow: 0 8px 22px rgba(0,0,0,.42); }
 .template-ingredient-atlas .menu-card-courses article strong { color: #f4ead7; }
 .template-ingredient-atlas .menu-card-courses article span { color: rgba(244,234,215,.82); }
 
