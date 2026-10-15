@@ -46,7 +46,7 @@ test("ships the private menu and chef workflow", async () => {
     "订单和采购提醒", "制作执行台", "合并备菜清单", "倒排烹饪顺序", "单菜计时器", "库存不足提醒",
     "等待通知与确认归档", "菜单管理", "自定义新类型", "批量加入大类", "点菜端 slogan", "千问再生成", "家中库存",
     "智能菜谱录入", "批量导入菜谱库", "确认合并导入", "自动备份 · 失败回滚", "一键生成共享饭局", "餐桌日记，想写的时候再写", "温馨家宴", "二人世界", "Fine Dining",
-    "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐", "江南雅集", "老友生日", "欢乐生日派对", "多人共享一张单",
+    "新春团圆", "中秋雅宴", "生日烛光", "乔迁暖居", "夏日晚风", "冬日圣诞", "周末早午餐", "江南雅集", "围炉夜话", "欢乐生日派对", "多人共享一张单"
   ]) assert.match(page, new RegExp(phrase));
   assert.match(page, /function ImageDropField/);
   assert.match(page, /onDrop=\{dropFiles\}/);
@@ -342,7 +342,18 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(statusClient, /className="archive-card-side-note right">指引迷途君子/);
   assert.doesNotMatch(page, /唤醒久困英雄，指引迷途君子/);
   assert.doesNotMatch(statusClient, /唤醒久困英雄，指引迷途君子/);
-  assert.match(globalStyles, /\.template-ingredient-atlas \.menu-card-courses > section[^\n]*background: rgba\(20,19,18,\.96\)/);
+  assert.match(globalStyles, /\.template-ingredient-atlas \.ingredient-atlas-columns > section[^\n]*background: rgba\(20,19,18,\.96\)/);
+  assert.match(globalStyles, /\.ingredient-atlas-columns \{ display: grid; grid-template-columns: minmax\(0,\.92fr\) minmax\(0,1\.08fr\)/);
+  assert.match(globalStyles, /\.ingredient-atlas-left \{ display: grid; grid-template-rows: repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(globalStyles, /\.ingredient-atlas-left > section \+ section \{ margin-top: 0; \}/);
+  assert.match(page, /className="ingredient-atlas-columns"/);
+  assert.match(page, /course\.id !== "main"/);
+  assert.match(page, /name: "围炉夜话", occasion: "火锅 · 好友局"/);
+  assert.match(globalStyles, /\.template-hotpot \{[^\n]*background-image: url\("\/banquet\/hotpot\.webp"\)/);
+  assert.match(page, /const addTemporaryBanquetDish =/);
+  assert.match(page, /const generateTemporaryDishDescription = async/);
+  assert.match(page, /临时加一道菜/);
+  assert.match(page, /不会写入菜谱库/);
   assert.match(globalStyles, /\.template-antique-post \.menu-card-header h2 \{ top: calc\(7\.2cqw - 72px\)/);
   assert.match(globalStyles, /\.template-antique-post \.menu-card-header h2 \{[^\n]*background: transparent; box-shadow: none;/);
   assert.match(globalStyles, /\.template-antique-post \.menu-card-header > \.archive-card-meta \{ position: absolute; top: 278px;/);
