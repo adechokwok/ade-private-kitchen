@@ -20,6 +20,35 @@ const validMenuCourses = new Set(["starter", "main", "staple", "soup"]);
 
 class MenuInputError extends Error {}
 
+function normalizeRecipeSnapshot(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const snapshot = value as Record<string, unknown>;
+  const text = (key: string, maximum: number) => typeof snapshot[key] === "string" ? snapshot[key].trim().slice(0, maximum) : "";
+  const ingredientTypes = new Set(["生鲜", "蔬菜", "调料", "其他"]);
+  const ingredients = (Array.isArray(snapshot.ingredients) ? snapshot.ingredients : []).slice(0, 60).flatMap((raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const ingredient = raw as Record<string, unknown>;
+    const name = typeof ingredient.name === "string" ? ingredient.name.trim().slice(0, 80) : "";
+    const amount = typeof ingredient.amount === "number" && Number.isFinite(ingredient.amount) ? Math.max(0, Math.min(100000, ingredient.amount)) : 0;
+    const unit = typeof ingredient.unit === "string" ? ingredient.unit.trim().slice(0, 24) : "";
+    const type = typeof ingredient.type === "string" && ingredientTypes.has(ingredient.type) ? ingredient.type : "其他";
+    return name && unit ? [{ name, amount, unit, type }] : [];
+  });
+  const steps = (Array.isArray(snapshot.steps) ? snapshot.steps : []).slice(0, 100).flatMap((step) => typeof step === "string" && step.trim() ? [step.trim().slice(0, 300)] : []);
+  const numeric = (key: string, fallback: number, maximum: number) => typeof snapshot[key] === "number" && Number.isFinite(snapshot[key]) ? Math.max(0, Math.min(maximum, snapshot[key] as number)) : fallback;
+  return {
+    dishId: text("dishId", 100),
+    name: text("name", 40),
+    baseServings: numeric("baseServings", 4, 100),
+    ingredients,
+    steps,
+    minutes: numeric("minutes", 0, 1440),
+    recipeSummary: text("recipeSummary", 500),
+    source: text("source", 200),
+    difficulty: text("difficulty", 20),
+  };
+}
+
 function normalizePublishedMenu(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new MenuInputError("正式菜单内容不完整");
   const menu = value as Record<string, unknown>;
@@ -39,10 +68,12 @@ function normalizePublishedMenu(value: unknown) {
     if (!validMenuCourses.has(id)) throw new MenuInputError("正式菜单栏目不正确");
     const dishes = (Array.isArray(course.dishes) ? course.dishes : []).slice(0, 30).map((rawDish) => {
       const dish = rawDish && typeof rawDish === "object" && !Array.isArray(rawDish) ? rawDish as Record<string, unknown> : {};
-      return {
+      const normalizedDish = {
         name: typeof dish.name === "string" ? dish.name.trim().slice(0, 40) : "",
         description: typeof dish.description === "string" ? dish.description.trim().slice(0, 180) : "",
       };
+      const recipeSnapshot = normalizeRecipeSnapshot(dish.recipeSnapshot);
+      return recipeSnapshot ? { ...normalizedDish, recipeSnapshot } : normalizedDish;
     }).filter((dish) => dish.name);
     return {
       id,

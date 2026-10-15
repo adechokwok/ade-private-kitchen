@@ -13,12 +13,14 @@ import { BackupStatusPanel } from "./components/backup-status-panel";
 import { MenuFontLibrary } from "./components/menu-font-library";
 import { prepareMenuArtworkForExport } from "./menu-export";
 import { normalizedIngredientName, prepActionForIngredient, shoppingLocation } from "./procurement-domain";
+import { productionItemsForOrder, type ProductionDishSnapshot } from "./production-menu";
 import { BUILTIN_MENU_FONTS, SYSTEM_MENU_FONT, TEMPLATE_DEFAULT_FONTS, menuFontCss, type MenuFont } from "./menu-fonts-shared";
 
 type Cart = Record<string, number>;
 type OrderItem = { dishId: string; quantity: number };
-type DishSnapshot = { dishId: string; name: string; baseServings: number; ingredients: Ingredient[]; steps?: string[]; minutes?: number; recipeSummary?: string; source?: string; difficulty?: string };
-type PublishedMenuCourse = { id: BanquetCourse; label: string; english: string; dishes: Array<{ name: string; description: string }> };
+type DishSnapshot = ProductionDishSnapshot;
+type PublishedMenuDish = { name: string; description: string; recipeSnapshot?: DishSnapshot };
+type PublishedMenuCourse = { id: BanquetCourse; label: string; english: string; dishes: PublishedMenuDish[] };
 type PublishedMenu = { title: string; date: string; time?: string; message: string; template: BanquetTemplate; templateName: string; subtitle: string; occasion: string; fontId?: BanquetFontId; showDescriptions?: boolean; guestCount?: number; chefCredit?: string; courses: PublishedMenuCourse[] };
 type Order = {
   id: string;
@@ -761,7 +763,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const servingOrders = useMemo(() => [...servingReadyOrders, ...pendingArchiveOrders], [pendingArchiveOrders, servingReadyOrders]);
   const recentDoneOrders = useMemo(() => archivedOrders.filter((order) => order.status === "done").slice(0, 8), [archivedOrders]);
   const cookingOrders = useMemo(() => [...activeOrders].sort((left, right) => left.mealDate.localeCompare(right.mealDate) || left.createdAt.localeCompare(right.createdAt)), [activeOrders]);
-  const cookingRecipeCount = new Set(activeOrders.flatMap((order) => parseItems(order).map((item) => item.dishId))).size;
+  const cookingRecipeCount = new Set(activeOrders.flatMap((order) => productionItemsForOrder(order, dishCatalog).map((item) => item.dishId))).size;
   const cookingGuestCount = activeOrders.reduce((sum, order) => sum + order.guestCount, 0);
   const nextMealDate = cookingOrders[0]?.mealDate || "暂无饭局";
   const shoppingScopeOrders = useMemo(() => {
@@ -839,7 +841,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       const edits: BanquetDraft["dishEdits"] = {};
       published.courses.forEach(course => course.dishes.forEach((dish, index) => {
         const id = "published-" + course.id + "-" + index;
-        const snapshot = { id, name: dish.name, description: dish.description, category: course.label, flavor: "", emoji: "🍽️", tone: "custom", minutes: 0, ingredients: [], steps: [] } as Dish;
+        const snapshot = { ...dish.recipeSnapshot, id, name: dish.name, description: dish.description, category: course.label, flavor: "", emoji: "🍽️", tone: "custom", minutes: dish.recipeSnapshot?.minutes || 0, ingredients: dish.recipeSnapshot?.ingredients || [], steps: dish.recipeSnapshot?.steps || [] } as Dish;
         items.push({ dishId: id, course: course.id, snapshot }); edits[id] = dish;
       }));
       restoreDraft({ ...published, chefCredit: published.chefCredit || "", guestCount: published.guestCount || order.guestCount, items, courseEdits: Object.fromEntries(published.courses.map(course => [course.id, { label: course.label, english: course.english }])), dishEdits: edits });
@@ -963,7 +965,20 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
         courses: banquetCourses.map((course) => ({
           id: course.id,
           ...courseText(course),
-          dishes: banquetDishes.filter((item) => item.course === course.id).map(({ dish }) => dishText(dish)),
+          dishes: banquetDishes.filter((item) => item.course === course.id).map(({ dish }) => ({
+            ...dishText(dish),
+            recipeSnapshot: {
+              dishId: dish.id,
+              name: dish.name,
+              baseServings: dish.baseServings || 4,
+              ingredients: dish.ingredients || [],
+              steps: dish.steps || [],
+              minutes: dish.minutes || 0,
+              recipeSummary: dish.recipeSummary || "",
+              source: dish.source || "",
+              difficulty: dish.difficulty || "",
+            },
+          })),
         })),
       };
       const response = await fetch("/api/orders", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: selectedBanquetOrder.id, action: "publish-menu", publishedMenu }) });
@@ -1414,10 +1429,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const shoppingList = useMemo(() => {
     const totals = new Map<string, { itemKey: string; dishName: string; name: string; amount: number; unit: string; type: string; location: string; stockUsed: number; demand: string[] }>();
     shoppingScopeOrders.forEach((order) => {
-      const snapshots = parseDishSnapshot(order);
-      parseItems(order).forEach((item) => {
-        const snapshot = snapshots.find((candidate) => candidate.dishId === item.dishId);
-        const dish = dishCatalog.find((candidate) => candidate.id === item.dishId);
+      productionItemsForOrder(order, dishCatalog).forEach((item) => {
+        const snapshot = item.snapshot;
+        const dish = item.dish;
         const dishName = snapshot?.name || dish?.name || "历史菜品";
         const ingredients = snapshot?.ingredients || dish?.ingredients || [];
         // 采购永远按每道菜的原始配方分量显示，不按人数或点菜数量换算。
@@ -1457,10 +1471,9 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   const prepList = useMemo(() => {
     const merged = new Map<string, { key: string; name: string; amount: number; unit: string; type: string; action: string; dishes: Set<string> }>();
     productionOrders.forEach((order) => {
-      const snapshots = parseDishSnapshot(order);
-      parseItems(order).forEach((item) => {
-        const snapshot = snapshots.find((candidate) => candidate.dishId === item.dishId);
-        const dish = dishCatalog.find((candidate) => candidate.id === item.dishId);
+      productionItemsForOrder(order, dishCatalog).forEach((item) => {
+        const snapshot = item.snapshot;
+        const dish = item.dish;
         const dishName = snapshot?.name || dish?.name || "历史菜品";
         const ingredients = snapshot?.ingredients?.length ? snapshot.ingredients : dish?.ingredients || [];
         // 制作台永远沿用菜谱原始分量；订单人数和点菜数量都不参与用料换算。
@@ -1483,13 +1496,13 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : 18 * 60 + 30;
   })();
   const cookingSchedule = useMemo(() => productionOrders.flatMap((order) => {
-    const snapshots = parseDishSnapshot(order);
-    return parseItems(order).map((item) => {
-      const snapshot = snapshots.find((candidate) => candidate.dishId === item.dishId);
-      const dish = dishCatalog.find((candidate) => candidate.id === item.dishId);
+    const revision = order.publishedMenuUpdatedAt || order.dishesUpdatedAt || "order";
+    return productionItemsForOrder(order, dishCatalog).map((item) => {
+      const snapshot = item.snapshot;
+      const dish = item.dish;
       const minutes = snapshot?.minutes || dish?.minutes || 30;
       return {
-        key: `${order.id}:${item.dishId}`,
+        key: `${order.id}:${revision}:${item.dishId}`,
         orderId: order.id,
         dishId: item.dishId,
         name: snapshot?.name || dish?.name || "历史菜品",
@@ -1874,13 +1887,14 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
     });
   };
 
-  const renderOrderCard = (order: Order, archived = false) => (
+  const renderOrderCard = (order: Order, archived = false, useOfficialMenu = false) => (
     <article className={`order-card${archived ? " archived" : ""}`} key={order.id}>
       <div className="order-top"><div><strong>{order.customerName}</strong><span>#{order.id.slice(-6).toUpperCase()}</span></div><em className={`status ${order.status}`}>{statusLabel[order.status]}</em></div>
       <div className="order-facts"><span>📅 {order.mealDate}</span><span>👥 {order.guestCount} 人</span></div>
       <div className="ordered-dishes">
-        {parseItems(order).map((item) => <div key={item.dishId}><span>{parseDishSnapshot(order).find((dish) => dish.dishId === item.dishId)?.name || dishCatalog.find((dish) => dish.id === item.dishId)?.name || "历史菜品"}</span><strong>× {item.quantity}</strong></div>)}
+        {(useOfficialMenu && parsePublishedMenu(order) ? productionItemsForOrder(order, dishCatalog) : parseItems(order).map((item) => ({ ...item, snapshot: parseDishSnapshot(order).find((dish) => dish.dishId === item.dishId), dish: dishCatalog.find((dish) => dish.id === item.dishId) }))).map((item) => <div key={item.dishId}><span>{item.snapshot?.name || item.dish?.name || "历史菜品"}</span>{!(useOfficialMenu && parsePublishedMenu(order)) && <strong>× {item.quantity}</strong>}</div>)}
       </div>
+      {useOfficialMenu && parsePublishedMenu(order) && <p className="order-progress-note"><span>采购与制作按最近推送的正式菜单</span>重新推送菜单后，这里的菜品和食材需求会自动更新。</p>}
       {order.note && <p className="order-note">“{order.note}”</p>}
       {order.progressNote && <p className="order-progress-note"><span>最近通知</span>{order.progressNote}</p>}
       {order.dishesUpdatedAt && order.statusUpdatedAt && order.dishesUpdatedAt > order.statusUpdatedAt && <p className="order-change-alert"><strong>菜单有新变化</strong><span>接单后朋友又加菜或删菜，请重新核对采购与制作。</span></p>}
@@ -2861,7 +2875,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
             <section className="cooking-workspace" aria-labelledby="cooking-workspace-title">
               <section className="cooking-overview panel">
                 <div className="cooking-overview-copy"><span>STEP 03 · LIVE COOKING BOARD</span><h2 id="cooking-workspace-title">制作执行台</h2><p>合并备菜、倒排开火时间、单菜计时与完整做法集中在这里，照着顺序做就不会乱。</p></div>
-                <div className="cooking-stats"><div><small>计划开饭</small><strong>{serviceTime}</strong></div><div><small>制作中饭局</small><strong>{productionOrders.length}</strong></div><div><small>待处理菜品</small><strong>{new Set(productionOrders.flatMap((order) => parseItems(order).map((item) => item.dishId))).size}<i> 道</i></strong></div><div><small>库存不足</small><strong>{shoppingList.length}<i> 项</i></strong></div></div>
+                <div className="cooking-stats"><div><small>计划开饭</small><strong>{serviceTime}</strong></div><div><small>制作中饭局</small><strong>{productionOrders.length}</strong></div><div><small>待处理菜品</small><strong>{new Set(productionOrders.flatMap((order) => productionItemsForOrder(order, dishCatalog).map((item) => item.dishId))).size}<i> 道</i></strong></div><div><small>库存不足</small><strong>{shoppingList.length}<i> 项</i></strong></div></div>
                 <div className="cooking-sync-strip"><span>✓ 相同食材自动合并</span><span>✓ 按开饭时间倒排</span><span>✓ 单菜独立计时</span><span>✓ 库存不足提醒</span><span>✓ 步骤进度留在本机</span></div>
               </section>
 
@@ -2872,24 +2886,24 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
               </section>
 
               {loadingOrders && orders.length === 0 ? <div className="panel cooking-empty">正在同步朋友们的点单…</div> : productionOrders.length === 0 ? <div className="panel cooking-empty"><span>火</span><strong>还没有进入制作阶段的菜</strong><p>订单在“订单和采购”页标记为开始买菜后，就会进入这张制作执行台。</p></div> : productionOrders.map((order) => {
-                const snapshots = parseDishSnapshot(order);
+                const productionRevision = order.publishedMenuUpdatedAt || order.dishesUpdatedAt || "order";
                 return <article className="cooking-order panel" key={order.id}>
                   <header className="cooking-order-head"><div><span>{order.mealDate}</span><h3>{order.customerName} 的饭局</h3><p>{order.guestCount} 人 · 订单 #{order.id.slice(-6).toUpperCase()}</p></div><em className={`status ${order.status}`}>{statusLabel[order.status]}</em></header>
                   {order.note && <div className="cooking-guest-note"><b>朋友的口味 / 忌口</b><p>{order.note}</p></div>}
                   <div className="cooking-progress"><div>{cookingStages.map((stage, index) => <span className={statusProgressIndex[order.status] >= index ? "done" : ""} key={stage.id}><i>{statusProgressIndex[order.status] > index ? "✓" : index + 1}</i>{stage.label}</span>)}</div><div className="cooking-order-actions">{order.status === "new" && <button onClick={() => updateOrderStatus(order.id, "confirmed")}>确认接单</button>}{order.status === "confirmed" && <button onClick={() => updateOrderStatus(order.id, "shopping")}>开始买菜</button>}{order.status === "shopping" && <button onClick={() => updateOrderStatus(order.id, "preparing")}>开始制作</button>}{order.status === "preparing" && <button className="ready-alert" onClick={() => updateOrderStatus(order.id, "done")}>🔔 通知开饭</button>}<small>点击后先确认要发给朋友的提醒内容</small></div></div>
-                  <div className="cooking-dishes">{parseItems(order).map((item, dishIndex) => {
-                    const snapshot = snapshots.find((candidate) => candidate.dishId === item.dishId);
-                    const dish = dishCatalog.find((candidate) => candidate.id === item.dishId);
+                  <div className="cooking-dishes">{productionItemsForOrder(order, dishCatalog).map((item, dishIndex) => {
+                    const snapshot = item.snapshot;
+                    const dish = item.dish;
                     const ingredients = snapshot?.ingredients?.length ? snapshot.ingredients : dish?.ingredients || [];
                     const steps = snapshot?.steps?.length ? snapshot.steps : dish?.steps || [];
                     // 每道菜严格按菜谱记录的原始分量制作，不按订单人数放大或缩小。
-                    const checkPrefix = `${order.id}:${item.dishId}`;
+                    const checkPrefix = `${order.id}:${productionRevision}:${item.dishId}`;
                     const completedSteps = steps.filter((_, index) => cookingChecks[`${checkPrefix}:${index}`]).length;
                     const schedule = cookingSchedule.find((entry) => entry.key === checkPrefix);
                     const timerDeadline = dishTimers[checkPrefix];
                     const timerRemaining = timerDeadline ? timerDeadline - timerNow : 0;
                     return <section className="cooking-dish-card" key={`${order.id}-${item.dishId}`}>
-                      <div className="cooking-dish-head"><span>{String(dishIndex + 1).padStart(2, "0")}</span><div><h4>{snapshot?.name || dish?.name || "历史菜品"}</h4><p>{item.quantity} 份 · 按菜谱原始分量 · 约 {snapshot?.minutes || dish?.minutes || 30} 分钟</p></div><strong>{completedSteps}/{steps.length || 0} 步</strong></div>
+                      <div className="cooking-dish-head"><span>{String(dishIndex + 1).padStart(2, "0")}</span><div><h4>{snapshot?.name || dish?.name || "历史菜品"}</h4><p>{parsePublishedMenu(order) ? "正式菜单 · 按菜谱原始分量" : `${item.quantity} 份 · 按菜谱原始分量`} · 约 {snapshot?.minutes || dish?.minutes || 30} 分钟</p></div><strong>{completedSteps}/{steps.length || 0} 步</strong></div>
                       {(snapshot?.recipeSummary || dish?.recipeSummary) && <p className="cooking-recipe-summary">{snapshot?.recipeSummary || dish?.recipeSummary}</p>}
                       <div className={`dish-timer${timerDeadline ? timerRemaining <= 0 ? " finished" : " running" : ""}`}><div><small>{schedule ? `建议 ${schedule.startTime} 开火` : "单菜计时器"}</small><strong>{timerDeadline ? timerRemaining > 0 ? formatCountdown(timerRemaining) : "时间到" : `${snapshot?.minutes || dish?.minutes || 30}:00`}</strong></div>{timerDeadline ? <button onClick={() => stopDishTimer(checkPrefix)}>{timerRemaining > 0 ? "停止计时" : "关闭提醒"}</button> : <button onClick={() => startDishTimer(checkPrefix, snapshot?.minutes || dish?.minutes || 30)}>开始计时</button>}</div>
                       <div className="cooking-recipe-grid"><section><div className="cooking-section-title"><b>本单用料</b><small>菜谱原始分量</small></div>{ingredients.length ? <ul>{ingredients.map((ingredient) => <li key={`${item.dishId}-${ingredient.name}-${ingredient.unit}`}><span>{ingredient.name}</span><strong>{formatAmount(ingredient.amount, ingredient.unit)}</strong></li>)}</ul> : <p className="cooking-missing">暂时没有记录用料。</p>}</section><section><div className="cooking-section-title"><b>具体做法</b><small>做完可勾选</small></div>{steps.length ? <ol>{steps.map((step, index) => { const checkKey = `${checkPrefix}:${index}`; return <li className={cookingChecks[checkKey] ? "checked" : ""} key={checkKey}><label><input type="checkbox" checked={Boolean(cookingChecks[checkKey])} onChange={(event) => setCookingStepChecked(checkKey, event.target.checked)} /><i>{index + 1}</i><span>{step}</span></label></li>; })}</ol> : <p className="cooking-missing">这道菜还没有记录步骤，可在“菜单管理”中补充。</p>}</section></div>
@@ -2911,7 +2925,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                 <div className="orders-panel panel">
                   <div className="panel-title"><div><span>STEP 02 · ORDERS</span><h2>订单和采购提醒</h2></div><small>{shoppingOrders.length} 场待准备</small></div>
                   <div className="order-update-tip"><span aria-hidden="true">🧺</span><p><strong>先核对饭局，再照清单采购</strong>家中库存会自动抵扣；买齐后可直接把订单推进到制作页。</p></div>
-                  {loadingOrders && orders.length === 0 ? <div className="empty">正在同步订单…</div> : shoppingOrders.length === 0 ? <div className="empty compact"><span>✓</span><strong>当前没有待采购饭局</strong><p>在接单页确认订单后，这里会自动生成采购提醒。</p></div> : <div className="order-list">{shoppingOrders.map((order) => renderOrderCard(order))}</div>}
+                  {loadingOrders && orders.length === 0 ? <div className="empty">正在同步订单…</div> : shoppingOrders.length === 0 ? <div className="empty compact"><span>✓</span><strong>当前没有待采购饭局</strong><p>在接单页确认订单后，这里会自动生成采购提醒。</p></div> : <div className="order-list">{shoppingOrders.map((order) => renderOrderCard(order, false, true))}</div>}
                 </div>
 
                 <aside className="shopping-panel panel">

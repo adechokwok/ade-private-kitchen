@@ -4,6 +4,22 @@ import { ensureDinnerInvitesSchema, ensureOrdersSchema, getDb } from "../../../.
 import { dinnerInvites, dinnerJournals, orders } from "../../../../db/schema";
 
 const parseList = (value: string) => { try { return JSON.parse(value); } catch { return []; } };
+const guestPublishedMenu = (value: string) => {
+  try {
+    const menu = JSON.parse(value) as Record<string, unknown>;
+    if (!Array.isArray(menu.courses)) return null;
+    return {
+      ...menu,
+      courses: menu.courses.map((rawCourse) => {
+        const course = rawCourse && typeof rawCourse === "object" ? rawCourse as Record<string, unknown> : {};
+        return { ...course, dishes: Array.isArray(course.dishes) ? course.dishes.map((rawDish) => {
+          const dish = rawDish && typeof rawDish === "object" ? rawDish as Record<string, unknown> : {};
+          return { name: dish.name, description: dish.description };
+        }) : [] };
+      }),
+    };
+  } catch { return null; }
+};
 
 export async function GET(request: Request, context: { params: Promise<{ token: string }> }) {
   const { token } = await context.params;
@@ -23,7 +39,11 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
   if (journalRow) journal = { ...journalRow, imageUrls: parseList(journalRow.imageUrls) };
   const etag = `W/\"order-${order.statusUpdatedAt}-${order.dishesUpdatedAt}-${order.publishedMenuUpdatedAt}-${order.statusReadAt}-${order.menuReadAt}-${journalRow?.updatedAt || ""}\"`;
   if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: { etag } });
-  return Response.json({ order: { customerName: order.customerName, mealDate: order.mealDate, guestCount: order.guestCount, dishes: parseList(order.dishes), dishSnapshot: parseList(order.dishSnapshot), dishesUpdatedAt: order.dishesUpdatedAt, status: order.status, progressNote: order.progressNote, statusUpdatedAt: order.statusUpdatedAt, statusReadAt: order.statusReadAt, publishedMenu: order.publishedMenu ? (() => { try { return JSON.parse(order.publishedMenu); } catch { return null; } })() : null, publishedMenuUpdatedAt: order.publishedMenuUpdatedAt, menuReadAt: order.menuReadAt, archivedAt: order.archivedAt, createdAt: order.createdAt }, invite, journal }, { headers: { etag, "cache-control": "private, no-cache" } });
+  const guestDishSnapshot = parseList(order.dishSnapshot).map((raw: unknown) => {
+    const dish = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    return { dishId: dish.dishId, name: dish.name };
+  });
+  return Response.json({ order: { customerName: order.customerName, mealDate: order.mealDate, guestCount: order.guestCount, dishes: parseList(order.dishes), dishSnapshot: guestDishSnapshot, dishesUpdatedAt: order.dishesUpdatedAt, status: order.status, progressNote: order.progressNote, statusUpdatedAt: order.statusUpdatedAt, statusReadAt: order.statusReadAt, publishedMenu: order.publishedMenu ? guestPublishedMenu(order.publishedMenu) : null, publishedMenuUpdatedAt: order.publishedMenuUpdatedAt, menuReadAt: order.menuReadAt, archivedAt: order.archivedAt, createdAt: order.createdAt }, invite, journal }, { headers: { etag, "cache-control": "private, no-cache" } });
 }
 
 async function handlePOST(request: Request, context: { params: Promise<{ token: string }> }) {
