@@ -1,26 +1,9 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
+import { PUBLIC_SITE_ORIGIN } from "./site-origin";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const requestHeaders = await headers();
-  const host = (requestHeaders.get("x-forwarded-host") || requestHeaders.get("host") || "localhost").split(",")[0].trim();
-  const forwardedProtocol = requestHeaders.get("x-forwarded-proto")?.split(",")[0].trim();
-  const localHost = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(host);
-  const directHttpPort = /:(?:3000|3099)$/.test(host);
-  const requestProtocol = forwardedProtocol === "http" || forwardedProtocol === "https"
-    ? forwardedProtocol
-    : localHost || directHttpPort ? "http" : "https";
-  let origin = `${requestProtocol}://${host}`;
-  const configuredOrigin = process.env.PUBLIC_ORIGIN?.trim();
-  if (configuredOrigin) {
-    try {
-      const parsed = new URL(configuredOrigin);
-      if (parsed.protocol === "http:" || parsed.protocol === "https:") origin = parsed.origin;
-    } catch {
-      // Ignore an invalid optional origin and keep the request-derived address.
-    }
-  }
+  const origin = PUBLIC_SITE_ORIGIN;
   const title = "阿德小厨房 · 私房菜单";
   const description = "选几道想吃的家常菜，我来准备";
   // Keep the established red chopsticks-and-braised-pork illustration while

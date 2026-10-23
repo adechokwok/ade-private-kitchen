@@ -13,7 +13,6 @@ services:
     environment:
       DATA_DIR: /data
       BACKUP_DIR: /backups
-      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:-}"
       CHEF_PASSWORD: "${CHEF_PASSWORD:-}"
       SESSION_SECRET: "${SESSION_SECRET:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"

@@ -597,6 +597,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 @keyframes toastIn { from { opacity: 0; transform: translate(-50%, -10px); } }
 footer { min-height: 120px; display: flex; align-items: center; justify-content: space-between; padding: 30px max(7vw, 24px); background: #2c2a26; color: #fff; }
 footer span { letter-spacing: .12em; } footer p { opacity: .48; font: 11px system-ui, sans-serif; letter-spacing: .1em; }
+.icp-record-link { color: #f0c77f; font: 11px system-ui, sans-serif; letter-spacing: .04em; text-underline-offset: 3px; }
 
 @media (max-width: 1220px) {
   .banquet-builder { grid-template-columns: 1fr; }
