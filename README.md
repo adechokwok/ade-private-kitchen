@@ -1,6 +1,6 @@
-# 阿德小厨房 · 1.0.0 Docker 自托管版
+# 阿德小厨房 · 1.0.1 Docker 自托管版
 
-本次整合的需求清单、已撤回方案和验收范围见 [1.0.0 更新说明](RELEASE_NOTES.md)。
+本次整合的需求清单、已撤回方案和验收范围见 [1.0.1 更新说明](RELEASE_NOTES.md)。
 
 给家庭主厨使用的私人点菜网页。朋友可以在手机上选菜、提交饭局信息；主厨工作台负责接单、管理菜谱、生成采购清单和记录家宴。
 
@@ -191,7 +191,7 @@ docker compose -f compose.cloud.yaml pull
 docker compose -f compose.cloud.yaml up -d
 ```
 
-NAS 使用下方同样的流程。`IMAGE_TAG` 留空默认 latest，也可设置为 `1.0.0` 或 `sha-完整提交号` 固定/回退。更新后查看 `/api/health` 的 `version` 和 `revision`，确认新镜像已运行。
+NAS 使用下方同样的流程。`IMAGE_TAG` 留空默认 latest，也可设置为 `1.0.1` 或 `sha-完整提交号` 固定/回退。更新后查看 `/api/health` 的 `version` 和 `revision`，确认新镜像已运行。
 
 
 以后每次迭代按这条固定链路进行：
