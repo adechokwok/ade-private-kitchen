@@ -14,6 +14,7 @@ import { MenuFontLibrary } from "./components/menu-font-library";
 import { prepareMenuArtworkForExport } from "./menu-export";
 import { normalizedIngredientName, prepActionForIngredient, shoppingLocation } from "./procurement-domain";
 import { productionItemsForOrder, type ProductionDishSnapshot } from "./production-menu";
+import { PUBLIC_SITE_ORIGIN } from "./site-origin";
 import { BUILTIN_MENU_FONTS, SYSTEM_MENU_FONT, TEMPLATE_DEFAULT_FONTS, menuFontCss, type MenuFont } from "./menu-fonts-shared";
 
 type Cart = Record<string, number>;
@@ -2274,7 +2275,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   };
 
   const copyInviteLink = async (invite: DinnerInvite) => {
-    const url = `${window.location.origin}/invite/${invite.token}`;
+    const url = `${PUBLIC_SITE_ORIGIN}/invite/${invite.token}`;
     setCreatedInvite(invite);
     setCreatedInviteUrl(url);
     try {
@@ -2380,7 +2381,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       const invite = data.invite;
       setInvites((current) => [invite, ...current]);
       setCreatedInvite(invite);
-      setCreatedInviteUrl(`${window.location.origin}/invite/${invite.token}`);
+      setCreatedInviteUrl(`${PUBLIC_SITE_ORIGIN}/invite/${invite.token}`);
       setNotice("共享饭局已生成，复制链接或二维码发给朋友即可一起选菜");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "邀请创建失败，请稍后重试");
@@ -2390,7 +2391,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   };
 
   const shareInvite = async (invite: DinnerInvite) => {
-    const url = `${window.location.origin}/invite/${invite.token}`;
+    const url = `${PUBLIC_SITE_ORIGIN}/invite/${invite.token}`;
     setCreatedInvite(invite);
     setCreatedInviteUrl(url);
     const canShare = typeof navigator.share === "function";
@@ -2402,7 +2403,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
   };
 
   const generateInviteQr = async (invite: DinnerInvite) => {
-    const url = `${window.location.origin}/invite/${invite.token}`;
+    const url = `${PUBLIC_SITE_ORIGIN}/invite/${invite.token}`;
     setQrInvite(invite);
     setQrDataUrl("");
     setQrGenerating(true);
@@ -2859,7 +2860,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
                       <article className="dinner-overview-card" key={invite.id}>
                         <div className="dinner-overview-date"><span>{invite.mealDate}</span><b aria-hidden="true">{invite.mode === "shared" ? "多人" : "专属"}</b></div>
                         <div className="dinner-overview-copy"><div className="dinner-overview-title"><strong>{invite.title}</strong><em><i aria-hidden="true" />进行中</em></div><small>{invite.mode === "shared" ? "多人共享一张单 · 朋友的选择会同步汇总" : "专属点菜单 · 等待朋友确认"}</small><span>{invite.dishIds.length} 道开放菜品</span></div>
-                        <div className="dinner-overview-actions"><button type="button" onClick={() => { setCreatedInvite(invite); setCreatedInviteUrl(`${window.location.origin}/invite/${invite.token}`); setChefView("invitations"); }}>管理饭局</button><a href={`/invite/${invite.token}`} target="_blank" rel="noreferrer">打开点菜页</a><button type="button" className="quiet" onClick={() => void shareInvite(invite)}>分享</button><button type="button" className="quiet" onClick={() => void generateInviteQr(invite)}>二维码</button></div>
+                        <div className="dinner-overview-actions"><button type="button" onClick={() => { setCreatedInvite(invite); setCreatedInviteUrl(`${PUBLIC_SITE_ORIGIN}/invite/${invite.token}`); setChefView("invitations"); }}>管理饭局</button><a href={`/invite/${invite.token}`} target="_blank" rel="noreferrer">打开点菜页</a><button type="button" className="quiet" onClick={() => void shareInvite(invite)}>分享</button><button type="button" className="quiet" onClick={() => void generateInviteQr(invite)}>二维码</button></div>
                       </article>
                     ))}
                   </div>
@@ -3287,7 +3288,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       )}
 
       {notice && <div className="toast" role="status">{notice}</div>}
-      <footer><span>阿德小厨房 · 私房菜单</span><p>愿每顿饭都有热气，也有惦记。</p></footer>
+      <footer><span>阿德小厨房 · 私房菜单</span><p>愿每顿饭都有热气，也有惦记。</p><a className="icp-record-link" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">京ICP备2026071377号</a></footer>
     </main>
   );
 }

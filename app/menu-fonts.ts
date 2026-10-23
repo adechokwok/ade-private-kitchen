@@ -87,9 +87,9 @@ export async function addMenuFonts(files: File[]) {
   const inputs: Array<{ file: File; bytes: Buffer; format: NonNullable<MenuFont["format"]>; name: string }> = [];
   let total = 0;
   for (const file of files) {
-    if (file.size <= 0 || file.size > maxFontBytes) throw new Error(`${file.name} 超出限制，单个字体需小于 12 MB`);
+    if (file.size <= 0 || file.size > maxFontBytes) throw new Error(`${file.name} 超出限制，单个字体需小于 20 MB`);
     total += file.size;
-    if (total > 48 * 1024 * 1024) throw new Error("本次导入的字体总量不能超过 48 MB");
+    if (total > 50 * 1024 * 1024) throw new Error("本次导入的字体总量不能超过 50 MB");
     const bytes = Buffer.from(await file.arrayBuffer());
     const format = detectFormat(bytes);
     if (!format) throw new Error(`${file.name} 不是可识别的 TTF、OTF、WOFF 或 WOFF2 字体文件`);

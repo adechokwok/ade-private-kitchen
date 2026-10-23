@@ -40,6 +40,7 @@ test("ships the private menu and chef workflow", async () => {
     { code: "ENOENT" },
   );
   const menuContent = await readFile(new URL("../app/components/menu-card-content.tsx", import.meta.url), "utf8");
+  const siteOrigin = await readFile(new URL("../app/site-origin.ts", import.meta.url), "utf8");
   const orderStatusPage = await readFile(new URL("../app/order/[token]/page.tsx", import.meta.url), "utf8");
 
   for (const phrase of [
@@ -99,9 +100,10 @@ test("ships the private menu and chef workflow", async () => {
   assert.match(layout, /\/apple-icon\.png/);
   assert.match(manifest, /\/app-icon-192\.png/);
   assert.match(manifest, /\/app-icon-512\.png/);
-  assert.match(layout, /const requestProtocol = forwardedProtocol === "http" \|\| forwardedProtocol === "https"/);
-  assert.match(layout, /directHttpPort/);
-  assert.match(layout, /PUBLIC_ORIGIN/);
+  assert.match(siteOrigin, /https:\/\/ade-kitchen\.icu/);
+  assert.match(layout, /PUBLIC_SITE_ORIGIN/);
+  assert.match(page, /PUBLIC_SITE_ORIGIN\}\/invite\//);
+  assert.doesNotMatch(page, /window\.location\.origin/);
   assert.match(layout, /shareImage\.startsWith\("https:\/\/"\)/);
   assert.ok(appIconAsset.byteLength > 0, "正式 App 图标应存在");
   assert.ok(appleIconAsset.byteLength > 0, "iPhone 图标应存在");
