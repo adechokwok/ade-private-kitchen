@@ -14,6 +14,7 @@ import { ZipArchive } from "archiver";
 import unzipper from "unzipper";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const source = await readFile(new URL("../app/kitchen-domain.ts", import.meta.url), "utf8");
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
 const { kitchenDate, validMealDate, courseForRecipe, procurementKey } = await import("data:text/javascript;base64," + Buffer.from(js).toString("base64"));
@@ -143,7 +144,7 @@ test("real HTTP workflows with an isolated SQLite database", { timeout: 120000 }
     const imported = await response.json();
     assert.ok(imported.draft.description.length > 0);
     assert.ok(Array.from(imported.draft.description).length <= 35);
-    const health = await api("/api/health"); assert.equal(health.data.version, "1.0.0");
+    const health = await api("/api/health"); assert.equal(health.data.version, packageJson.version);
   });
   await t.test("font library imports, serves, removes and restores fonts with chef-only writes", async () => {
     const publicList = await api("/api/menu-fonts");
