@@ -3288,7 +3288,7 @@ export default function Home({ initialMode = "menu", chefUser = "", initialInvit
       )}
 
       {notice && <div className="toast" role="status">{notice}</div>}
-      <footer><span>阿德小厨房 · 私房菜单</span><p>愿每顿饭都有热气，也有惦记。</p><a className="icp-record-link" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">京ICP备2026071377号</a></footer>
+      <footer><span>阿德小厨房 · 私房菜单</span><p>愿每顿饭都有热气，也有惦记。</p><a className="icp-record-link" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">京ICP备2026071377号-1</a></footer>
     </main>
   );
 }

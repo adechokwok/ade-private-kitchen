@@ -416,6 +416,7 @@ test("ships the private menu and chef workflow", async () => {
   for (const emoji of ["🥰", "🛒", "🔥", "😋", "🥺", "📜"]) assert.match(statusClient, new RegExp(emoji, "u"));
   assert.match(globalStyles, /Apple Color Emoji/);
   assert.match(statusClient, /guest-published-menu/);
+  assert.match(page, /className="icp-record-link" href="https:\/\/beian\.miit\.gov\.cn\/" target="_blank" rel="noopener noreferrer">京ICP备2026071377号-1<\/a>/);
   assert.doesNotMatch(page, /className="menu-card-ornament"/);
   assert.doesNotMatch(statusClient, /className="menu-card-ornament"/);
   assert.match(globalStyles, /\.menu-card-header h2 \{ margin: 24px 0 12px/);
